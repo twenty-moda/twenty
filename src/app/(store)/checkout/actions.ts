@@ -10,6 +10,9 @@ import { notifyAfterResponse } from "@/server/order-events";
 import { linkCustomerToAccount, rememberCheckoutAddress } from "@/server/services/accounts";
 import { getSiteSettings } from "@/server/services/content";
 import { expireUnpaidCardOrders, placeOrder } from "@/server/services/orders";
+import { resolveShalomAgency } from "@/server/services/shalom";
+import { agencyLabel } from "@/lib/shalom";
+import { getShalomAgencies } from "../_data";
 import { getAccount } from "../_lib/account";
 
 export type PlaceOrderState =
@@ -35,7 +38,15 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   if (expired.productSlugs.length) revalidateTag(cacheTags.catalog, "max");
   notifyAfterResponse(...expired.changes.map((change) => ({ type: "status" as const, change })));
 
-  const result = await placeOrder(db, parsed.data);
+  // Shalom: la agencia elegida de la lista manda (nombre y distrito oficiales). Otros envíos no llevan id de agencia.
+  let input = { ...parsed.data, agencyId: undefined as string | undefined };
+  if (parsed.data.shippingMethod === "shalom") {
+    const resolved = resolveShalomAgency(await getShalomAgencies(), parsed.data.agencyId);
+    if ("error" in resolved) return { ok: false, errors: { agencyName: resolved.error } };
+    if (resolved.agency) input = { ...input, agencyId: String(resolved.agency.id), agencyName: agencyLabel(resolved.agency), ubigeo: resolved.agency.ubigeo };
+  }
+
+  const result = await placeOrder(db, input);
   if (!result.ok) {
     switch (result.code) {
       case "out_of_stock":
@@ -62,13 +73,19 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   // Con la cuenta abierta: el cliente queda enlazado y, si lo pidió, se guarda la dirección para la próxima.
   const account = await getAccount();
   if (account) {
-    const input = parsed.data;
     const kind = result.shippingKind === "lima_delivery" ? "delivery" : result.shippingKind === "agency" ? "agency" : null;
     after(async () => {
       try {
         await linkCustomerToAccount(db, account, input.email);
         if (input.saveAddress && kind && input.ubigeo) {
-          await rememberCheckoutAddress(db, account.id, { kind, ubigeo: input.ubigeo, address: input.address, reference: input.addressReference, agencyName: input.agencyName });
+          await rememberCheckoutAddress(db, account.id, {
+            kind,
+            ubigeo: input.ubigeo,
+            address: input.address,
+            reference: input.addressReference,
+            agencyName: input.agencyName,
+            agencyId: input.agencyId,
+          });
         }
       } catch (error) {
         console.error("[cuenta] No se pudo guardar la dirección", error instanceof Error ? error.message : error);

@@ -8,7 +8,8 @@ import { getDb } from "@/server/db/client";
 import { notifyAfterResponse } from "@/server/order-events";
 import { emailConfigured } from "@/server/services/email";
 import { planOrderEmails } from "@/server/services/order-notifications";
-import { changeOrderStatus, updateInternalNote } from "@/server/services/orders";
+import { parseTrackingInput } from "@/lib/shalom";
+import { changeOrderStatus, setOrderTracking, updateInternalNote } from "@/server/services/orders";
 import { requireAdmin } from "../../_lib/auth";
 import { failure, success, type ActionState } from "../../_lib/action-state";
 
@@ -21,6 +22,12 @@ export async function changeStatusAction(orderId: string, _: ActionState, formDa
   const note = String(formData.get("note") ?? "").slice(0, 500);
   const customerMessage = String(formData.get("customerMessage") ?? "").slice(0, 1000);
   const notifyCustomer = formData.get("notifyCustomer") === "on";
+  // Shalom: la guía se guarda antes del cambio de estado, así el email de "enviado" ya la lleva.
+  if (formData.has("trackingNumber")) {
+    const tracking = parseTrackingInput(formData.get("trackingNumber"), formData.get("trackingCode"));
+    if (!tracking.ok) return failure(tracking.message);
+    if (tracking.tracking) await setOrderTracking(getDb(), orderId, tracking.tracking);
+  }
 
   const result = await changeOrderStatus(getDb(), { orderId, to: to.data, note, customerMessage, userId: admin.id });
   if (!result.ok) return failure(result.message);
@@ -36,6 +43,15 @@ export async function changeStatusAction(orderId: string, _: ActionState, formDa
   return success(
     (result.restocked ? `Pedido ${STATUS_INFO[to.data].label.toLowerCase()}. Las prendas volvieron al stock.` : `Estado cambiado a “${STATUS_INFO[to.data].label}”.`) + emailed,
   );
+}
+
+export async function saveTrackingAction(orderId: string, _: ActionState, formData: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const tracking = parseTrackingInput(formData.get("trackingNumber"), formData.get("trackingCode"));
+  if (!tracking.ok) return failure(tracking.message);
+  await setOrderTracking(getDb(), orderId, tracking.tracking);
+  refresh();
+  return success(tracking.tracking ? "Guía guardada. El cliente ve el seguimiento en la página de su pedido." : "Guía borrada.");
 }
 
 export async function saveInternalNoteAction(orderId: string, _: ActionState, formData: FormData): Promise<ActionState> {

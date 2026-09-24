@@ -117,11 +117,13 @@ describe("emails de pedidos", () => {
   });
 
   it("enviado por agencia: dice dónde recoger, con qué documento y el mensaje del equipo", () => {
-    const { text } = renderBrandedEmail(customerOrderEmail("enviado", order, ctx, "Clave de recojo: 4321").content, brand);
+    const { text } = renderBrandedEmail(customerOrderEmail("enviado", { ...order, trackingNumber: "66479331", trackingCode: "3KTH" } as OrderDetail, ctx, "Clave de recojo: 4321").content, brand);
     expect(text).toContain("Shalom Av. Ejército");
     expect(text).toContain("DNI 12345678");
     expect(text).toContain("El envío se paga al recoger.");
     expect(text).toContain("Clave de recojo: 4321");
+    expect(text).toContain("N° de orden: 66479331");
+    expect(text).toContain("Código: 3KTH");
   });
 
   it("equipo: pedido nuevo con datos del cliente y enlace al panel, sin el pie para clientes", () => {

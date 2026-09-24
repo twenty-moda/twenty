@@ -8,6 +8,7 @@ import { getDb } from "@/server/db/client";
 import * as catalog from "@/server/services/catalog";
 import * as content from "@/server/services/content";
 import * as blog from "@/server/services/posts";
+import * as shalom from "@/server/services/shalom";
 import * as shipping from "@/server/services/shipping";
 
 export async function getProductCards() {
@@ -106,4 +107,49 @@ export async function getFeedVariants() {
   cacheLife("hours");
   cacheTag(cacheTags.catalog);
   return { variants: await catalog.listFeedVariants(getDb()), generatedAt: new Date().toISOString() };
+}
+
+/**
+ * Agencias de Shalom que reciben envíos, con nuestro distrito (checkout y validación del pedido). Se piden a la API
+ * una vez al día (el plan tiene cuota mensual). Si Shalom no responde se guarda la lista vacía solo unos minutos y
+ * el checkout vuelve a pedir la agencia como texto.
+ */
+export async function getShalomAgencies(): Promise<shalom.ShalomAgency[]> {
+  "use cache";
+  cacheTag(cacheTags.shipping);
+  const client = shalom.shalomFromEnv();
+  if (!client) {
+    cacheLife("hours");
+    return [];
+  }
+  try {
+    const [raw, districts] = await Promise.all([client.listAgencies(), shipping.listDistrictsCompact(getDb())]);
+    const agencies = shalom.toAgencies(raw, districts);
+    if (agencies.length) cacheLife("days");
+    else cacheLife("minutes");
+    return agencies;
+  } catch (error) {
+    console.error("[shalom] No se pudieron cargar las agencias", error instanceof Error ? error.message : error);
+    cacheLife("minutes");
+    return [];
+  }
+}
+
+/** Estado de una guía de Shalom (se consulta como mucho cada 15 minutos por guía). */
+export async function getShalomTracking(orderNumber: string, orderCode: string): Promise<shalom.ShalomTracking | null> {
+  "use cache";
+  const client = shalom.shalomFromEnv();
+  if (!client) {
+    cacheLife("hours");
+    return null;
+  }
+  try {
+    const tracking = await client.track(orderNumber, orderCode);
+    cacheLife({ stale: 300, revalidate: 900, expire: 86_400 });
+    return tracking;
+  } catch (error) {
+    console.error("[shalom] No se pudo rastrear la guía", error instanceof Error ? error.message : error);
+    cacheLife("minutes");
+    return null;
+  }
 }

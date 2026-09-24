@@ -153,6 +153,7 @@ export async function listAddresses(db: Db, userId: string) {
       address: addresses.address,
       reference: addresses.reference,
       agencyName: addresses.agencyName,
+      agencyId: addresses.agencyId,
       isDefault: addresses.isDefault,
       district: districts.name,
       province: districts.province,
@@ -180,6 +181,7 @@ export async function saveAddress(db: Db, userId: string, input: AddressInput, i
     address: input.kind === "delivery" ? input.address : null,
     reference: input.kind === "delivery" ? input.reference : null,
     agencyName: input.kind === "agency" ? input.agencyName : null,
+    agencyId: input.kind === "agency" ? (input.agencyId ?? null) : null,
   };
 
   return db.transaction(async (tx) => {
@@ -234,12 +236,18 @@ export async function deleteAddress(db: Db, userId: string, id: string) {
 export async function rememberCheckoutAddress(
   db: Db,
   userId: string,
-  input: { kind: "delivery" | "agency"; ubigeo: string; address?: string | null; reference?: string | null; agencyName?: string | null },
+  input: { kind: "delivery" | "agency"; ubigeo: string; address?: string | null; reference?: string | null; agencyName?: string | null; agencyId?: string | null },
 ) {
   const saved = await listAddresses(db, userId);
   const same = (value: string | null | undefined, other: string | null) => (value ?? "").trim().toLowerCase() === (other ?? "").trim().toLowerCase();
   const match = saved.find(
-    (a) => a.kind === input.kind && a.ubigeo === input.ubigeo && (input.kind === "delivery" ? same(input.address, a.address) : same(input.agencyName, a.agencyName)),
+    (a) =>
+      a.kind === input.kind &&
+      (input.kind === "delivery"
+        ? a.ubigeo === input.ubigeo && same(input.address, a.address)
+        : input.agencyId
+          ? a.agencyId === input.agencyId
+          : a.ubigeo === input.ubigeo && same(input.agencyName, a.agencyName)),
   );
   if (match) {
     await db.update(addresses).set({ updatedAt: new Date(), ...(input.kind === "delivery" ? { reference: input.reference ?? null } : {}) }).where(eq(addresses.id, match.id));
@@ -255,6 +263,7 @@ export async function rememberCheckoutAddress(
     address: input.address ?? null,
     reference: input.reference ?? null,
     agencyName: input.agencyName ?? null,
+    agencyId: input.agencyId ?? null,
     isDefault: false,
   });
 }

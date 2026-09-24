@@ -46,6 +46,8 @@ export const checkoutSchema = z
     address: optionalText(200),
     addressReference: optionalText(200),
     agencyName: optionalText(160),
+    /** Agencia de Shalom elegida de la lista (`ter_id`); el servidor toma su nombre y distrito de la lista oficial. */
+    agencyId: optionalText(9).pipe(z.string().regex(/^\d+$/, "Elige la agencia de la lista").optional()),
     // "whatsapp" (coordinar el pago) se quitó del checkout; la BD lo conserva por los pedidos anteriores.
     paymentMethod: z.enum(["tarjeta", "yape_plin"], { error: "Elige cómo vas a pagar" }),
     note: optionalText(500),

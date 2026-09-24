@@ -40,6 +40,12 @@ export const addressSchema = z
     address: optional(200),
     reference: optional(200),
     agencyName: optional(160),
+    /** Agencia de Shalom elegida de la lista (`ter_id`). */
+    agencyId: z
+      .string()
+      .regex(/^\d{1,9}$/)
+      .nullish()
+      .transform((v) => v ?? null),
     isDefault: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {

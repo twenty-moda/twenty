@@ -27,6 +27,7 @@ const delivery = (over: Partial<Parameters<typeof accounts.saveAddress>[2]> = {}
   address: "Av. Primavera 123",
   reference: null,
   agencyName: null,
+  agencyId: null,
   isDefault: false,
   ...over,
 });

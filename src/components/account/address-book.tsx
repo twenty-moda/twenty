@@ -1,12 +1,14 @@
 "use client";
 
 import { MapPin, Package, Plus, Star, Trash2 } from "lucide-react";
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useCallback, useState, useTransition } from "react";
 import { deleteAddressAction, saveAddressAction, setDefaultAddressAction } from "@/app/(store)/cuenta/actions";
 import { ADDRESS_KINDS, addressSummary, type AddressKind } from "@/lib/account-forms";
 import type { ActionState } from "@/lib/action-state";
 import type { SavedAddress } from "@/server/services/accounts";
+import { agencyLabel } from "@/lib/shalom";
 import { DistrictSearch, type PickedDistrict } from "../checkout/district-search";
+import { ShalomAgencyPicker } from "../checkout/shalom-agency-picker";
 import { Field, inputClass, Segmented, SelectWrap, selectClass } from "../ui/form";
 import { FormMessage, SubmitButton, TextField } from "../ui/form-feedback";
 import { Sheet } from "../ui/sheet";
@@ -123,6 +125,12 @@ function AddressForm({ address, limaDistricts, onSaved }: { address: SavedAddres
     address?.kind === "agency" ? { ubigeo: address.ubigeo, label: `${address.district}, ${address.province} - ${address.department}`, department: address.department } : null,
   );
   const errors = state.fieldErrors ?? {};
+  // Agencia de Shalom: de la lista (con su id). "Otra agencia" (Olva u otra) o sin lista: se escribe.
+  const [shalom, setShalom] = useState({ id: address?.agencyId ?? "", name: address?.agencyName ?? "" });
+  const [manualAgency, setManualAgency] = useState(address?.kind === "agency" && !address.agencyId);
+  const [shalomListOk, setShalomListOk] = useState(true);
+  const markShalomUnavailable = useCallback(() => setShalomListOk(false), []);
+  const useShalomList = shalomListOk && !manualAgency;
 
   return (
     <form action={action} className="space-y-4 p-4" noValidate>
@@ -167,13 +175,43 @@ function AddressForm({ address, limaDistricts, onSaved }: { address: SavedAddres
           <TextField label="Dirección" name="address" state={state} autoComplete="street-address" placeholder="Av. Larco 123, dpto 402" required />
           <TextField label="Referencia" name="reference" state={state} placeholder="Frente al parque" optional />
         </>
+      ) : useShalomList ? (
+        <>
+          <Field label="Agencia Shalom" error={errors.agencyName ?? errors.ubigeo}>
+            {(a11y) => (
+              <ShalomAgencyPicker
+                id={a11y.id}
+                invalid={a11y["aria-invalid"]}
+                describedBy={a11y["aria-describedby"]}
+                value={shalom.id}
+                onUnavailable={markShalomUnavailable}
+                onChange={(agency) => {
+                  setShalom({ id: String(agency.id), name: agencyLabel(agency) });
+                  setAgencyDistrict({ ubigeo: agency.ubigeo, label: `${agency.district}, ${agency.province} - ${agency.department}`, department: agency.department });
+                  if (!label) setLabel(`Shalom ${agency.name}`.slice(0, 40));
+                }}
+              />
+            )}
+          </Field>
+          <input type="hidden" name="ubigeo" value={agencyDistrict?.ubigeo ?? ""} />
+          <input type="hidden" name="agencyName" value={shalom.name} />
+          <input type="hidden" name="agencyId" value={shalom.id} />
+          <button type="button" onClick={() => setManualAgency(true)} className="min-h-10 text-sm font-semibold text-muted underline underline-offset-4">
+            ¿Es Olva u otra agencia? Escríbela
+          </button>
+        </>
       ) : (
         <>
           <Field label="Ciudad o distrito" error={errors.ubigeo}>
             {(a11y) => <DistrictSearch id={a11y.id} value={agencyDistrict} onChange={setAgencyDistrict} invalid={a11y["aria-invalid"]} describedBy={a11y["aria-describedby"]} />}
           </Field>
           <input type="hidden" name="ubigeo" value={agencyDistrict?.ubigeo ?? ""} />
-          <TextField label="Agencia donde recoges" name="agencyName" state={state} placeholder="Shalom Av. Ejército" hint="Shalom, Olva u otra, con la sede." required />
+          <TextField label="Agencia donde recoges" name="agencyName" state={state} placeholder="Olva Av. Ejército" hint="La agencia y su sede." required />
+          {shalomListOk ? (
+            <button type="button" onClick={() => setManualAgency(false)} className="min-h-10 text-sm font-semibold text-muted underline underline-offset-4">
+              Elegir una agencia de Shalom de la lista
+            </button>
+          ) : null}
         </>
       )}
 

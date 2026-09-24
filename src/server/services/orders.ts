@@ -116,6 +116,7 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
           address: option.kind === "lima_delivery" ? input.address : null,
           addressReference: option.kind === "lima_delivery" ? input.addressReference : null,
           agencyName: isAgency ? input.agencyName : null,
+          agencyId: isAgency ? (input.agencyId ?? null) : null,
           paymentMethod: input.paymentMethod,
           subtotalCents: pricing.subtotalCents,
           discountCents: pricing.discountCents,
@@ -386,6 +387,14 @@ export async function changeOrderStatus(
       },
     };
   });
+}
+
+/** Guía del courier para el seguimiento (Shalom: N° de orden y código). `null` la borra. */
+export async function setOrderTracking(db: Db, orderId: string, tracking: { number: string; code: string } | null) {
+  await db
+    .update(orders)
+    .set({ trackingNumber: tracking?.number ?? null, trackingCode: tracking?.code ?? null, updatedAt: new Date() })
+    .where(eq(orders.id, orderId));
 }
 
 export async function updateInternalNote(db: Db, orderId: string, note: string | null) {

@@ -366,6 +366,11 @@ export const orders = pgTable(
     addressReference: text(),
     /** Agencia de destino (Shalom, Olva) donde el cliente recoge. */
     agencyName: text(),
+    /** Id de la agencia en el sistema del courier (Shalom: `ter_id`), si se eligió de la lista. */
+    agencyId: text(),
+    /** Guía del courier para el seguimiento (Shalom: número de orden de 8 dígitos y código de 4). */
+    trackingNumber: text(),
+    trackingCode: text(),
 
     paymentMethod: paymentMethod().notNull(),
     subtotalCents: integer().notNull(),
@@ -582,6 +587,8 @@ export const addresses = pgTable(
     address: text(),
     reference: text(),
     agencyName: text(),
+    /** Agencia de Shalom elegida de la lista (`ter_id`). */
+    agencyId: text(),
     isDefault: boolean().notNull().default(false),
     ...timestamps,
   },

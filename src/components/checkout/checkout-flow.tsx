@@ -4,10 +4,11 @@ import { ArrowLeft, Check, ChevronDown, CreditCard, MapPin, Package, Smartphone,
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { placeOrderAction } from "@/app/(store)/checkout/actions";
 import { getCheckoutAccountAction, type CheckoutAccount } from "@/app/(store)/cuenta/actions";
 import { addressSummary } from "@/lib/account-forms";
+import { agencyLabel } from "@/lib/shalom";
 import { cartTotals, variantLabel, type CartLine } from "@/lib/cart";
 import { checkoutSchema, fieldErrors, normalizePhone, type CheckoutFieldErrors, type CheckoutInput } from "@/lib/checkout-schema";
 import { cn } from "@/lib/cn";
@@ -18,6 +19,7 @@ import { cartStore, useCartLines, useHydrated } from "../cart/cart-store";
 import { promotionLabel } from "../store/price";
 import { Field, inputClass, Segmented, SelectWrap, selectClass } from "../ui/form";
 import { DistrictSearch, type PickedDistrict } from "./district-search";
+import { ShalomAgencyPicker } from "./shalom-agency-picker";
 
 export type CheckoutFlowProps = {
   methods: ShippingMethodInfo[];
@@ -42,6 +44,8 @@ type FormState = {
   address: string;
   addressReference: string;
   agencyName: string;
+  /** Agencia de Shalom elegida de la lista (`ter_id`). */
+  agencyId: string;
   invoiceType: "boleta" | "factura";
   ruc: string;
   businessName: string;
@@ -58,6 +62,7 @@ const INITIAL: FormState = {
   address: "",
   addressReference: "",
   agencyName: "",
+  agencyId: "",
   invoiceType: "boleta",
   ruc: "",
   businessName: "",
@@ -88,6 +93,9 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
   const [account, setAccount] = useState<CheckoutAccount>(null);
   const [accountChecked, setAccountChecked] = useState(false);
   const [saveAddress, setSaveAddress] = useState(true);
+  // Shalom: la agencia se elige de la lista real. Si la lista no carga, se vuelve a escribirla como texto.
+  const [shalomListOk, setShalomListOk] = useState(true);
+  const markShalomUnavailable = useCallback(() => setShalomListOk(false), []);
 
   useEffect(() => {
     let active = true;
@@ -130,6 +138,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
   const totalCents = pricing.totalCents + shippingCents;
   const { units } = cartTotals(lines);
 
+  const shalomPicker = method?.slug === "shalom" && shalomListOk;
   type Saved = NonNullable<CheckoutAccount>["addresses"][number];
   const savedFor = (kind: ShippingKind | undefined): Saved[] =>
     !account
@@ -137,12 +146,17 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
       : kind === "lima_delivery"
         ? account.addresses.filter((a) => a.kind === "delivery" && limaDistricts.some((d) => d.ubigeo === a.ubigeo))
         : kind === "agency"
-          ? account.addresses.filter((a) => a.kind === "agency")
+          ? // Con la lista de Shalom solo sirven las agencias guardadas desde esa lista.
+            account.addresses.filter((a) => a.kind === "agency" && (!shalomPicker || !!a.agencyId))
           : [];
   const same = (a: string | null, b: string) => (a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
   const savedForMethod = savedFor(method?.kind);
   const selectedSaved = savedForMethod.find((a) =>
-    a.kind === "delivery" ? a.ubigeo === limaUbigeo && same(a.address, form.address) : a.ubigeo === agencyDistrict?.ubigeo && same(a.agencyName, form.agencyName),
+    a.kind === "delivery"
+      ? a.ubigeo === limaUbigeo && same(a.address, form.address)
+      : shalomPicker
+        ? a.agencyId === form.agencyId
+        : a.ubigeo === agencyDistrict?.ubigeo && same(a.agencyName, form.agencyName),
   );
   const applyAddress = (a: Saved) => {
     if (a.kind === "delivery") {
@@ -150,7 +164,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
       setForm((f) => ({ ...f, address: a.address ?? "", addressReference: a.reference ?? "" }));
     } else {
       setAgencyDistrict({ ubigeo: a.ubigeo, label: `${a.district}, ${a.province} - ${a.department}`, department: a.department });
-      setForm((f) => ({ ...f, agencyName: a.agencyName ?? "" }));
+      setForm((f) => ({ ...f, agencyName: a.agencyName ?? "", agencyId: a.agencyId ?? "" }));
     }
     setErrors((e) => ({ ...e, ubigeo: undefined, address: undefined, agencyName: undefined }));
   };
@@ -170,6 +184,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     address: method?.kind === "lima_delivery" ? form.address : undefined,
     addressReference: method?.kind === "lima_delivery" ? form.addressReference : undefined,
     agencyName: method?.kind === "agency" ? form.agencyName : undefined,
+    agencyId: shalomPicker ? form.agencyId || undefined : undefined,
     paymentMethod: form.paymentMethod || undefined,
     note: form.note,
     saveAddress: canSaveAddress && saveAddress,
@@ -185,8 +200,12 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
       if (!form.address.trim()) all.address = "Escribe la dirección de entrega";
     }
     if (method?.kind === "agency") {
-      if (!agencyDistrict) all.ubigeo = "Elige la ciudad donde recogerás";
-      if (!form.agencyName.trim()) all.agencyName = "Escribe la agencia donde recogerás";
+      if (shalomPicker) {
+        if (!form.agencyId) all.agencyName = "Elige la agencia donde recogerás";
+      } else {
+        if (!agencyDistrict) all.ubigeo = "Elige la ciudad donde recogerás";
+        if (!form.agencyName.trim()) all.agencyName = "Escribe la agencia donde recogerás";
+      }
     }
     const visible: CheckoutFieldErrors = {};
     for (let s = 1 as Step; s <= upTo; s = (s + 1) as Step) {
@@ -468,7 +487,31 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                 ) : null}
 
 
-                {method.kind === "agency" ? (
+                {method.kind === "agency" && shalomPicker ? (
+                  <>
+                    <Field label="Agencia Shalom donde recoges" error={errors.agencyName ?? errors.ubigeo}>
+                      {(p) => (
+                        <ShalomAgencyPicker
+                          id={p.id}
+                          invalid={p["aria-invalid"]}
+                          describedBy={p["aria-describedby"]}
+                          value={form.agencyId}
+                          onUnavailable={markShalomUnavailable}
+                          onChange={(agency) => {
+                            setAgencyDistrict({ ubigeo: agency.ubigeo, label: `${agency.district}, ${agency.province} - ${agency.department}`, department: agency.department });
+                            setForm((f) => ({ ...f, agencyId: String(agency.id), agencyName: agencyLabel(agency) }));
+                            setErrors((x) => ({ ...x, ubigeo: undefined, agencyName: undefined }));
+                          }}
+                        />
+                      )}
+                    </Field>
+                    <p className="rounded-xl bg-raised px-4 py-3 text-sm text-muted">
+                      El envío se paga al recoger en la agencia. Recoge la persona titular del documento que escribas abajo (mayor de 20 años).
+                    </p>
+                  </>
+                ) : null}
+
+                {method.kind === "agency" && !shalomPicker ? (
                   <>
                     <Field label="Ciudad o distrito de destino" error={errors.ubigeo}>
                       {(p) => (

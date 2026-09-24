@@ -8,7 +8,7 @@ import { inputClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { allowedTransitions, STATUS_INFO, type OrderStatus } from "@/lib/order-status";
 import { idle } from "../../../_lib/action-state";
-import { changeStatusAction, saveInternalNoteAction } from "../actions";
+import { changeStatusAction, saveInternalNoteAction, saveTrackingAction } from "../actions";
 
 /** Lo que dice el botón para pasar a cada estado. */
 const VERB: Record<OrderStatus, string> = {
@@ -29,9 +29,11 @@ type StatusChangerProps = {
   whatsappHref: string | null;
   /** Resend configurado: se puede avisar al cliente por email. */
   emailEnabled: boolean;
+  /** Pedido por Shalom: al marcarlo como enviado se puede anotar la guía. */
+  shalom?: { number: string; code: string } | null | false;
 };
 
-export function StatusChanger({ orderId, status, whatsappHref, emailEnabled }: StatusChangerProps) {
+export function StatusChanger({ orderId, status, whatsappHref, emailEnabled, shalom = false }: StatusChangerProps) {
   const [state, action, pending] = useActionState(changeStatusAction.bind(null, orderId), idle);
   const [confirming, setConfirming] = useState<OrderStatus | null>(null);
   const next = allowedTransitions(status);
@@ -60,6 +62,7 @@ export function StatusChanger({ orderId, status, whatsappHref, emailEnabled }: S
         </span>
         <input name="customerMessage" maxLength={1000} placeholder="Ej. Tu clave de recojo en Shalom es 1234" className={inputClass} />
       </label>
+      {shalom !== false && next.includes("enviado") ? <TrackingFields tracking={shalom} hint="Si ya lo despachaste, anótala: va en el email de «enviado» y el cliente sigue su envío." /> : null}
       {emailEnabled ? <Toggle name="notifyCustomer" defaultChecked label="Avisar al cliente por email" hint="Le llega un email con el nuevo estado de su pedido." /> : null}
       <div className="flex flex-wrap gap-2">
         {next.map((to) => {
@@ -114,6 +117,37 @@ export function InternalNoteForm({ orderId, note }: { orderId: string; note: str
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className={buttonClass("secondary", "sm")}>
           {pending ? "Guardando…" : "Guardar nota"}
+        </button>
+        <FormAlert state={state} />
+      </div>
+    </form>
+  );
+}
+
+function TrackingFields({ tracking, hint }: { tracking: { number: string; code: string } | null; hint?: string }) {
+  return (
+    <fieldset className="min-w-0 space-y-2">
+      <legend className="mb-1.5 text-sm font-medium">
+        Guía de Shalom <span className="font-normal text-subtle">(opcional)</span>
+      </legend>
+      <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+        <input name="trackingNumber" defaultValue={tracking?.number ?? ""} inputMode="numeric" placeholder="N° de orden (8 dígitos)" aria-label="N° de orden de Shalom" className={inputClass} />
+        <input name="trackingCode" defaultValue={tracking?.code ?? ""} placeholder="Código" aria-label="Código de Shalom" maxLength={4} className={cn(inputClass, "uppercase")} />
+      </div>
+      {hint ? <p className="text-xs text-muted">{hint}</p> : null}
+    </fieldset>
+  );
+}
+
+/** Anotar o corregir la guía de Shalom en cualquier momento. */
+export function TrackingForm({ orderId, tracking }: { orderId: string; tracking: { number: string; code: string } | null }) {
+  const [state, action, pending] = useActionState(saveTrackingAction.bind(null, orderId), idle);
+  return (
+    <form action={action} className="space-y-3">
+      <TrackingFields tracking={tracking} />
+      <div className="flex items-center gap-3">
+        <button type="submit" disabled={pending} className={buttonClass("secondary", "sm")}>
+          {pending ? "Guardando…" : "Guardar guía"}
         </button>
         <FormAlert state={state} />
       </div>

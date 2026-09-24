@@ -6,13 +6,14 @@ import { Suspense } from "react";
 import { CopyLinkButton } from "@/components/checkout/copy-link-button";
 import { CulqiPay } from "@/components/checkout/culqi-pay";
 import { OrderProgress } from "@/components/store/order-progress";
+import { ShalomTrackingCard } from "@/components/store/shalom-tracking";
 import { culqiConfig } from "@/lib/culqi-config";
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { formatOrderNumber, STATUS_INFO } from "@/lib/order-status";
 import { getDb } from "@/server/db/client";
 import { getOrderForCustomer } from "@/server/services/orders";
-import { getSiteSettings } from "../../_data";
+import { getShalomTracking, getSiteSettings } from "../../_data";
 
 export const metadata: Metadata = { title: "Tu pedido", robots: { index: false } };
 
@@ -170,6 +171,12 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
         </div>
       </section>
 
+      {order.trackingNumber && order.trackingCode ? (
+        <Suspense fallback={<div className="mt-4 h-40 animate-pulse rounded-2xl bg-raised" aria-busy="true" />}>
+          <ShalomTracking number={order.trackingNumber} code={order.trackingCode} />
+        </Suspense>
+      ) : null}
+
       <section className="mt-4 rounded-2xl border border-line p-5">
         <h2 className="font-semibold">Tu compra</h2>
         <ul className="mt-3 space-y-3">
@@ -216,4 +223,9 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
       </div>
     </div>
   );
+}
+
+/** Estado de la guía de Shalom (aparte: si la API tarda, el resto del pedido ya se ve). */
+async function ShalomTracking({ number, code }: { number: string; code: string }) {
+  return <ShalomTrackingCard number={number} code={code} tracking={await getShalomTracking(number, code)} className="mt-4" />;
 }

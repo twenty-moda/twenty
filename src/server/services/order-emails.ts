@@ -58,6 +58,21 @@ function deliveryRows(order: OrderDetail, settings: SiteSettings): [string, stri
   return rows;
 }
 
+/** Guía del courier (Shalom), si el equipo ya la anotó. */
+function trackingBox(order: OrderDetail): EmailBlock[] {
+  if (!order.trackingNumber || !order.trackingCode) return [];
+  return [
+    {
+      type: "box",
+      title: "Seguimiento",
+      blocks: [
+        { type: "rows", rows: [["N° de orden", order.trackingNumber], ["Código", order.trackingCode]] },
+        { type: "text", text: "Mira en qué va tu envío en la página de tu pedido.", small: true, muted: true },
+      ],
+    },
+  ];
+}
+
 const summaryBox = (order: OrderDetail): EmailBlock => ({ type: "box", title: `Tu compra (${units(order)})`, blocks: [itemsBlock(order), totalsBlock(order)] });
 const deliveryBox = (order: OrderDetail, settings: SiteSettings): EmailBlock => ({ type: "box", title: "Entrega", blocks: [{ type: "rows", rows: deliveryRows(order, settings) }] });
 const progressBlock = (status: OrderStatus): EmailBlock => ({ type: "progress", steps: ORDER_PROGRESS.map((p) => p.label), current: progressIndex(status) });
@@ -167,6 +182,7 @@ export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, 
           },
           progressBlock(order.status),
           ...messageBox,
+          ...trackingBox(order),
           orderButton(),
           summaryBox(order),
           deliveryBox(order, settings),

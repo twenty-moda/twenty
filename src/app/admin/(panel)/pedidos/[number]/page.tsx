@@ -7,12 +7,16 @@ import { AdminPage, Card, formatDateTime, StatusBadge } from "@/components/admin
 import { siteUrl, whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL, formatOrderNumber, PAYMENT_METHOD_LABEL, STATUS_INFO } from "@/lib/order-status";
+import { isShalomOrder } from "@/lib/shalom";
+import { ShalomTrackingCard } from "@/components/store/shalom-tracking";
+import { getShalomTracking } from "@/app/(store)/_data";
+import { Suspense } from "react";
 import { getDb } from "@/server/db/client";
 import { emailConfigured } from "@/server/services/email";
 import { getOrderByNumber } from "@/server/services/orders";
 import { listOrderPayments } from "@/server/services/payments";
 import { requireAdmin } from "../../../_lib/auth";
-import { InternalNoteForm, StatusChanger } from "./status-changer";
+import { InternalNoteForm, StatusChanger, TrackingForm } from "./status-changer";
 
 export async function generateMetadata({ params }: PageProps<"/admin/pedidos/[number]">): Promise<Metadata> {
   const { number } = await params;
@@ -37,6 +41,8 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
   const customerLink = `${siteUrl()}/pedido/${order.id}`;
   const message = `Hola ${firstName}, te escribimos de TWENTY por tu pedido ${orderLabel}: ${STATUS_INFO[order.status].customerLabel.toLowerCase()}. Puedes verlo aquí: ${customerLink}`;
   const DeliveryIcon = order.shippingKind === "lima_delivery" ? Truck : order.shippingKind === "agency" ? Package : Store;
+  const shalom = isShalomOrder(order);
+  const tracking = order.trackingNumber && order.trackingCode ? { number: order.trackingNumber, code: order.trackingCode } : null;
 
   return (
     <AdminPage
@@ -56,6 +62,7 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
               status={order.status}
               whatsappHref={whatsappUrl(order.phone.startsWith("51") ? order.phone : `51${order.phone}`, message)}
               emailEnabled={emailConfigured()}
+              shalom={shalom && tracking}
             />
           </Card>
 
@@ -186,11 +193,23 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
                     {order.district}, {order.province} - {order.department}
                   </p>
                   <p className="text-warning">El cliente paga el envío al recoger.</p>
+                  {order.agencyId ? <p className="text-xs text-subtle">Agencia elegida de la lista de Shalom (id {order.agencyId}).</p> : null}
                 </>
+              ) : null}
+              {shalom ? (
+                <div className="mt-4 border-t border-line pt-4">
+                  <TrackingForm orderId={order.id} tracking={tracking} />
+                </div>
               ) : null}
               {order.shippingKind === "store_pickup" ? <p className="text-muted">Recoge en la tienda de Gamarra.</p> : null}
             </div>
           </Card>
+
+          {tracking ? (
+            <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-raised" aria-busy="true" />}>
+              <AdminShalomTracking {...tracking} />
+            </Suspense>
+          ) : null}
 
           {paymentRows.length ? (
             <Card title="Cobros en línea">
@@ -228,4 +247,8 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
       </div>
     </AdminPage>
   );
+}
+
+async function AdminShalomTracking({ number, code }: { number: string; code: string }) {
+  return <ShalomTrackingCard number={number} code={code} tracking={await getShalomTracking(number, code)} />;
 }

@@ -57,6 +57,13 @@
       "when": 1790287185274,
       "tag": "0007_firebase_passwords",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790287718846,
+      "tag": "0008_shalom_agencies_tracking",
+      "breakpoints": true
     }
   ]
 }
