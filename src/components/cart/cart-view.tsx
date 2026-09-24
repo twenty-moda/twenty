@@ -138,7 +138,7 @@ export function CartView() {
         </div>
       </aside>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-ink/95 px-4 pt-3 backdrop-blur-md pb-safe lg:hidden">
+      <div data-sticky-bar="lg" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-ink/95 px-4 pt-3 backdrop-blur-md pb-safe lg:hidden">
         <Link href="/checkout" className="flex h-13 items-center justify-between rounded-full bg-white px-6 text-sm font-bold tracking-wide text-black uppercase">
           <span>Continuar compra</span>
           <span>{formatPrice(pricing.totalCents)}</span>

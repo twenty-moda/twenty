@@ -245,7 +245,7 @@ export function ProductExperience({ product, whatsapp, breadcrumbs, details }: P
       </div>
 
       {/* Móvil: el botón de compra siempre a mano, pegado abajo. */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-ink/95 px-4 pt-3 backdrop-blur-md pb-safe md:hidden">
+      <div data-sticky-bar="md" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-ink/95 px-4 pt-3 backdrop-blur-md pb-safe md:hidden">
         <div className="flex items-center gap-3 min-[360px]:gap-4">
           <div className="shrink-0">
             <p className="text-lg leading-none font-bold">{formatPrice(displayPrice.priceCents)}</p>

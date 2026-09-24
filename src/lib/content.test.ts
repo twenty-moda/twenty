@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addBusinessDays, businessDaysLeft, easterSunday, isBusinessDay } from "./business-days";
-import { complaintSchema, contactSchema, formatComplaintNumber, trackingSchema } from "./public-forms";
+import { complaintSchema, contactSchema, formatComplaintNumber, trackingDetailSchema, trackingSchema } from "./public-forms";
 import { excerpt, parseInline, parseRichText, readingMinutes, richTextToPlain } from "./rich-text";
 
 describe("rich text", () => {
@@ -97,8 +97,10 @@ describe("formularios públicos", () => {
 
   it("contacto y rastreo", () => {
     expect(contactSchema.parse({ name: "Luis", email: "l@x.pe", phone: "", message: "Hola, ¿hay talla 30?" }).phone).toBeNull();
-    expect(trackingSchema.parse({ number: "#1024", contact: "987654321" }).number).toBe(1024);
-    expect(trackingSchema.safeParse({ number: "abc", contact: "987654321" }).success).toBe(false);
+    expect(trackingSchema.parse({ number: " #1024 " })).toEqual({ number: 1024 });
+    expect(trackingSchema.safeParse({ number: "abc" }).success).toBe(false);
+    expect(trackingDetailSchema.parse({ number: "#1024", contact: "987654321" })).toEqual({ number: 1024, contact: "987654321" });
+    expect(trackingDetailSchema.safeParse({ number: "1024", contact: "" }).success).toBe(false);
   });
 
   it("número de hoja", () => {

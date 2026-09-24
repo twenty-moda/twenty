@@ -8,7 +8,7 @@ import type { Db } from "../db/client";
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
-const { placeOrder, changeOrderStatus, getOrderByNumber } = await import("./orders");
+const { placeOrder, changeOrderStatus, getOrderByNumber, getOrderTracking } = await import("./orders");
 
 let db: Db;
 const ids = {
@@ -162,5 +162,19 @@ describe("changeOrderStatus", () => {
       [null, "pendiente", "Pedido creado en la web"],
       ["pendiente", "anulado", "Cliente desistió"],
     ]);
+  });
+});
+
+describe("getOrderTracking", () => {
+  it("con solo el número devuelve el estado y sus fechas, sin datos personales ni mensajes al cliente", async () => {
+    const placed = await placeOrder(db, checkout({}));
+    if (!placed.ok) throw new Error("no se creó el pedido");
+    await changeOrderStatus(db, { orderId: placed.orderId, to: "pagado", note: "Yape op. 123", customerMessage: "Clave de recojo 4321", userId: null });
+
+    const tracking = await getOrderTracking(db, placed.number);
+    expect(Object.keys(tracking ?? {}).sort()).toEqual(["createdAt", "history", "number", "shippingKind", "shippingMethodName", "status"]);
+    expect(tracking?.history.map((h) => Object.keys(h).sort())).toEqual([["at", "status"], ["at", "status"]]);
+    expect(tracking).toMatchObject({ number: placed.number, status: "pagado", history: [{ status: "pendiente" }, { status: "pagado" }] });
+    expect(await getOrderTracking(db, 999_999)).toBeNull();
   });
 });

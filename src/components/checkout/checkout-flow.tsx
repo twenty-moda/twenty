@@ -201,7 +201,8 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     step < 3 ? "Continuar" : pending ? "Enviando pedido…" : form.paymentMethod === "tarjeta" ? `Ir a pagar · ${formatPrice(totalCents)}` : `Confirmar pedido · ${formatPrice(totalCents)}`;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-5 pb-32 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-12 lg:px-6 lg:pb-16">
+    // data-hide-whatsapp: sin el botón flotante de WhatsApp mientras compra (no tapa el formulario ni distrae).
+    <div data-hide-whatsapp className="mx-auto max-w-6xl px-4 pt-5 pb-32 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-12 lg:px-6 lg:pb-16">
       <div>
         <div className="flex items-center gap-2">
           {step > 1 ? (
@@ -593,7 +594,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
         </div>
       </aside>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-ink/95 px-4 pt-3 backdrop-blur-md pb-safe lg:hidden">
+      <div data-sticky-bar="lg" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-ink/95 px-4 pt-3 backdrop-blur-md pb-safe lg:hidden">
         <button
           type="button"
           onClick={next}

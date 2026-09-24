@@ -73,10 +73,10 @@ export default async function ContactPage() {
             <section aria-labelledby="tienda" className="reveal overflow-hidden rounded-2xl border border-line">
               <iframe
                 title="Mapa de la tienda TWENTY en Gamarra"
-                src={`https://maps.google.com/maps?q=${store.latitude},${store.longitude}&z=16&output=embed`}
+                src={`https://maps.google.com/maps?q=${store.latitude},${store.longitude}&z=16&hl=es&output=embed`}
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
-                className="aspect-4/3 w-full border-0 grayscale invert-[0.9] lg:aspect-auto lg:h-80"
+                className="aspect-4/3 w-full border-0 bg-raised lg:aspect-auto lg:h-80"
               />
               <div className="space-y-3 p-5 md:p-8">
                 <h2 id="tienda" className="text-xl font-extrabold tracking-tight uppercase">

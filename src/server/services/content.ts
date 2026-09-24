@@ -6,6 +6,8 @@ import { settings, slides } from "../db/schema";
 const contactSchema = z.object({
   whatsapp: z.string().default(""),
   whatsappMessage: z.string().default(""),
+  /** Botón flotante de WhatsApp en la tienda (si hay número). */
+  whatsappFloat: z.boolean().default(true),
   phone: z.string().default(""),
   email: z.string().default(""),
   address: z.string().default(""),

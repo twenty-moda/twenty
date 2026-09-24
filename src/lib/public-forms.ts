@@ -33,13 +33,19 @@ export type ContactInput = z.infer<typeof contactSchema>;
 export const subscribeSchema = z.object({ email });
 
 /** Rastreo: número de pedido + el celular o el email con que se compró (el número solo no basta: es correlativo). */
-export const trackingSchema = z.object({
-  number: z
-    .string()
-    .trim()
-    .transform((v) => v.replace(/^#/, ""))
-    .pipe(z.string().regex(/^\d{1,9}$/, "Escribe el número de tu pedido, por ejemplo 1024"))
-    .transform(Number),
+const orderNumber = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/^#/, ""))
+  .pipe(z.string().regex(/^\d{1,9}$/, "Escribe el número de tu pedido, por ejemplo 1024"))
+  .transform(Number);
+
+/** Rastreo: solo el número de pedido. */
+export const trackingSchema = z.object({ number: orderNumber });
+
+/** Detalle completo del pedido: el número y el celular o email de la compra. */
+export const trackingDetailSchema = z.object({
+  number: orderNumber,
   contact: z.string().trim().min(5, "Escribe el celular o el email de tu compra").max(160),
 });
 

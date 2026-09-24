@@ -341,6 +341,40 @@ html[data-splash="out"] {
   }
 }
 
+/* Botón flotante de WhatsApp (components/store/whatsapp-float.tsx). En el teléfono sube por encima de la barra de
+   compra fija (ficha, carrito, checkout: alto = pt-3 + botón h-13 + borde + pb-safe) y no se muestra en el checkout,
+   que marca [data-hide-whatsapp]. Aparece después de la pantalla de carga. */
+.whatsapp-float {
+  --sticky-bar: calc(0.75rem + 3.25rem + 1px + max(env(safe-area-inset-bottom), 0.75rem));
+  bottom: max(env(safe-area-inset-bottom), 1rem);
+  transition: bottom 200ms ease;
+  animation: whatsapp-in 450ms cubic-bezier(0.2, 0.8, 0.2, 1) 700ms both;
+}
+@media (width >= 64rem) {
+  .whatsapp-float {
+    bottom: 1.5rem;
+  }
+}
+@media (width < 48rem) {
+  html:has([data-sticky-bar="md"]) .whatsapp-float {
+    bottom: calc(var(--sticky-bar) + 0.75rem);
+  }
+}
+@media (width < 64rem) {
+  html:has([data-sticky-bar="lg"]) .whatsapp-float {
+    bottom: calc(var(--sticky-bar) + 0.75rem);
+  }
+}
+html:has([data-hide-whatsapp]) .whatsapp-float {
+  display: none;
+}
+@keyframes whatsapp-in {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,

@@ -35,6 +35,7 @@ export async function saveSettingAction(key: SettingKey, _: ActionState, fd: For
         value = {
           whatsapp: form.text(fd, "whatsapp").replace(/[^\d+]/g, ""),
           whatsappMessage: form.text(fd, "whatsappMessage"),
+          whatsappFloat: form.bool(fd, "whatsappFloat"),
           phone: form.text(fd, "phone"),
           email: form.text(fd, "email"),
           address: form.text(fd, "address"),

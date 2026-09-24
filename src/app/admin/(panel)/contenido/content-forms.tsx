@@ -59,6 +59,12 @@ export function ContactForm({ contact }: { contact: SiteSettings["contact"] }) {
         <Text label="Teléfono visible" name="phone" defaultValue={contact.phone} />
       </div>
       <Text label="Mensaje inicial de WhatsApp" name="whatsappMessage" defaultValue={contact.whatsappMessage} />
+      <Toggle
+        name="whatsappFloat"
+        defaultChecked={contact.whatsappFloat}
+        label="Botón flotante de WhatsApp"
+        hint="El círculo verde abajo a la derecha, en toda la tienda menos el checkout. Desde una prenda, el mensaje lleva el enlace de esa prenda."
+      />
       <Text label="Email" name="email" type="email" defaultValue={contact.email} />
       <Text label="Dirección" name="address" defaultValue={contact.address} />
       <Text label="Horario" name="openingHours" defaultValue={contact.openingHours} />

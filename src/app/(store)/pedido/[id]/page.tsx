@@ -5,11 +5,11 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { CopyLinkButton } from "@/components/checkout/copy-link-button";
 import { CulqiPay } from "@/components/checkout/culqi-pay";
+import { OrderProgress } from "@/components/store/order-progress";
 import { culqiConfig } from "@/lib/culqi-config";
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
-import { formatOrderNumber, ORDER_PROGRESS as PROGRESS, progressIndex, STATUS_INFO } from "@/lib/order-status";
-import { cn } from "@/lib/cn";
+import { formatOrderNumber, STATUS_INFO } from "@/lib/order-status";
 import { getDb } from "@/server/db/client";
 import { getOrderForCustomer } from "@/server/services/orders";
 import { getSiteSettings } from "../../_data";
@@ -37,7 +37,6 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
   const number = formatOrderNumber(order.number);
   const status = STATUS_INFO[order.status];
   const cancelled = order.status === "anulado" || order.status === "rechazado";
-  const step = progressIndex(order.status);
   const firstName = order.customerName.split(" ")[0];
   const whatsapp = settings.contact.whatsapp;
   const culqi = culqiConfig();
@@ -57,29 +56,7 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
         </p>
       </div>
 
-      {!cancelled ? (
-        <>
-          <ol className="mt-8 grid grid-cols-5 gap-1" aria-label="Estado del pedido">
-            {PROGRESS.map((p, i) => (
-              <li key={p.status} className="text-center" aria-current={i === step ? "step" : undefined}>
-                <span className={cn("block h-1.5 rounded-full", i <= step ? "bg-white" : "bg-raised")} />
-                {/* En teléfonos muy angostos las 5 etiquetas no entran: se muestra solo el paso actual, debajo. */}
-                <span className={cn("mt-2 hidden text-[11px] leading-tight min-[360px]:block", i === step ? "font-semibold text-white" : "text-subtle")}>
-                  {p.label}
-                </span>
-              </li>
-            ))}
-          </ol>
-          {step >= 0 ? (
-            <p className="mt-2 text-center text-xs min-[360px]:hidden">
-              <span className="text-subtle">
-                Paso {step + 1} de {PROGRESS.length}:{" "}
-              </span>
-              <span className="font-semibold">{PROGRESS[step].label}</span>
-            </p>
-          ) : null}
-        </>
-      ) : null}
+      <OrderProgress status={order.status} className="mt-8" />
 
       {messages.length ? (
         <section className="mt-8 rounded-2xl border border-line p-5" aria-labelledby="mensajes">

@@ -212,7 +212,31 @@ export async function getOrderForCustomer(db: Db, id: string) {
 }
 
 /**
- * Rastreo público: el número de pedido es correlativo, así que además se pide el celular o el email de la compra.
+ * Rastreo público con solo el número de pedido. Como el número es correlativo (cualquiera puede probar otro), no
+ * devuelve datos personales ni lo que sirva para retirar el pedido (dirección, agencia, mensajes con claves): solo
+ * el estado, sus fechas y la forma de entrega. El detalle completo está en /pedido/[id] (enlace del email) o con
+ * findOrderIdForTracking.
+ */
+export async function getOrderTracking(db: Db, number: number) {
+  const [order] = await db
+    .select({ id: orders.id, number: orders.number, status: orders.status, createdAt: orders.createdAt, shippingKind: orders.shippingKind, shippingMethodName: orders.shippingMethodName })
+    .from(orders)
+    .where(eq(orders.number, number))
+    .limit(1);
+  if (!order) return null;
+  const history = await db
+    .select({ status: orderStatusHistory.toStatus, at: orderStatusHistory.createdAt })
+    .from(orderStatusHistory)
+    .where(eq(orderStatusHistory.orderId, order.id))
+    .orderBy(asc(orderStatusHistory.createdAt));
+  const { id: _id, ...rest } = order;
+  return { ...rest, history };
+}
+
+export type OrderTracking = NonNullable<Awaited<ReturnType<typeof getOrderTracking>>>;
+
+/**
+ * Detalle completo desde /tracking: además del número se pide el celular o el email de la compra.
  * Devuelve el id (no adivinable) para ir a /pedido/[id], o null si no coincide.
  */
 export async function findOrderIdForTracking(db: Db, number: number, contact: string): Promise<string | null> {

@@ -3,6 +3,7 @@ import { AnnouncementBar } from "@/components/store/announcement-bar";
 import { SiteFooter } from "@/components/store/site-footer";
 import { SiteHeader } from "@/components/store/site-header";
 import { SplashScreen } from "@/components/store/splash-screen";
+import { WhatsAppFloat } from "@/components/store/whatsapp-float";
 import { getCategoryLinks, getCurrentYear, getSiteSettings } from "./_data";
 
 export default async function StoreLayout({ children }: { children: React.ReactNode }) {
@@ -17,6 +18,9 @@ export default async function StoreLayout({ children }: { children: React.ReactN
       <SiteHeader categories={categories} contact={settings.contact} socials={settings.socials} store={settings.store} />
       <main id="contenido">{children}</main>
       <SiteFooter categories={categories} settings={settings} year={year} />
+      {settings.contact.whatsapp && settings.contact.whatsappFloat ? (
+        <WhatsAppFloat phone={settings.contact.whatsapp} message={settings.contact.whatsappMessage || "Hola TWENTY, tengo una consulta."} />
+      ) : null}
     </CartProvider>
   );
 }
