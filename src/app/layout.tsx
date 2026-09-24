@@ -28,7 +28,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es-PE" className={libreFranklin.variable}>
+    // suppressHydrationWarning: la pantalla de carga marca data-splash y --splash-progress en <html> antes de hidratar.
+    <html lang="es-PE" className={libreFranklin.variable} suppressHydrationWarning>
       <body className="min-h-dvh font-sans">{children}</body>
     </html>
   );
