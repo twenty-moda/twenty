@@ -9,7 +9,7 @@ function createSql() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("Falta DATABASE_URL (ver .env.example)");
   return postgres(url, {
-    max: Number(process.env.DATABASE_POOL_MAX ?? 5),
+    max: Number(process.env.DATABASE_POOL_MAX) || 5,
     // El pooler de Neon/Supabase (PgBouncer en modo transacción) no soporta prepared statements.
     prepare: false,
     idle_timeout: 20,

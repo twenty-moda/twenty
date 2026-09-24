@@ -14,11 +14,11 @@ export function catalogUrl(params: Record<string, string | undefined> = {}): str
   return `/catalogo${query ? `?${query}` : ""}`;
 }
 
-export const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+export const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
 
 /** URL absoluta de una imagen del bucket (para Open Graph y JSON-LD). */
 export function absoluteMediaUrl(path: string): string {
-  const base = process.env.NEXT_PUBLIC_MEDIA_URL ?? "/media";
+  const base = process.env.NEXT_PUBLIC_MEDIA_URL || "/media";
   const url = /^https?:\/\//.test(base) ? base : `${siteUrl()}${base}`;
   return `${url.replace(/\/$/, "")}/${path}`;
 }

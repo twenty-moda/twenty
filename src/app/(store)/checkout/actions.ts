@@ -6,7 +6,7 @@ import { checkoutSchema, fieldErrors, type CheckoutFieldErrors } from "@/lib/che
 import { culqiConfig } from "@/lib/culqi-config";
 import { getDb } from "@/server/db/client";
 import { getSiteSettings } from "@/server/services/content";
-import { placeOrder } from "@/server/services/orders";
+import { expireUnpaidCardOrders, placeOrder } from "@/server/services/orders";
 
 export type PlaceOrderState =
   | { ok: true; orderId: string; payNow: boolean }
@@ -19,6 +19,12 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   if (parsed.data.paymentMethod === "tarjeta" && !(culqiConfig() && (await getSiteSettings(db)).payments.culqiEnabled)) {
     return { ok: false, errors: { paymentMethod: "El pago con tarjeta no está disponible ahora. Elige otra forma de pago." } };
   }
+
+  // Antes de vender, se libera el stock de los pedidos con tarjeta que no se pagaron en 60 minutos
+  // (en el plan Hobby de Vercel el cron corre solo una vez al día; así el stock no queda retenido).
+  const expired = await expireUnpaidCardOrders(db);
+  for (const slug of expired.productSlugs) revalidateTag(cacheTags.product(slug), "max");
+  if (expired.productSlugs.length) revalidateTag(cacheTags.catalog, "max");
 
   const result = await placeOrder(db, parsed.data);
   if (!result.ok) {

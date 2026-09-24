@@ -1,7 +1,7 @@
 // Función pura (sin "use client"): la usan tanto <Image> en el navegador como getImageProps en el servidor.
 type LoaderArgs = { src: string; width: number; quality?: number };
 
-const MEDIA_URL = (process.env.NEXT_PUBLIC_MEDIA_URL ?? "/media").replace(/\/$/, "");
+const MEDIA_URL = (process.env.NEXT_PUBLIC_MEDIA_URL || "/media").replace(/\/$/, "");
 const TRANSFORM = process.env.NEXT_PUBLIC_MEDIA_TRANSFORM;
 
 /**

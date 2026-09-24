@@ -15,7 +15,7 @@ function legacyRedirects(): Redirect[] {
 
 /** Otras URLs de la web anterior. */
 function siteRedirects(): Redirect[] {
-  const media = (process.env.NEXT_PUBLIC_MEDIA_URL ?? "/media").replace(/\/$/, "");
+  const media = (process.env.NEXT_PUBLIC_MEDIA_URL || "/media").replace(/\/$/, "");
   return [
     { source: "/libro-reclamaciones", destination: "/libro-de-reclamaciones", permanent: true },
     // El llms.txt anterior enlazaba esta variante.
