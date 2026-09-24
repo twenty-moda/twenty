@@ -229,7 +229,10 @@ export const users = pgTable("users", {
   /** Siempre en minúsculas. */
   email: text().notNull().unique(),
   phone: text(),
-  /** bcrypt. Los hashes migrados de Laravel ($2y$) se validan tal cual. */
+  /**
+   * Hash bcrypt de la web anterior (Laravel, `$2y$`). No se usa para entrar (las contraseñas viven en Firebase):
+   * sirve para pasar esas cuentas a Firebase con `firebase auth:import --hash-algo=BCRYPT` en la migración final.
+   */
   passwordHash: text(),
   /** Cuenta de Google vinculada (uid de Firebase Authentication). Los clientes entran solo con Google. */
   firebaseUid: text().unique(),
@@ -257,17 +260,6 @@ export const sessions = pgTable(
     createdAt: timestamps.createdAt,
   },
   (t) => [index("sessions_user_idx").on(t.userId)],
-);
-
-/** Intentos de login fallidos, para frenar ataques de fuerza bruta. */
-export const loginAttempts = pgTable(
-  "login_attempts",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    key: text().notNull(),
-    createdAt: timestamps.createdAt,
-  },
-  (t) => [index("login_attempts_key_idx").on(t.key, t.createdAt)],
 );
 
 // ─── Envíos ──────────────────────────────────────────────────────────────────

@@ -32,7 +32,13 @@ describe("verifyFirebaseIdToken", () => {
       email: "ana@example.com",
       name: "Ana Pérez",
       picture: "https://lh3.googleusercontent.com/a/x",
+      provider: "google.com",
     });
+  });
+
+  it("acepta correo y contraseña con el email verificado", async () => {
+    const identity = await verifyFirebaseIdToken(await token({ firebase: { sign_in_provider: "password" }, picture: undefined }), PROJECT, keys, now);
+    expect(identity).toMatchObject({ uid: "uid-123", provider: "password", picture: null });
   });
 
   it.each([
@@ -41,7 +47,8 @@ describe("verifyFirebaseIdToken", () => {
     ["vencido", () => token({}, { iat: seconds - 7200, exp: seconds - 3600 })],
     ["email sin verificar", () => token({ email_verified: false })],
     ["sin email", () => token({ email: undefined })],
-    ["otro método de ingreso", () => token({ firebase: { sign_in_provider: "password" } })],
+    ["otro método de ingreso", () => token({ firebase: { sign_in_provider: "anonymous" } })],
+    ["con contraseña sin verificar el correo", () => token({ firebase: { sign_in_provider: "password" }, email_verified: false })],
     ["ingreso viejo", () => token({ auth_time: seconds - 3600 })],
   ])("rechaza un token %s", async (_, make) => {
     await expect(verifyFirebaseIdToken(await make(), PROJECT, keys, now)).rejects.toBeInstanceOf(InvalidIdTokenError);

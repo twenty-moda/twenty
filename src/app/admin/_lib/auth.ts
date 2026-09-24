@@ -1,6 +1,6 @@
 /**
- * Sesión del admin sobre las cookies de Next. La lógica (tokens, bcrypt, límites) vive en
- * server/services/auth: aquí solo se lee y escribe la cookie.
+ * Sesión del admin sobre las cookies de Next. La lógica (tokens) vive en server/services/auth y el ingreso
+ * (Google o correo y contraseña con Firebase) en login/actions.ts: aquí solo se lee y escribe la cookie.
  * Cada página y cada acción del admin llama a requireAdmin(): el layout no alcanza porque no se
  * vuelve a ejecutar en cada navegación.
  */

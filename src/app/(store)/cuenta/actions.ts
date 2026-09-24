@@ -14,31 +14,18 @@ import {
   saveAccountProfile,
   saveAddress,
   setDefaultAddress,
-  signInWithGoogle,
+  signInWithFirebase,
   type AccountProfile,
   type SavedAddress,
 } from "@/server/services/accounts";
-import { InvalidIdTokenError, verifyFirebaseIdToken } from "@/server/services/firebase-auth";
 import { endAccountSession, getAccount, startAccountSession } from "../_lib/account";
-import { allowRequest } from "../_lib/request";
+import { verifySignInToken, type SignInResult } from "../_lib/sign-in";
 
-export type SignInResult = { ok: true; next: string } | { ok: false; message: string };
-
-/** El navegador entró con Google (Firebase) y manda su ID token: se verifica y se abre la sesión de la tienda. */
-export async function signInWithGoogleAction(idToken: unknown, returnTo: unknown): Promise<SignInResult> {
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  if (!projectId) return { ok: false, message: "El ingreso con Google aún no está disponible." };
-  if (typeof idToken !== "string" || idToken.length > 5000) return { ok: false, message: "No pudimos leer tu cuenta de Google. Inténtalo de nuevo." };
-  if (!(await allowRequest("login"))) return { ok: false, message: "Hiciste muchos intentos seguidos. Espera unos minutos." };
-
-  let identity;
-  try {
-    identity = await verifyFirebaseIdToken(idToken, projectId);
-  } catch (error) {
-    if (!(error instanceof InvalidIdTokenError)) console.error("[cuenta] No se pudo verificar el token de Google", error instanceof Error ? error.message : error);
-    return { ok: false, message: "No pudimos confirmar tu cuenta de Google. Inténtalo de nuevo." };
-  }
-  const result = await signInWithGoogle(getDb(), identity);
+/** Tienda: entra a la cuenta (y la crea si es la primera vez). */
+export async function signInWithFirebaseAction(idToken: unknown, returnTo: unknown): Promise<SignInResult> {
+  const verified = await verifySignInToken(idToken);
+  if (!verified.ok) return verified;
+  const result = await signInWithFirebase(getDb(), verified.identity);
   if (!result.ok) return { ok: false, message: "Esta cuenta está desactivada. Escríbenos por WhatsApp y te ayudamos." };
   await startAccountSession(result.userId);
   return { ok: true, next: safeReturnPath(returnTo) };

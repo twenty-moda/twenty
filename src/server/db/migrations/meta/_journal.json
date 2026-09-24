@@ -50,6 +50,13 @@
       "when": 1790285512040,
       "tag": "0006_customer_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790287185274,
+      "tag": "0007_firebase_passwords",
+      "breakpoints": true
     }
   ]
 }

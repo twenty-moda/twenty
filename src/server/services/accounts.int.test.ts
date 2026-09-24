@@ -6,16 +6,18 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
 const accounts = await import("./accounts");
-const { createSession, upsertUser, validateSession } = await import("./auth");
+const { createSession, validateSession } = await import("./auth");
 
 let db: Db;
 const LIMA = "140130";
 const AREQUIPA = "040101";
-const google = (over: Partial<{ uid: string; email: string; name: string | null; picture: string | null }> = {}) => ({
+type Identity = Parameters<typeof accounts.signInWithFirebase>[1];
+const google = (over: Partial<Identity> = {}): Identity => ({
   uid: "uid-ana",
   email: "ana@example.com",
   name: "Ana Pérez",
   picture: "https://lh3.googleusercontent.com/a/ana",
+  provider: "google.com",
   ...over,
 });
 const delivery = (over: Partial<Parameters<typeof accounts.saveAddress>[2]> = {}) => ({
@@ -47,12 +49,12 @@ afterAll(async () => {
 });
 
 async function signIn(identity = google()) {
-  const result = await accounts.signInWithGoogle(db, identity);
+  const result = await accounts.signInWithFirebase(db, identity);
   if (!result.ok) throw new Error("no entró");
   return result.userId;
 }
 
-describe("signInWithGoogle", () => {
+describe("signInWithFirebase", () => {
   it("crea la cuenta de cliente la primera vez y la reutiliza después (por el uid)", async () => {
     const first = await signIn();
     const again = await signIn(google({ picture: "https://lh3.googleusercontent.com/a/nueva" }));
@@ -62,16 +64,32 @@ describe("signInWithGoogle", () => {
   });
 
   it("vincula una cuenta que ya existía con ese email sin cambiarle el rol", async () => {
-    const admin = await upsertUser(db, { name: "Equipo", email: "ana@example.com", password: "clave-segura-123", role: "admin" });
+    const admin = await accounts.grantAdmin(db, { name: "Equipo", email: "Ana@Example.com" });
     expect(await signIn()).toBe(admin.id);
     const [user] = await db.select().from(schema.users).where(eq(schema.users.id, admin.id));
     expect(user).toMatchObject({ role: "admin", firebaseUid: "uid-ana" });
   });
 
+  it("con correo y contraseña o con Google es la misma cuenta", async () => {
+    const withPassword = await signIn(google({ provider: "password", name: null, picture: null }));
+    expect(await signIn(google({ provider: "google.com" }))).toBe(withPassword);
+    // Aunque Firebase diera otro uid para ese email, se une por el email verificado.
+    expect(await signIn(google({ uid: "uid-otro-proveedor" }))).toBe(withPassword);
+    expect(await db.select().from(schema.users)).toHaveLength(1);
+  });
+
+  it("el panel solo deja entrar a cuentas que ya existen", async () => {
+    expect(await accounts.signInWithFirebase(db, google(), { createIfMissing: false })).toEqual({ ok: false, reason: "not_found" });
+    await signIn();
+    expect(await accounts.signInWithFirebase(db, google(), { createIfMissing: false })).toMatchObject({ ok: true, role: "customer" });
+    await accounts.grantAdmin(db, { name: "Ana", email: "ana@example.com" });
+    expect(await accounts.signInWithFirebase(db, google(), { createIfMissing: false })).toMatchObject({ ok: true, role: "admin" });
+  });
+
   it("no deja entrar a una cuenta desactivada", async () => {
     const id = await signIn();
     await db.update(schema.users).set({ isActive: false }).where(eq(schema.users.id, id));
-    expect(await accounts.signInWithGoogle(db, google())).toEqual({ ok: false });
+    expect(await accounts.signInWithFirebase(db, google())).toEqual({ ok: false, reason: "inactive" });
   });
 
   it("enlaza el registro de cliente de compras anteriores con ese email", async () => {
@@ -82,7 +100,7 @@ describe("signInWithGoogle", () => {
   });
 
   it("una sesión de la cuenta no sirve para el panel (aunque el email sea de un admin)", async () => {
-    const admin = await upsertUser(db, { name: "Equipo", email: "ana@example.com", password: "clave-segura-123", role: "admin" });
+    const admin = await accounts.grantAdmin(db, { name: "Equipo", email: "ana@example.com" });
     const { token } = await createSession(db, admin.id, null, "cuenta");
     expect(await validateSession(db, token, "admin")).toBeNull();
     expect(await validateSession(db, token, "cuenta")).toMatchObject({ id: admin.id });

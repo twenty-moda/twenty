@@ -1,13 +1,14 @@
 /**
- * Cuentas de cliente: se entra con Google (Firebase solo confirma quién es; ver firebase-auth.ts) y la cuenta
- * reúne los pedidos hechos con ese email, los datos para el checkout (en `customers`, el mismo registro que
- * llena cada compra) y las direcciones guardadas.
+ * Cuentas: se entra con Google o con correo y contraseña (Firebase confirma quién es; ver firebase-auth.ts). Es una
+ * sola cuenta por email: la misma fila de `users` para la tienda y, si tiene rol admin, para el panel. La cuenta
+ * reúne los pedidos hechos con ese email, los datos para el checkout (en `customers`, el mismo registro que llena
+ * cada compra) y las direcciones guardadas.
  */
 import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import type { AddressInput, ProfileInput } from "@/lib/account-forms";
 import type { Db } from "../db/client";
 import { addresses, customers, districts, orderItems, orders, users } from "../db/schema";
-import type { GoogleIdentity } from "./firebase-auth";
+import type { FirebaseIdentity } from "./firebase-auth";
 import { ORDERS_ID } from "./orders";
 
 export const MAX_ADDRESSES = 10;
@@ -15,15 +16,21 @@ export const MAX_ADDRESSES = 10;
 export type AccountUser = { id: string; name: string; email: string };
 
 /**
- * Entra (o crea la cuenta) con la identidad de Google. Busca por el uid de Firebase y, si no, por el email
- * (verificado por Google), así una cuenta que ya existía con ese email (p. ej. migrada) queda vinculada.
+ * Entra (o crea la cuenta de cliente) con la identidad de Firebase. Busca por el uid y, si no, por el email
+ * (verificado), así una cuenta que ya existía con ese email (creada en el panel, migrada o con el otro método de
+ * ingreso) queda vinculada y es la misma. Con `createIfMissing: false` (panel) solo entra una cuenta que ya exista.
  */
-export async function signInWithGoogle(db: Db, identity: GoogleIdentity, now = new Date()): Promise<{ ok: true; userId: string } | { ok: false }> {
+export async function signInWithFirebase(
+  db: Db,
+  identity: FirebaseIdentity,
+  { createIfMissing = true, now = new Date() }: { createIfMissing?: boolean; now?: Date } = {},
+): Promise<{ ok: true; userId: string; role: "admin" | "customer" } | { ok: false; reason: "inactive" | "not_found" }> {
   return db.transaction(async (tx) => {
     const [byUid] = await tx.select().from(users).where(eq(users.firebaseUid, identity.uid)).limit(1);
     const [byEmail] = byUid ? [] : await tx.select().from(users).where(eq(users.email, identity.email)).limit(1);
     const existing = byUid ?? byEmail;
-    if (existing && !existing.isActive) return { ok: false as const };
+    if (existing && !existing.isActive) return { ok: false as const, reason: "inactive" as const };
+    if (!existing && !createIfMissing) return { ok: false as const, reason: "not_found" as const };
 
     let userId: string;
     if (existing) {
@@ -38,6 +45,8 @@ export async function signInWithGoogle(db: Db, identity: GoogleIdentity, now = n
           lastLoginAt: now,
           updatedAt: now,
           ...(emailFree ? { email: identity.email } : {}),
+          // Nombre de Google si la cuenta aún no tenía uno propio.
+          ...(!existing.name.trim() && identity.name ? { name: identity.name } : {}),
         })
         .where(eq(users.id, existing.id));
       userId = existing.id;
@@ -57,7 +66,7 @@ export async function signInWithGoogle(db: Db, identity: GoogleIdentity, now = n
     }
     // El registro de cliente con ese email (el que llenan las compras) queda enlazado a la cuenta.
     await tx.update(customers).set({ userId }).where(and(eq(customers.email, identity.email), isNull(customers.userId)));
-    return { ok: true as const, userId };
+    return { ok: true as const, userId, role: existing?.role ?? ("customer" as const) };
   });
 }
 
@@ -254,4 +263,18 @@ export async function rememberCheckoutAddress(
 export async function linkCustomerToAccount(db: Db, user: AccountUser, orderEmail: string) {
   if (orderEmail.toLowerCase() !== user.email) return;
   await db.update(customers).set({ userId: user.id }).where(and(eq(customers.email, user.email), isNull(customers.userId)));
+}
+
+/**
+ * Da acceso al panel a un email (crea la cuenta si no existe, sin contraseña). La persona entra en /admin/login con
+ * Google o con correo y contraseña (si no tiene, la crea en /ingresar → Crear cuenta con ese email).
+ */
+export async function grantAdmin(db: Db, input: { email: string; name: string }) {
+  const email = input.email.trim().toLowerCase();
+  const [user] = await db
+    .insert(users)
+    .values({ email, name: input.name.trim(), role: "admin" })
+    .onConflictDoUpdate({ target: users.email, set: { role: "admin", isActive: true, updatedAt: new Date() } })
+    .returning({ id: users.id, email: users.email });
+  return user;
 }
