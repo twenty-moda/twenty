@@ -64,7 +64,7 @@ async function main() {
       ubigeo: method === "delivery-lima" ? "140115" : method === "shalom" ? "040101" : undefined,
       address: method === "delivery-lima" ? `Calle de prueba ${100 + i}` : undefined,
       agencyName: method === "shalom" ? "Agencia Arequipa Centro" : undefined,
-      paymentMethod: i % 2 ? "whatsapp" : "yape_plin",
+      paymentMethod: "yape_plin",
       items: [
         { variantId: pick(0), quantity: 1 },
         ...(i % 3 === 0 ? [{ variantId: pick(1), quantity: 1 }] : []),

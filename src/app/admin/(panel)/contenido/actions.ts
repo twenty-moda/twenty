@@ -3,6 +3,7 @@
 import { refresh, updateTag } from "next/cache";
 import { ZodError } from "zod";
 import { cacheTags } from "@/lib/cache-tags";
+import { culqiConfig } from "@/lib/culqi-config";
 import { getDb } from "@/server/db/client";
 import { deleteSlide, getSiteSettings, saveSetting, saveSlide, slideInputSchema, type SettingKey } from "@/server/services/content";
 import { InvalidImageError, saveImage } from "@/server/storage";
@@ -57,13 +58,18 @@ export async function saveSettingAction(key: SettingKey, _: ActionState, fd: For
       case "payments": {
         const current = (await getSiteSettings(db)).payments;
         const qr = await upload(fd, "qr", "pagos", "qr");
-        value = {
+        const payments = {
           culqiEnabled: form.bool(fd, "culqiEnabled"),
           walletEnabled: form.bool(fd, "walletEnabled"),
           walletName: form.text(fd, "walletName"),
           walletDescription: form.text(fd, "walletDescription"),
           walletQr: qr ?? current.walletQr,
         };
+        // Sin ninguna forma de pago activa nadie podría comprar (ya no está "coordinar por WhatsApp" de respaldo).
+        if (!(payments.culqiEnabled && culqiConfig()) && !payments.walletEnabled) {
+          return failure("Deja activa al menos una forma de pago: tarjeta con Culqi o Yape/Plin con QR.");
+        }
+        value = payments;
         break;
       }
       case "company":

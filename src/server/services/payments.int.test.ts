@@ -38,7 +38,7 @@ async function newOrder() {
     documentNumber: "00000000",
     invoiceType: "boleta",
     shippingMethod: "recojo-en-tienda",
-    paymentMethod: "whatsapp",
+    paymentMethod: "yape_plin",
     items: [{ variantId, quantity: 1 }],
   } as never);
   if (!result.ok) throw new Error("no se creó el pedido");

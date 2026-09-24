@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checkoutSchema } from "./checkout-schema";
 import { allowedTransitions, canTransition, ORDER_STATUSES, STATUS_INFO } from "./order-status";
 import { priceLines } from "./pricing";
 import { parseDistrictName, shippingOptions, type ShippingMethodInfo } from "./shipping";
@@ -106,5 +107,24 @@ describe("envíos", () => {
   it("separa distrito, provincia y departamento", () => {
     expect(parseDistrictName("Santiago De Surco, Lima - Lima")).toEqual({ name: "Santiago De Surco", province: "Lima", department: "Lima" });
     expect(parseDistrictName("sin formato")).toBeNull();
+  });
+});
+
+describe("checkoutSchema: formas de pago", () => {
+  const input = (paymentMethod: string) => ({
+    name: "Ana Pérez",
+    phone: "987 654 321",
+    email: "ana@example.com",
+    documentType: "dni",
+    documentNumber: "12345678",
+    shippingMethod: "recojo-en-tienda",
+    paymentMethod,
+    items: [{ variantId: "7b0c1f0e-0000-4000-8000-000000000001", quantity: 1 }],
+  });
+
+  it("acepta tarjeta y Yape/Plin; ya no acepta coordinar por WhatsApp", () => {
+    expect(checkoutSchema.safeParse(input("tarjeta")).success).toBe(true);
+    expect(checkoutSchema.safeParse(input("yape_plin")).success).toBe(true);
+    expect(checkoutSchema.safeParse(input("whatsapp")).success).toBe(false);
   });
 });

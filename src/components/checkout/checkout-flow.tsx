@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, ChevronDown, CreditCard, MapPin, MessageCircle, Package, Smartphone, Store, Truck } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, CreditCard, MapPin, Package, Smartphone, Store, Truck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -43,7 +43,7 @@ type FormState = {
   invoiceType: "boleta" | "factura";
   ruc: string;
   businessName: string;
-  paymentMethod: "tarjeta" | "yape_plin" | "whatsapp" | "";
+  paymentMethod: "tarjeta" | "yape_plin" | "";
   note: string;
 };
 
@@ -506,13 +506,9 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                       subtitle="Al confirmar te mostramos el QR; nos envías la captura por WhatsApp."
                     />
                   ) : null}
-                  <PaymentOption
-                    selected={form.paymentMethod === "whatsapp"}
-                    onSelect={() => set("paymentMethod", "whatsapp")}
-                    icon={<MessageCircle className="size-5" aria-hidden />}
-                    title="Coordinar por WhatsApp"
-                    subtitle="Te escribimos para acordar el pago (transferencia o tarjeta)."
-                  />
+                  {!payments.cardEnabled && !payments.walletEnabled ? (
+                    <p className="rounded-2xl bg-raised p-4 text-sm">Por ahora no podemos recibir pagos en la web. Escríbenos por WhatsApp y te ayudamos a completar tu compra.</p>
+                  ) : null}
                 </div>
                 {errors.paymentMethod ? <p className="text-sm text-danger">{errors.paymentMethod}</p> : null}
               </section>

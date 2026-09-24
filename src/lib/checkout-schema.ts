@@ -37,7 +37,8 @@ export const checkoutSchema = z
     address: optionalText(200),
     addressReference: optionalText(200),
     agencyName: optionalText(160),
-    paymentMethod: z.enum(["tarjeta", "yape_plin", "whatsapp"], { error: "Elige cómo vas a pagar" }),
+    // "whatsapp" (coordinar el pago) se quitó del checkout; la BD lo conserva por los pedidos anteriores.
+    paymentMethod: z.enum(["tarjeta", "yape_plin"], { error: "Elige cómo vas a pagar" }),
     note: optionalText(500),
     items: z.array(checkoutItemSchema).min(1, "Tu carrito está vacío").max(30),
   })

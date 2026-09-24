@@ -17,8 +17,12 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   const parsed = checkoutSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) };
   const db = getDb();
-  if (parsed.data.paymentMethod === "tarjeta" && !(culqiConfig() && (await getSiteSettings(db)).payments.culqiEnabled)) {
+  const { payments } = await getSiteSettings(db);
+  if (parsed.data.paymentMethod === "tarjeta" && !(culqiConfig() && payments.culqiEnabled)) {
     return { ok: false, errors: { paymentMethod: "El pago con tarjeta no está disponible ahora. Elige otra forma de pago." } };
+  }
+  if (parsed.data.paymentMethod === "yape_plin" && !payments.walletEnabled) {
+    return { ok: false, errors: { paymentMethod: "El pago con Yape o Plin por QR no está disponible ahora. Elige otra forma de pago." } };
   }
 
   // Antes de vender, se libera el stock de los pedidos con tarjeta que no se pagaron en 60 minutos

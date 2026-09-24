@@ -108,7 +108,7 @@ describe("rastreo de pedidos", () => {
       documentNumber: "11111111",
       invoiceType: "boleta",
       shippingMethod: "recojo-en-tienda",
-      paymentMethod: "whatsapp",
+      paymentMethod: "yape_plin",
       items: [{ variantId, quantity: 1 }],
     } as never);
     if (!order.ok) throw new Error("no se creó el pedido");
