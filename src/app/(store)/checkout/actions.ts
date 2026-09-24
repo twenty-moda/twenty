@@ -1,13 +1,16 @@
 "use server";
 
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
 import { cacheTags } from "@/lib/cache-tags";
 import { checkoutSchema, fieldErrors, type CheckoutFieldErrors } from "@/lib/checkout-schema";
 import { culqiConfig } from "@/lib/culqi-config";
 import { getDb } from "@/server/db/client";
 import { notifyAfterResponse } from "@/server/order-events";
+import { linkCustomerToAccount, rememberCheckoutAddress } from "@/server/services/accounts";
 import { getSiteSettings } from "@/server/services/content";
 import { expireUnpaidCardOrders, placeOrder } from "@/server/services/orders";
+import { getAccount } from "../_lib/account";
 
 export type PlaceOrderState =
   | { ok: true; orderId: string; payNow: boolean }
@@ -55,5 +58,22 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   for (const slug of result.productSlugs) revalidateTag(cacheTags.product(slug), "max");
   if (result.soldOut) revalidateTag(cacheTags.catalog, "max");
   notifyAfterResponse({ type: "placed", orderId: result.orderId, paymentMethod: parsed.data.paymentMethod });
+
+  // Con la cuenta abierta: el cliente queda enlazado y, si lo pidió, se guarda la dirección para la próxima.
+  const account = await getAccount();
+  if (account) {
+    const input = parsed.data;
+    const kind = result.shippingKind === "lima_delivery" ? "delivery" : result.shippingKind === "agency" ? "agency" : null;
+    after(async () => {
+      try {
+        await linkCustomerToAccount(db, account, input.email);
+        if (input.saveAddress && kind && input.ubigeo) {
+          await rememberCheckoutAddress(db, account.id, { kind, ubigeo: input.ubigeo, address: input.address, reference: input.addressReference, agencyName: input.agencyName });
+        }
+      } catch (error) {
+        console.error("[cuenta] No se pudo guardar la dirección", error instanceof Error ? error.message : error);
+      }
+    });
+  }
   return { ok: true, orderId: result.orderId, payNow: parsed.data.paymentMethod === "tarjeta" };
 }

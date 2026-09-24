@@ -18,7 +18,7 @@ export const getAdmin = cache(async (): Promise<SessionUser | null> => {
   // Todo lo que sigue (vencimiento de la sesión, datos del panel) depende de la hora actual: es por request.
   await connection();
   if (!token) return null;
-  const user = await validateSession(getDb(), token);
+  const user = await validateSession(getDb(), token, "admin");
   return user?.role === "admin" ? user : null;
 });
 
@@ -30,7 +30,7 @@ export async function requireAdmin(): Promise<SessionUser> {
 
 export async function startSession(userId: string) {
   const userAgent = (await headers()).get("user-agent");
-  const { token, expiresAt } = await createSession(getDb(), userId, userAgent);
+  const { token, expiresAt } = await createSession(getDb(), userId, userAgent, "admin");
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

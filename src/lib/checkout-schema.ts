@@ -6,6 +6,15 @@ export function normalizePhone(value: string): string {
   return digits.length === 11 && digits.startsWith("51") ? digits.slice(2) : digits;
 }
 
+export type DocumentType = "dni" | "ce" | "pasaporte";
+
+/** DNI: 8 dígitos; carné de extranjería y pasaporte: letras y números. */
+export function documentError(type: DocumentType, number: string): string | null {
+  const valid = type === "dni" ? /^\d{8}$/.test(number) : type === "ce" ? /^[A-Z0-9]{8,12}$/.test(number) : /^[A-Z0-9]{6,12}$/.test(number);
+  if (valid) return null;
+  return type === "dni" ? "El DNI tiene 8 dígitos" : "Revisa el número de documento";
+}
+
 const optionalText = (max: number) =>
   z
     .string()
@@ -40,19 +49,13 @@ export const checkoutSchema = z
     // "whatsapp" (coordinar el pago) se quitó del checkout; la BD lo conserva por los pedidos anteriores.
     paymentMethod: z.enum(["tarjeta", "yape_plin"], { error: "Elige cómo vas a pagar" }),
     note: optionalText(500),
+    /** Con la cuenta abierta: guardar la dirección de entrega para la próxima compra. */
+    saveAddress: z.boolean().optional(),
     items: z.array(checkoutItemSchema).min(1, "Tu carrito está vacío").max(30),
   })
   .superRefine((data, ctx) => {
-    const doc = data.documentNumber;
-    const validDoc =
-      data.documentType === "dni" ? /^\d{8}$/.test(doc) : data.documentType === "ce" ? /^[A-Z0-9]{8,12}$/.test(doc) : /^[A-Z0-9]{6,12}$/.test(doc);
-    if (!validDoc) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["documentNumber"],
-        message: data.documentType === "dni" ? "El DNI tiene 8 dígitos" : "Revisa el número de documento",
-      });
-    }
+    const docError = documentError(data.documentType, data.documentNumber);
+    if (docError) ctx.addIssue({ code: "custom", path: ["documentNumber"], message: docError });
     if (data.invoiceType === "factura") {
       if (!data.ruc || !/^(10|15|17|20)\d{9}$/.test(data.ruc)) ctx.addIssue({ code: "custom", path: ["ruc"], message: "El RUC tiene 11 dígitos" });
       if (!data.businessName) ctx.addIssue({ code: "custom", path: ["businessName"], message: "Escribe la razón social" });

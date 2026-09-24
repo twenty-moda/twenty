@@ -1,11 +1,13 @@
 "use client";
 
-import { ArrowLeft, Check, ChevronDown, CreditCard, MapPin, Package, Smartphone, Store, Truck } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, CreditCard, MapPin, Package, Smartphone, Store, Truck, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { placeOrderAction } from "@/app/(store)/checkout/actions";
+import { getCheckoutAccountAction, type CheckoutAccount } from "@/app/(store)/cuenta/actions";
+import { addressSummary } from "@/lib/account-forms";
 import { cartTotals, variantLabel, type CartLine } from "@/lib/cart";
 import { checkoutSchema, fieldErrors, normalizePhone, type CheckoutFieldErrors, type CheckoutInput } from "@/lib/checkout-schema";
 import { cn } from "@/lib/cn";
@@ -82,6 +84,34 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
   const [form, setForm] = useState<FormState>(INITIAL);
   const [errors, setErrors] = useState<CheckoutFieldErrors>({});
   const [pending, startTransition] = useTransition();
+  // Cuenta abierta (el checkout es estático: se pregunta al cargar). Llena los datos y ofrece las direcciones guardadas.
+  const [account, setAccount] = useState<CheckoutAccount>(null);
+  const [accountChecked, setAccountChecked] = useState(false);
+  const [saveAddress, setSaveAddress] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    getCheckoutAccountAction()
+      .then((data) => {
+        if (!active) return;
+        setAccountChecked(true);
+        if (!data) return;
+        setAccount(data);
+        const { profile } = data;
+        setForm((f) => ({
+          ...f,
+          name: f.name || profile.name,
+          phone: f.phone || profile.phone,
+          email: f.email || profile.email,
+          documentType: f.documentNumber ? f.documentType : profile.documentType,
+          documentNumber: f.documentNumber || profile.documentNumber,
+        }));
+      })
+      .catch(() => active && setAccountChecked(true));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const method = methods.find((m) => m.slug === methodSlug) ?? null;
   const limaDistrict = limaDistricts.find((d) => d.ubigeo === limaUbigeo) ?? null;
@@ -100,6 +130,32 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
   const totalCents = pricing.totalCents + shippingCents;
   const { units } = cartTotals(lines);
 
+  type Saved = NonNullable<CheckoutAccount>["addresses"][number];
+  const savedFor = (kind: ShippingKind | undefined): Saved[] =>
+    !account
+      ? []
+      : kind === "lima_delivery"
+        ? account.addresses.filter((a) => a.kind === "delivery" && limaDistricts.some((d) => d.ubigeo === a.ubigeo))
+        : kind === "agency"
+          ? account.addresses.filter((a) => a.kind === "agency")
+          : [];
+  const same = (a: string | null, b: string) => (a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
+  const savedForMethod = savedFor(method?.kind);
+  const selectedSaved = savedForMethod.find((a) =>
+    a.kind === "delivery" ? a.ubigeo === limaUbigeo && same(a.address, form.address) : a.ubigeo === agencyDistrict?.ubigeo && same(a.agencyName, form.agencyName),
+  );
+  const applyAddress = (a: Saved) => {
+    if (a.kind === "delivery") {
+      setLimaUbigeo(a.ubigeo);
+      setForm((f) => ({ ...f, address: a.address ?? "", addressReference: a.reference ?? "" }));
+    } else {
+      setAgencyDistrict({ ubigeo: a.ubigeo, label: `${a.district}, ${a.province} - ${a.department}`, department: a.department });
+      setForm((f) => ({ ...f, agencyName: a.agencyName ?? "" }));
+    }
+    setErrors((e) => ({ ...e, ubigeo: undefined, address: undefined, agencyName: undefined }));
+  };
+  const canSaveAddress = !!account && (method?.kind === "lima_delivery" || method?.kind === "agency") && !selectedSaved && account.addresses.length < 10;
+
   const payload = (): Partial<CheckoutInput> & Record<string, unknown> => ({
     name: form.name,
     phone: form.phone,
@@ -116,6 +172,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     agencyName: method?.kind === "agency" ? form.agencyName : undefined,
     paymentMethod: form.paymentMethod || undefined,
     note: form.note,
+    saveAddress: canSaveAddress && saveAddress,
     items: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
   });
 
@@ -150,6 +207,12 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     if (firstStepWithError) {
       if (firstStepWithError !== step) goTo(firstStepWithError);
       return;
+    }
+    if (step === 1 && method) {
+      // Con la cuenta abierta, la dirección principal (o la última usada) ya aparece elegida.
+      const candidates = savedFor(method.kind);
+      const empty = method.kind === "lima_delivery" ? !limaUbigeo && !form.address : method.kind === "agency" ? !agencyDistrict && !form.agencyName : false;
+      if (empty && candidates.length) applyAddress(candidates.find((a) => a.isDefault) ?? candidates[0]);
     }
     if (step < 3) goTo((step + 1) as Step);
     else submit();
@@ -318,6 +381,46 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                   {method.kind === "lima_delivery" ? "¿A dónde te lo llevamos?" : method.kind === "agency" ? `¿En qué agencia ${method.name.replace(/^Envío /, "")} recoges?` : "Recojo en tienda"}
                 </h2>
 
+                {accountChecked && !account ? (
+                  <Link
+                    href="/ingresar?volver=/checkout"
+                    className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-4 py-2 text-sm"
+                  >
+                    <UserRound className="size-5 shrink-0" aria-hidden />
+                    <span>
+                      <span className="font-semibold">¿Tienes cuenta?</span> <span className="text-muted">Entra con Google y usa tus datos y direcciones guardadas.</span>
+                    </span>
+                  </Link>
+                ) : null}
+
+                {savedForMethod.length ? (
+                  <div role="radiogroup" aria-label="Tus direcciones guardadas" className="space-y-2">
+                    <p className="text-sm font-medium">Tus direcciones</p>
+                    {savedForMethod.map((a) => {
+                      const selected = selectedSaved?.id === a.id;
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => applyAddress(a)}
+                          className={cn("flex w-full items-start gap-3 rounded-xl border p-3 text-left transition", selected ? "border-white bg-raised" : "border-line")}
+                        >
+                          <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border-2", selected ? "border-white" : "border-subtle")} aria-hidden>
+                            {selected ? <span className="size-2.5 rounded-full bg-white" /> : null}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block font-semibold">{a.label}</span>
+                            <span className="block text-sm text-muted">{addressSummary(a)}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <p className="text-xs text-muted">O escribe otra abajo.</p>
+                  </div>
+                ) : null}
+
                 {method.kind === "lima_delivery" ? (
                   <>
                     <Field label="Distrito" error={errors.ubigeo}>
@@ -364,6 +467,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                   </>
                 ) : null}
 
+
                 {method.kind === "agency" ? (
                   <>
                     <Field label="Ciudad o distrito de destino" error={errors.ubigeo}>
@@ -400,6 +504,13 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                       {method.slug === "shalom" ? " (mayor de 20 años)" : ""}.
                     </p>
                   </>
+                ) : null}
+
+                {canSaveAddress ? (
+                  <label className="flex min-h-10 cursor-pointer items-center gap-3 text-sm">
+                    <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} className="size-5 accent-white" />
+                    Guardar {method.kind === "agency" ? "esta agencia" : "esta dirección"} en mi cuenta
+                  </label>
                 ) : null}
 
                 {method.kind === "store_pickup" && store ? (
@@ -439,7 +550,15 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                     />
                   )}
                 </Field>
-                <Field label="Email" error={errors.email} hint="Para enviarte el resumen de tu compra.">
+                <Field
+                  label="Email"
+                  error={errors.email}
+                  hint={
+                    account && !same(account.email, form.email)
+                      ? `Con otro email, este pedido no aparecerá en tu cuenta (${account.email}).`
+                      : "Para enviarte el resumen de tu compra."
+                  }
+                >
                   {(p) => (
                     <input
                       {...p}

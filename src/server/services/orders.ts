@@ -2,14 +2,20 @@ import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "d
 import { normalizePhone, type CheckoutInput } from "@/lib/checkout-schema";
 import { canTransition, OPEN_STATUSES, PAID_STATUSES, RESTOCK_STATUSES, type OrderStatus } from "@/lib/order-status";
 import { priceLines } from "@/lib/pricing";
-import { shippingOptions } from "@/lib/shipping";
+import { shippingOptions, type ShippingKind } from "@/lib/shipping";
 import type { Db } from "../db/client";
 import { customers, orderItems, orders, orderStatusHistory, products, productVariants, users } from "../db/schema";
 import { getVariantSnapshots } from "./cart";
 import { getDistrict, listShippingMethods, toShippingInfo } from "./shipping";
 
+/**
+ * `orders.id` con el nombre de la tabla, para subconsultas sobre order_items. En un select de una sola tabla Drizzle
+ * escribe las columnas sin tabla ("id"), y dentro de `from order_items` eso sería order_items.id.
+ */
+export const ORDERS_ID = sql.raw(`"orders"."id"`);
+
 export type PlaceOrderResult =
-  | { ok: true; orderId: string; number: number; totalCents: number; productSlugs: string[]; soldOut: boolean }
+  | { ok: true; orderId: string; number: number; totalCents: number; productSlugs: string[]; soldOut: boolean; shippingKind: ShippingKind }
   | { ok: false; code: "unavailable" | "out_of_stock"; variantIds: string[] }
   | { ok: false; code: "shipping" | "address" | "agency"; message: string };
 
@@ -159,6 +165,7 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
         totalCents,
         productSlugs: [...new Set(variantIds.map((id) => byId.get(id)!.productSlug))],
         soldOut,
+        shippingKind: option.kind,
       };
     });
   } catch (error) {
@@ -285,7 +292,7 @@ export async function listOrders(db: Db, filter: OrderListFilter = {}) {
         district: orders.district,
         paymentMethod: orders.paymentMethod,
         createdAt: orders.createdAt,
-        units: sql<number>`(select coalesce(sum(${orderItems.quantity}), 0)::int from ${orderItems} where ${orderItems.orderId} = ${orders.id})`,
+        units: sql<number>`(select coalesce(sum(${orderItems.quantity}), 0)::int from ${orderItems} where ${orderItems.orderId} = ${ORDERS_ID})`,
       })
       .from(orders)
       .where(where)

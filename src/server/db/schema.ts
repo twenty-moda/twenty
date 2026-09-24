@@ -231,6 +231,9 @@ export const users = pgTable("users", {
   phone: text(),
   /** bcrypt. Los hashes migrados de Laravel ($2y$) se validan tal cual. */
   passwordHash: text(),
+  /** Cuenta de Google vinculada (uid de Firebase Authentication). Los clientes entran solo con Google. */
+  firebaseUid: text().unique(),
+  photoUrl: text(),
   role: userRole().notNull().default("customer"),
   isActive: boolean().notNull().default(true),
   lastLoginAt: timestamp({ withTimezone: true }),
@@ -238,6 +241,9 @@ export const users = pgTable("users", {
 });
 
 /** Sesiones en BD (revocables). El id es el SHA-256 del token de la cookie: el token nunca se guarda. */
+/** "admin" = panel (email + contraseña); "cuenta" = cuenta de cliente en la tienda (Google). Una no sirve para la otra. */
+export const sessionScope = pgEnum("session_scope", ["admin", "cuenta"]);
+
 export const sessions = pgTable(
   "sessions",
   {
@@ -245,6 +251,7 @@ export const sessions = pgTable(
     userId: uuid()
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    scope: sessionScope().notNull().default("admin"),
     expiresAt: timestamp({ withTimezone: true }).notNull(),
     userAgent: text(),
     createdAt: timestamps.createdAt,
@@ -559,4 +566,32 @@ export const rateLimitHits = pgTable(
     createdAt: timestamps.createdAt,
   },
   (t) => [index("rate_limit_hits_key_idx").on(t.key, t.createdAt)],
+);
+
+// ─── Cuentas de cliente ──────────────────────────────────────────────────────
+
+export const addressKind = pgEnum("address_kind", ["delivery", "agency"]);
+
+/**
+ * Direcciones guardadas de una cuenta: delivery en Lima (distrito + dirección) o recojo en agencia para provincia
+ * (ciudad + agencia). Se eligen en el checkout con un toque.
+ */
+export const addresses = pgTable(
+  "addresses",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: addressKind().notNull(),
+    /** "Casa", "Trabajo"… */
+    label: text().notNull(),
+    ubigeo: text().notNull(),
+    address: text(),
+    reference: text(),
+    agencyName: text(),
+    isDefault: boolean().notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [index("addresses_user_idx").on(t.userId)],
 );

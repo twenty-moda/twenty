@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, ChevronRight, Clock, Info, Mail, MapPin, Menu, MessageCircle, PackageSearch, Search, ShoppingBag } from "lucide-react";
+import { BookOpen, ChevronRight, Clock, Info, Mail, MapPin, Menu, MessageCircle, PackageSearch, Search, ShoppingBag, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -21,7 +21,8 @@ type SiteHeaderProps = {
   store: SiteSettings["store"];
 };
 
-const iconButton = "relative grid size-12 place-items-center transition-transform active:scale-90";
+// 44 px en el teléfono: así entran 3 íconos a la derecha con el logo centrado desde 385 px de ancho.
+const iconButton = "relative grid size-11 place-items-center transition-transform active:scale-90 lg:size-12";
 
 /** El ícono del carrito "salta" cuando se agrega una prenda (no al cargar la página). */
 function useCartBump(units: number) {
@@ -42,6 +43,7 @@ function useCartBump(units: number) {
 }
 
 const MORE_LINKS = [
+  { href: "/cuenta", label: "Mi cuenta", icon: UserRound },
   { href: "/tracking", label: "Rastrear pedido", icon: PackageSearch },
   { href: "/contacto", label: "Contacto", icon: Mail },
   { href: "/nosotros", label: "Nosotros", icon: Info },
@@ -89,6 +91,10 @@ export function SiteHeader({ categories, contact, socials, store }: SiteHeaderPr
           <button type="button" onClick={() => setSearchOpen(true)} aria-label="Buscar" className={iconButton}>
             <Search className="size-[22px]" aria-hidden />
           </button>
+          {/* En teléfonos de menos de 385 px no entra un tercer ícono: "Mi cuenta" está en el menú. */}
+          <Link href="/cuenta" aria-label="Mi cuenta" className={`${iconButton} max-[384px]:hidden`}>
+            <UserRound className="size-[22px]" aria-hidden />
+          </Link>
           <button
             type="button"
             onClick={() => openCart()}

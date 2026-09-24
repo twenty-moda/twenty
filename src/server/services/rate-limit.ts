@@ -10,6 +10,8 @@ export const RATE_LIMITS = {
   complaint: { limit: 5, windowMinutes: 60 },
   subscribe: { limit: 10, windowMinutes: 60 },
   tracking: { limit: 20, windowMinutes: 15 },
+  /** Entrar con Google (verificar el token y crear la sesión). */
+  login: { limit: 20, windowMinutes: 15 },
 } satisfies Record<string, RateLimit>;
 
 /**

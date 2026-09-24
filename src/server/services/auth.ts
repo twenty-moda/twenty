@@ -17,6 +17,8 @@ const BCRYPT_COST = 12;
 const DUMMY_HASH = "$2b$12$mjTFLaBHu0bbot.Su33E/OI2DKYOZxkU5QtRgetpE36fS1fGltSnG";
 
 export type SessionUser = { id: string; name: string; email: string; role: "admin" | "customer" };
+/** "admin" = panel; "cuenta" = cuenta de cliente en la tienda. Cada cookie solo acepta sesiones de su tipo. */
+export type SessionScope = "admin" | "cuenta";
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -29,19 +31,20 @@ export function verifyPassword(password: string, hash: string): Promise<boolean>
   return bcrypt.compare(password, hash.replace(/^\$2y\$/, "$2b$"));
 }
 
-export async function createSession(db: Db, userId: string, userAgent: string | null, now = new Date()) {
+export async function createSession(db: Db, userId: string, userAgent: string | null, scope: SessionScope, now = new Date()) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(now.getTime() + SESSION_DAYS * 24 * 60 * 60 * 1000);
-  await db.insert(sessions).values({ id: hashToken(token), userId, expiresAt, userAgent: userAgent?.slice(0, 300) ?? null });
+  await db.insert(sessions).values({ id: hashToken(token), userId, scope, expiresAt, userAgent: userAgent?.slice(0, 300) ?? null });
   return { token, expiresAt };
 }
 
-export async function validateSession(db: Db, token: string, now = new Date()): Promise<SessionUser | null> {
+/** Una sesión de la cuenta (entrar con Google) nunca vale para el panel, aunque el email sea de un admin. */
+export async function validateSession(db: Db, token: string, scope: SessionScope, now = new Date()): Promise<SessionUser | null> {
   const [row] = await db
     .select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
-    .where(and(eq(sessions.id, hashToken(token)), gt(sessions.expiresAt, now)))
+    .where(and(eq(sessions.id, hashToken(token)), eq(sessions.scope, scope), gt(sessions.expiresAt, now)))
     .limit(1);
   if (!row || !row.isActive) return null;
   return { id: row.id, name: row.name, email: row.email, role: row.role };

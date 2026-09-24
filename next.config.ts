@@ -32,8 +32,8 @@ function siteRedirects(): Redirect[] {
       aboutuses: "aboutus",
       strengths: "strength",
     }).map(([from, to]) => ({ source: `/api/${from}/media/:file`, destination: `${media}/${to}/:file`, permanent: true })),
-    // Aún no hay cuentas de cliente: el pedido se sigue con su número. Temporal (307) para cuando existan.
-    ...["/iniciar-sesion", "/crear-cuenta", "/forgot-password", "/reset-password"].map((source) => ({ source, destination: "/tracking", permanent: false })),
+    // Login y registro de la web anterior: ahora se entra con Google en /ingresar (sin contraseñas que recuperar).
+    ...["/iniciar-sesion", "/crear-cuenta", "/forgot-password", "/reset-password"].map((source) => ({ source, destination: "/ingresar", permanent: true })),
   ];
 }
 

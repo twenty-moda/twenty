@@ -8,7 +8,7 @@ import type { Db } from "../db/client";
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
-const { placeOrder, changeOrderStatus, getOrderByNumber, getOrderTracking } = await import("./orders");
+const { placeOrder, changeOrderStatus, getOrderByNumber, getOrderTracking, listOrders } = await import("./orders");
 
 let db: Db;
 const ids = {
@@ -176,5 +176,15 @@ describe("getOrderTracking", () => {
     expect(tracking?.history.map((h) => Object.keys(h).sort())).toEqual([["at", "status"], ["at", "status"]]);
     expect(tracking).toMatchObject({ number: placed.number, status: "pagado", history: [{ status: "pendiente" }, { status: "pagado" }] });
     expect(await getOrderTracking(db, 999_999)).toBeNull();
+  });
+});
+
+describe("listOrders (admin)", () => {
+  it("cuenta las prendas de cada pedido", async () => {
+    await setStock(3);
+    const placed = await placeOrder(db, checkout({ items: [{ variantId: ids.variant, quantity: 2 }] }));
+    if (!placed.ok) throw new Error("no se creó el pedido");
+    const { rows } = await listOrders(db);
+    expect(rows.find((r) => r.id === placed.orderId)?.units).toBe(2);
   });
 });
