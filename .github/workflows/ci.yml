@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, tipos y tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  build:
+    name: Integración y build con Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: twenty
+          POSTGRES_PASSWORD: twenty
+          POSTGRES_DB: twenty
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U twenty -d twenty"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      DATABASE_URL: postgres://twenty:twenty@localhost:5432/twenty
+      TEST_DATABASE_URL: postgres://twenty:twenty@localhost:5432/twenty_test
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: PGPASSWORD=twenty psql -h localhost -U twenty -d twenty -c "create database twenty_test"
+      # Incluye la prueba de concurrencia: N compras simultáneas de la última unidad → solo 1 se vende.
+      - run: pnpm test:int
+      - run: pnpm db:migrate
+      # Catálogo de desarrollo (db/catalog_json, sin datos personales). No reescribe las redirecciones
+      # versionadas porque en CI no están assets/seo ni las fotos.
+      - run: cp src/server/db/seed/legacy-redirects.json /tmp/redirects.json && pnpm db:seed && cp /tmp/redirects.json src/server/db/seed/legacy-redirects.json
+      - run: pnpm build

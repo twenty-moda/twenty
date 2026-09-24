@@ -1,0 +1,38 @@
+[
+ {
+  "id": "9e96db6a-7f4f-4065-8bae-e0df84b16397",
+  "name": "twentymoda1",
+  "link": "https://www.tiktok.com/@twentymoda1?_r=1&_t=ZS-94dJVpwsXNl",
+  "description": "TikTok",
+  "icon": "fab fa-tiktok",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-04-03 19:13:54",
+  "updated_at": "2026-07-13 14:09:35",
+  "order_index": "0"
+ },
+ {
+  "id": "9e96db6a-7fb3-4e47-93a8-23cf1d312b18",
+  "name": "twentymoda",
+  "link": "https://www.instagram.com/twentymoda1?igsh=MXRnYzY2d2cwNHh5cA==",
+  "description": "Instagram",
+  "icon": "fab fa-instagram",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-04-03 19:13:54",
+  "updated_at": "2026-07-13 14:09:52",
+  "order_index": "0"
+ },
+ {
+  "id": "a24213e2-84da-4fbe-bd5d-8b5d361a9751",
+  "name": "@tweenty",
+  "link": "https://www.facebook.com/tweetymoda",
+  "description": "Facebook",
+  "icon": "fab fa-facebook",
+  "visible": "0",
+  "status": "1",
+  "created_at": "2026-07-14 11:34:11",
+  "updated_at": "2026-07-14 11:34:53",
+  "order_index": "1"
+ }
+]

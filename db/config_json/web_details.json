@@ -1,0 +1,18 @@
+[
+ {
+  "id": "a24085ac-8b58-4103-84c3-d56bb3f21a89",
+  "page": "blog",
+  "name": "title",
+  "description": "Lista de Blog",
+  "created_at": "2026-07-13 17:00:42",
+  "updated_at": "2026-07-13 17:00:57"
+ },
+ {
+  "id": "a24085b2-f503-4a0c-8612-7f12e19a1f24",
+  "page": "blog",
+  "name": "description",
+  "description": "Aquí verás la lista de todos los post de tu blog",
+  "created_at": "2026-07-13 17:00:47",
+  "updated_at": "2026-07-13 17:01:13"
+ }
+]

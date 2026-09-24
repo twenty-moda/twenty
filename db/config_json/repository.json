@@ -1,0 +1,46 @@
+[
+ {
+  "id": "a0524515-4cf1-489c-8b04-a68dded2c371",
+  "name": "plantilla-importacion-productos.xlsx",
+  "description": "plantilla-importacion-productos.xlsx",
+  "file": "6f76adf7-342c-48d8-aa5f-c7120075b1c8.xlsx",
+  "file_extension": "xlsx",
+  "file_mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "file_size": "40082",
+  "created_at": "2025-11-10 00:21:07",
+  "updated_at": "2025-11-10 00:21:07"
+ },
+ {
+  "id": "a23f497d-0e19-4e49-adea-23799705cd26",
+  "name": "IRONWOOD.woff2",
+  "description": "IRONWOOD.woff2",
+  "file": "6fde30b4-a3cc-4a49-8dec-56afabdaebac.woff2",
+  "file_extension": "woff2",
+  "file_mimetype": "font/woff2",
+  "file_size": "20808",
+  "created_at": "2026-07-13 07:16:35",
+  "updated_at": "2026-07-13 07:16:35"
+ },
+ {
+  "id": "a23f6207-2c91-4fbd-8a94-69a2397d0214",
+  "name": "FtyIronhorseNcv-vJaZ.woff2",
+  "description": "FtyIronhorseNcv-vJaZ.woff2",
+  "file": "30ace784-4ed1-422e-93dc-c269dd3ef61c.woff2",
+  "file_extension": "woff2",
+  "file_mimetype": "font/woff2",
+  "file_size": "29204",
+  "created_at": "2026-07-13 08:25:12",
+  "updated_at": "2026-07-13 08:25:12"
+ },
+ {
+  "id": "a24a082f-75cc-464d-bb8f-a35b343c22f2",
+  "name": "plantilla-importacion-productos.xlsx",
+  "description": "plantilla-importacion-productos.xlsx",
+  "file": "a6a4874e-a5d4-42e4-b297-ae7e2f75bd6b.xlsx",
+  "file_extension": "xlsx",
+  "file_mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "file_size": "26158",
+  "created_at": "2026-07-18 10:28:06",
+  "updated_at": "2026-07-18 10:28:06"
+ }
+]

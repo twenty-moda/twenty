@@ -1,0 +1,29 @@
+[
+ {
+  "id": "1",
+  "name": "Admin",
+  "guard_name": "web",
+  "relative_id": "bc7e40a2-3f55-4836-9d6e-6275e8bc958b",
+  "public": "0",
+  "created_at": "2025-04-03 19:13:53",
+  "updated_at": "2025-05-11 19:21:33"
+ },
+ {
+  "id": "2",
+  "name": "Root",
+  "guard_name": "web",
+  "relative_id": "37d54173-2df6-4673-acd9-8a7fa078bf81",
+  "public": "0",
+  "created_at": "2025-04-03 19:13:53",
+  "updated_at": "2025-05-11 19:21:33"
+ },
+ {
+  "id": "3",
+  "name": "Customer",
+  "guard_name": "web",
+  "relative_id": "0d3fe4a9-6381-4d47-8a82-449c224c4293",
+  "public": "0",
+  "created_at": "2025-05-11 19:21:33",
+  "updated_at": "2025-05-11 19:21:33"
+ }
+]

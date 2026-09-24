@@ -1,0 +1,15 @@
+/* Tokens de marca TWENTY — extraídos de la BD actual (system_colors) */
+:root {
+  --color-page-background: #000000;
+  --color-primary: #000000;
+  --color-secondary: #b1b1b1;
+  --color-accent: #000000;
+  --color-neutral-light: #ffffff;
+  --color-neutral-dark: #000000;
+  --color-sections: #f3f3f3;
+  --color-warning: #ffdd00;
+  --color-info: #0151fc;
+  --color-danger: #ff0033;
+  --color-success: #02de44;
+  --font-sans: "Libre Franklin", sans-serif;
+}

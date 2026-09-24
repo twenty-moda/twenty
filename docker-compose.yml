@@ -1,0 +1,21 @@
+# Postgres local para desarrollo. En producción se usa Neon/Supabase con pooler.
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: twenty
+      POSTGRES_PASSWORD: twenty
+      POSTGRES_DB: twenty
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U twenty -d twenty"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

@@ -1,0 +1,56 @@
+[
+ {
+  "id": "9f1780a3-32a9-4eda-b9b8-8d2538905b5d",
+  "question": "¿Cuánto cuesta el envío y cuánto tarda en llegar mi pedido?",
+  "answer": "- En Lima Metropolitana y Callao: El costo de delivery es fijo de S/ 15.00. Tu pedido llegará en un estimado de 1 a 5 días hábiles mediante motorizado, previa coordinación contigo por WhatsApp.\n\n- A Provincias (Todo el Perú): Los envíos se realizan a través de la empresa Shalom. El tiempo estimado es de 1 a 4 días hábiles tras realizar el envío. En esta modalidad, tú pagas el costo del flete directamente en la agencia al momento de recoger tu paquete (Pago en destino).",
+  "category": null,
+  "status": "1",
+  "created_at": "2025-06-06 18:01:52",
+  "updated_at": "2026-07-13 16:20:31"
+ },
+ {
+  "id": "9f1780a3-32a9-4eda-b9b8-8d2538905b5e",
+  "question": "¿Cuáles son los métodos de pago disponibles?",
+  "answer": "Para tu total comodidad y seguridad, aceptamos pagos rápidos a través de Yape y también mediante Tarjeta de Débito o Crédito. Recuerda que tu pedido comenzará a procesarse una vez confirmemos tu pago.",
+  "category": null,
+  "status": "1",
+  "created_at": "2025-06-06 18:01:52",
+  "updated_at": "2026-07-13 16:20:43"
+ },
+ {
+  "id": "9f1780a3-32a9-4eda-b9b8-8d2538905b5f",
+  "question": "¿Puedo realizar cambios o devoluciones de mi ropa?",
+  "answer": "Por motivos de higiene, estricto control de calidad y logística, todas nuestras ventas son finales y no se aceptan cambios ni devoluciones. Te pedimos revisar detalladamente la talla, color y modelo antes de cerrar tu compra.\n\n- La única excepción: Si la prenda presenta algún defecto de fábrica, tienes un plazo máximo de 5 días desde el envío para gestionar el cambio, el cual estará sujeto al stock que tengamos disponible.",
+  "category": null,
+  "status": "1",
+  "created_at": "2025-06-06 18:01:52",
+  "updated_at": "2026-07-13 16:21:01"
+ },
+ {
+  "id": "9f1780a3-32a9-4eda-b9b8-8d2538905b5g",
+  "question": "¿Tienen tienda física y en qué horario atienden?",
+  "answer": "¡Sí! Estamos ubicados en el corazón comercial de Lima: Jr. Antonio Bazo 1288, Gamarra, La Victoria (Lima – Perú). Nuestro equipo de atención al cliente está listo para recibirte o ayudarte de lunes a domingo, desde las 10:00 a.m. hasta las 8:00 p.m..",
+  "category": null,
+  "status": "1",
+  "created_at": "2025-06-06 18:01:52",
+  "updated_at": "2026-09-17 15:45:00"
+ },
+ {
+  "id": "9f1780a3-32a9-4eda-b9b8-8d2538905b5h",
+  "question": "Donec in pulvinar sem. Fusce condimentum orci eget metus ullamcorper?",
+  "answer": "Curabitur vitae nisl felis. Sed vel luctus nunc. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Etiam ultricies sapien mauris, a consectetur sapien posuere eu.",
+  "category": null,
+  "status": "0",
+  "created_at": "2025-06-06 18:01:52",
+  "updated_at": "2026-07-13 16:21:20"
+ },
+ {
+  "id": "9f1780a3-32a9-4eda-b9b8-8d2538905b5i",
+  "question": "Donec in pulvinar sem. Fusce condimentum orci eget metus ullamcorper?",
+  "answer": "Curabitur vitae nisl felis. Sed vel luctus nunc. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Etiam ultricies sapien mauris, a consectetur sapien posuere eu.",
+  "category": null,
+  "status": "0",
+  "created_at": "2025-06-06 18:01:52",
+  "updated_at": "2026-07-13 16:20:49"
+ }
+]

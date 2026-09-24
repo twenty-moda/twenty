@@ -1,0 +1,62 @@
+[
+ {
+  "id": "9e96db6a-7c35-4976-a163-2bd6db973d24",
+  "order_index": "0",
+  "name": "Identidad Urbana Auténtica",
+  "description": "No seguimos tendencias masivas; creamos colecciones con ADN callejero real, conectando directamente con los códigos de la cultura joven, la música, el arte y el estilo de vida urbano.",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-04-03 19:13:54",
+  "updated_at": "2026-07-13 16:00:15",
+  "image": "bd0b4ac2-b7d8-4abc-9b42-fadeca1233d0.png",
+  "bg_color": "transparent"
+ },
+ {
+  "id": "9e96db6a-7cb8-46cd-866f-4472248abce1",
+  "order_index": "0",
+  "name": "Exclusividad en Formato \"Drop\"",
+  "description": "Nuestra capacidad de lanzar colecciones cápsula y ediciones limitadas genera un alto deseo de compra y un sentido de exclusividad (FOMO), logrando que cada prenda se sienta como una pieza única de colección.",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-04-03 19:13:54",
+  "updated_at": "2026-07-13 16:00:34",
+  "image": "ebad02be-6bf4-4c1e-8e38-820d46829669.png",
+  "bg_color": "transparent"
+ },
+ {
+  "id": "9e96db6a-7d5b-4d1b-8e10-12c7f3e6e883",
+  "order_index": "0",
+  "name": "Conexión y Comunidad Local",
+  "description": "Nacimos con raíces fuertes y sabemos hablarle a nuestro público. Creamos un movimiento y una comunidad fiel que no solo viste la marca, sino que se identifica con sus valores de rebeldía y autenticidad.",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-04-03 19:13:54",
+  "updated_at": "2026-07-13 16:00:53",
+  "image": "18f03292-43ac-493b-8d49-a2ae0f0d4f8a.png",
+  "bg_color": "transparent"
+ },
+ {
+  "id": "9e96db6a-7db3-4f61-9cd4-7699613fcb8f",
+  "order_index": "0",
+  "name": "Adaptabilidad y Agilidad de Mercado",
+  "description": "Diseñamos y producimos con velocidad, adaptando cortes modernos (como el oversize, las bombers y la estética técnica) para que nuestros clientes siempre estén un paso adelante en las tendencias de la calle.",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-04-03 19:13:54",
+  "updated_at": "2026-07-13 16:01:12",
+  "image": "45eaabaf-b58d-4156-a442-e20852e8b7a7.png",
+  "bg_color": "transparent"
+ },
+ {
+  "id": "9e96db6a-7e15-432d-bebf-e1eac5e368bb",
+  "order_index": "0",
+  "name": "Inspiración constante",
+  "description": "Motivamos a nuestros estudiantes a mantenerse inspirados y enfocados en sus metas, creando un ambiente de constante superación.",
+  "visible": "1",
+  "status": null,
+  "created_at": "2025-04-03 19:13:54",
+  "updated_at": "2025-05-22 22:12:45",
+  "image": null,
+  "bg_color": "transparent"
+ }
+]

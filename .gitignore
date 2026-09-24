@@ -1,0 +1,39 @@
+# Datos personales de clientes: NUNCA a git
+db/*.sql
+db/*.sql.gz
+# Binarios pesados: van a object storage, no a git
+assets/
+reference/frontend-compilado/
+docs/evidencia/
+.DS_Store
+
+# Código del proveedor anterior (hay una disputa): solo referencia local, no se versiona
+reference/laravel-actual/
+
+# Imágenes locales para desarrollo (symlink a assets/images; en producción salen de R2)
+/public/media
+
+# Dependencias
+/node_modules
+
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Tests
+/coverage
+
+# Variables de entorno (usar .env.example como plantilla)
+.env*
+!.env.example
+
+# Vercel
+.vercel
+
+# Logs
+npm-debug.log*
+.pnpm-debug.log*
+*.pem
+.neon

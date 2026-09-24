@@ -1,0 +1,100 @@
+[
+ {
+  "id": "a2c1eeed-5c2d-4d77-969f-7f6434d8021b",
+  "name": "primary",
+  "description": "#000000",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5c8b-464f-9a77-9e606a78655c",
+  "name": "secondary",
+  "description": "#b1b1b1",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5caa-4d5b-8d03-053c1dcbba33",
+  "name": "accent",
+  "description": "#000000",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5cc3-44f0-9a87-e9435525fd88",
+  "name": "neutral-light",
+  "description": "#ffffff",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5cdb-45bb-afea-99eaf2878450",
+  "name": "neutral-dark",
+  "description": "#000000",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5cf1-449b-9d0a-8d53497e4b03",
+  "name": "page-background",
+  "description": "#000000",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5d0c-40ae-8988-6454390f1ba5",
+  "name": "bg_primary_gradient",
+  "description": null,
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5d23-4677-8852-3afe36a15a44",
+  "name": "sections-color",
+  "description": "#f3f3f3",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5d3e-494d-bca7-2f85e6bb1d56",
+  "name": "warning",
+  "description": "#ffdd00",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5d54-47d4-a938-918be6a99873",
+  "name": "danger",
+  "description": "#ff0033",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5d70-452f-9818-34532ffb9b3b",
+  "name": "info",
+  "description": "#0151fc",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5d88-44af-ba57-2b21034a6276",
+  "name": "success",
+  "description": "#02de44",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 12:26:58"
+ },
+ {
+  "id": "a2c1eeed-5da1-49f0-ab9b-223338e19808",
+  "name": "menu-admin",
+  "description": "#000000",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ },
+ {
+  "id": "a2c1eeed-5db8-428b-9a7e-915959e1a572",
+  "name": "text-color-input",
+  "description": "#FFFFFF",
+  "created_at": "2026-09-16 00:56:49",
+  "updated_at": "2026-09-16 00:56:49"
+ }
+]

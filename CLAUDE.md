@@ -1,0 +1,143 @@
+# TWENTY (twentymoda.com): nueva tienda full-stack en Next.js + Postgres
+
+Este kit tiene todo lo que se sacó de la plataforma anterior (Laravel + React, hosteada en cPanel). La meta es construir **desde cero** la tienda de TWENTY en una sola app Next.js full-stack (tienda pública + panel admin, sobre PostgreSQL), migrando sus datos y manteniendo su marca y sus URLs para no perder SEO. Ver "Arquitectura decidida" más abajo.
+
+## Reglas del proyecto
+1. **`reference/laravel-actual/` es solo una referencia de qué hace cada cosa. No portes su código línea por línea.** Hay una disputa con el proveedor anterior sobre ese código: la implementación nueva tiene que ser original. Los **datos** (`db/`) y los **assets** (`assets/`, `brand/`) sí son de Twenty Moda y se usan tal cual.
+2. `db/*.sql` tiene **datos personales de clientes** (nombres, emails, teléfonos, DNI, direcciones, hashes de contraseña). No lo subas a git, no lo pegues en issues ni en logs y no lo uses en fixtures. Para seeds de desarrollo usa `db/catalog_json/` + `db/config_json/`. Del dump completo solo salen usuarios y pedidos, y únicamente en la migración final a producción.
+3. No hay secretos en este kit. En el código original había una clave privada RSA escrita directamente en `Controller.php` y una API key de Google Maps en `.env.example`: están redactadas y **no deben reutilizarse**. Todas las claves (Culqi, Google OAuth, Google Maps, TinyMCE) **se rotan** y van en variables de entorno nuevas.
+4. El frontend compilado viejo (`reference/frontend-compilado/`) solo sirve para inspeccionar pantallas o textos si hace falta. No lo reutilices.
+
+## Mapa del kit
+| Ruta | Qué hay |
+|---|---|
+| `db/twentymoda_db.sql(.gz)` | Dump completo MariaDB 11.4 (106 tablas, 51 con datos) |
+| `db/schema_mysql.sql` | Solo los `CREATE TABLE` |
+| `db/row_counts.json`, `docs/DATOS.md` | Filas por tabla y agrupación por dominio |
+| `db/catalog_json/*.json` | **Catálogo y envíos sin datos personales**: items (solo columnas de moda), item_images, item_attribute, item_specifications, item_tags, delivery_prices. Úsalos para seeds y para desarrollar. |
+| `db/config_json/*.json` | Tablas de configuración/contenido sin datos personales (generals, categorías, tags, atributos, estados, tipos de envío, tienda, sliders, posts, faqs, reglas de descuento…) |
+| `brand/` | Logos TWENTY (WebP y JPG), `colors.json`, `tokens.css`, `BRAND.md` |
+| `assets/images/<carpeta>/` | Imágenes que referencia la BD por nombre de archivo (1,023 archivos). `item/` = fotos de producto |
+| `assets/photoshoot/TMW-0098.zip` | 493 fotos de producto originales (webp, 250 MB) |
+| `assets/public/` | Íconos de pago, libro de reclamaciones, botón WhatsApp, QR billetera, etc. |
+| `assets/seo/` | `sitemap.xml`, `robots.txt`, `products-feed.json` (catálogo Google/Meta), `llms.txt` |
+| `reference/laravel-actual/` | Backend anterior (app, routes, database/migrations, config, views, css, `.env.example`) |
+
+## El negocio en datos
+- Moda urbana juvenil. Envío en 48 h en Lima Metropolitana y envíos a provincias. Moneda: PEN (tipo de cambio USD guardado: 3.75).
+- **Catálogo:** 387 `items` = **variantes** (SKU `TMW-0001`…), agrupadas en **46 productos** por el campo `agrupador`. Cada variante tiene un valor de **Género, Color y Talla** en `item_attribute` → `attributes`. Una fila de `items` = un color + una talla. Ojo: 70 items no tienen `agrupador` y `item_attribute` tiene filas huérfanas de items que ya no existen (960 filas de 320 items borrados). Además, 43 items no tienen atributos. Límpialo en la migración. Precios entre S/ 30 y S/ 120 (`price`, `discount`, `final_price`), con stock por variante.
+  - Categorías: PANTALONES, CAMISA, HOODIE, ZIP HOODIE, JACKET, PUFFER, POLOS/POLO, JORTS, CHOMPA, Blusa. Subcategorías de corte/fit: BAGGY JEAN, SÚPER BAGGY, FLARED JEAN, MOM JEAN, OVERSIZE, BOXI FIT, REGULAR FIT, SLIM FIT, OVERBOX, SASTRE, etc. (relación N:N en `category_sub_category`; hay nombres repetidos y una "Sub categoria nueva" de prueba: depurar).
+  - Imágenes: `items.image` y `item_images.url` guardan el **nombre de archivo** (`TMW-0001.webp`), que está en `assets/images/item/`. 793 referencias, 1 archivo faltante.
+  - Tags: promos ("Black Friday", "Oferta Flash") y tags técnicos "Regla: …" ligados a reglas de descuento.
+- **Promociones:** `discount_rules` activas de tipo `quantity_discount` ("2 X 100", "CAMISA2X100", "POLOS4X100", "POLSLIMFIT4X100", "BAGGYLASERBRILLO2X120"); la lógica está en `conditions`/`actions` (JSON). `coupons` porcentaje o monto fijo (hoy inactivos).
+- **Envíos:** `delivery_prices` tiene **1,893 filas, una por distrito (`ubigeo` INEI de 6 dígitos)**, con flags gratis/express/agencia/recojo. `types_delivery`: envío gratis, Delivery Lima, Envío Shalom, Envío Olva, Retiro en tienda. Hay 1 tienda física (`stores`).
+- **Pagos:** Culqi (tarjeta + Yape) activo, y "billetera digital" (QR de Yape con subida de comprobante) activa. MercadoPago, OpenPay y transferencia están desactivados. Checkout **sin login obligatorio** (`checkout_require_login=false`).
+- **Pedidos:** 14 `sales` con `sale_details` y trazabilidad en `sale_status_traces`. Estados: Pendiente, Pagado, Pagado - Por verificar, Pagado - Por revisión, En producción, Enviado, Entregado, Anulado, Rechazado. Los pedidos guardan boleta/factura (`invoiceType`, `documentType`, `document`, `businessName`).
+- **Usuarios:** 18. Roles: Admin, Root, Customer.
+- **Contenido editable:** `generals` es un key-value (`correlative` → `description`) con textos legales (términos, privacidad, envíos, devoluciones), plantillas de email, pixels de marketing (GA, GTM, Meta, TikTok…), toggles de pago y SEO. Ver `db/config_json/generals.json`.
+- **Obligatorio en Perú:** Libro de Reclamaciones (hoy existe la tabla `complaints`, vacía).
+
+## URLs públicas actuales (conservar o redirigir con 301)
+`/`, `/catalogo`, `/product/{slug}` (230 en el sitemap), `/cart`, `/nosotros`, `/blogs`, `/post/{slug}` (7), `/contacto`. También hay que mantener `products-feed.json` (feed de catálogo), `robots.txt` y `llms.txt`.
+
+## Notas para migrar MySQL → Postgres
+- Los IDs son `char(36)` UUID → `uuid`. `users.id` es `bigint`. **Conserva los IDs** para no romper las relaciones entre pedidos, trazas e imágenes.
+- `tinyint(1)` → `boolean`. Hay campos `longtext` que guardan JSON (`banners`, `faqs`, `conditions`, `actions`, `applied_promotions`, `business_hours`, `gallery`, `options`, `combo_data`…) → `jsonb`.
+- Contraseñas: bcrypt de Laravel con prefijo `$2y$`. Reemplázalo por `$2b$` para validarlas en Node (mismo algoritmo), así nadie tiene que resetear su contraseña.
+- `items` tiene muchas columnas de otros rubros (habitaciones, proveedores, etc.): no las migres.
+- Hay dos caminos para cargar: `pgloader` directo desde un MariaDB local con el dump, o un script que lea `twentymoda_db.sql` y cargue solo las tablas del esquema nuevo (recomendado, porque el esquema nuevo será más limpio).
+
+## Arquitectura decidida: una sola app Next.js full-stack, propiedad de TWENTY
+Todo el software es **de Twenty Moda** y para una sola tienda: sin multi-tenancy ni abstracciones para otros clientes. El repositorio se crea **en la cuenta u organización de GitHub de Twenty Moda desde el día 1**, con Mathyu como colaborador. (Esto es justo lo que faltó con el proveedor anterior.)
+
+Una sola app **Next.js (App Router, TypeScript)** con la tienda pública y el panel admin en `/admin`. No hay backend separado.
+
+```
+src/
+  app/
+    (store)/         Tienda pública: /, /catalogo, /product/[slug], /cart, /checkout, /nosotros, /blogs, /post/[slug], /contacto, /cuenta, /tracking, /libro-de-reclamaciones
+    admin/           Panel admin (protegido por rol): productos, variantes, stock, pedidos, promos, contenido, envíos
+    api/             Solo lo que necesita ser endpoint: webhooks de Culqi, cron, feed de productos, sitemap
+  server/
+    services/        Lógica de negocio en TypeScript puro (catálogo, carrito, precios y promociones, envíos, checkout, pedidos). Sin imports de Next.
+    db/              Esquema Drizzle, migraciones, cliente con pooling
+  lib/               Utilidades compartidas, validaciones Zod
+  components/        UI (tienda y admin)
+```
+**Regla:** los route handlers, server actions y server components solo llaman a `server/services`. Nada de lógica de negocio dentro de ellos. Así, si algún día hace falta una API separada (por ejemplo, para una app móvil), se lleva `services` a NestJS sin reescribir.
+
+### Requisitos de rendimiento (objetivo: cientos de usuarios a la vez, picos en drops y Black Friday)
+1. **Catálogo estático + CDN:** home, catálogo y fichas de producto con ISR. Al editar en el admin, se invalida con `revalidateTag` solo lo que cambió. El tráfico de navegación no debe llegar a la base de datos.
+2. **Pooling de conexiones a Postgres:** usar el pooler de Neon o Supabase (o su driver HTTP). Nunca conexiones directas por instancia serverless.
+3. **Stock atómico:** crear el pedido y descontar stock en la **misma transacción**, con `UPDATE ... SET stock = stock - :qty WHERE id = :id AND stock >= :qty`. Si no se afecta ninguna fila, falla sin vender. Test de concurrencia obligatorio (N compras simultáneas de la última unidad → solo 1 éxito).
+4. **Jobs sin servidor:** emails, reintentos de webhooks y expiración de pedidos pendientes con Vercel Cron + una cola (QStash o Inngest). Los webhooks de Culqi tienen que ser idempotentes.
+5. **Imágenes:** servir desde R2/S3 con CDN, conservando los nombres de archivo. Ya son WebP: evitar depender de la optimización de imágenes de Vercel, que se cobra por uso.
+6. **Rate limiting** en login, registro, checkout y formularios (Upstash Ratelimit o similar).
+7. **Prueba de carga con k6** del flujo catálogo → carrito → checkout antes de salir a producción y antes de cada campaña grande.
+
+### Modelo de dominio (lección de la plataforma anterior)
+La plataforma anterior metía columnas de todos los rubros en `items` (habitaciones, camas, proveedores…) y tenía 55 tablas vacías de otros clientes. **Aquí solo va lo que TWENTY usa**, bien modelado:
+- Producto → variantes → opciones (Talla, Color, Género) con SKU, precio y stock por variante. Hoy cada fila de `items` es una variante y el producto se deduce por `agrupador`: en el esquema nuevo el producto es una entidad propia.
+- Categorías y subcategorías (fit), tags, promociones con reglas en JSON (cubre los "N x S/"), cupones, tarifas de envío por ubigeo y tipo, tienda física para recojo, pedidos con historial de estados, contenido (textos legales, sliders, FAQs, blog), suscriptores, mensajes de contacto y libro de reclamaciones.
+
+### Stack
+Next.js App Router + TypeScript + Tailwind (`brand/tokens.css`, Libre Franklin con `next/font`) · Drizzle ORM + PostgreSQL gestionado (Neon o Supabase) con pooling · Auth.js (credenciales con bcrypt compatible con los hashes migrados; roles Admin/Customer) · Zod · R2 o S3 para imágenes · Culqi (tarjeta + Yape) · Resend o similar para emails · Vercel (hosting + Cron) · Upstash (rate limit / QStash) · k6 para pruebas de carga.
+
+## Plan por fases
+0. **Base:** proyecto Next.js, Drizzle + Postgres con pooling, Auth.js con roles, layout del admin protegido, CI (lint, typecheck, tests).
+1. **Catálogo en el admin:** productos, variantes, opciones, categorías, imágenes y stock, con `server/services` y tests.
+2. **Migración de datos:** script desde `db/catalog_json/` + `db/config_json/` (y del dump solo usuarios y pedidos en el paso final), subida de `assets/images/` a storage y limpieza de datos sucios.
+3. **Tienda pública:** home, catálogo con filtros (categoría, fit, talla, color, género), ficha de producto con selector de variantes, ISR y las mismas URLs que hoy.
+4. **Carrito y checkout:** envío por ubigeo y tipo, promociones "N x S/", cupones, Culqi y billetera QR con comprobante, boleta o factura, checkout sin login, stock atómico, webhooks idempotentes.
+5. **Pedidos:** gestión de estados en el admin, cuenta del cliente, tracking y emails transaccionales con cola.
+6. **SEO, carga y cutover:** mismas URLs o redirecciones 301, sitemap, feed de productos, metadatos (corregir el `<title>` heredado "Tecnología para tu día a día"), pixels, rate limiting y prueba de carga con k6. Al cambiar el DNS **mantén los registros MX** (el correo @twentymoda.com vive en el cPanel).
+
+## Estado del código (la app vive en la raíz de este kit)
+- **Tienda:** home, `/catalogo` con filtros, `/product/[slug]`, `/cart`, `/checkout` en 3 pasos (entrega primero, como pidió la dueña de TWENTY; luego solo los datos que esa entrega necesita; luego pago) y `/pedido/[id]` (confirmación + estado; el id no se adivina). 308 de las URLs anteriores (`src/server/db/seed/legacy-redirects.json` → `next.config.ts`).
+- **Pedidos:** `server/services/orders.ts` crea el pedido y descuenta stock en la misma transacción (`stock >= n`), recalcula precio, promos y envío en el servidor. Test de concurrencia en `orders.int.test.ts`.
+- **Admin `/admin`:** login propio (sesiones en BD, bcrypt compatible con los hashes `$2y$` de Laravel; `server/services/auth.ts`), pedidos con estados e historial, clientes, productos (variantes color × talla, fotos por color), stock y precios en bloque, carga masiva por Excel (plantilla nueva y la anterior de TWENTY) + fotos por SKU, promociones, categorías, contenido de la web y envíos.
+- **Decisión:** en lugar de Auth.js (v5 nunca salió de beta y el proyecto pasó a Better Auth) se usa un módulo propio pequeño. Si se necesita OAuth de Google para clientes, evaluar Better Auth.
+- **Pagos:** Culqi (tarjeta y Yape) en `/pedido/[id]` con Culqi Checkout (`js.culqi.com/checkout-js`) + 3-D Secure (`3ds.culqi.com`); el cargo lo crea `server/services/payments.ts` (201 = pagado, 200 + `action_code: "REVIEW"` = pide 3DS). Webhook `/api/webhooks/culqi?key=…` que re-consulta el cargo en la API (idempotente por `payments.provider_id`). Cron `/api/cron/expirar-pedidos` (vercel.json, cada 15 min, protegido con `CRON_SECRET`; requiere Vercel Pro) anula pedidos con tarjeta sin pagar a los 60 min y devuelve el stock. También Yape/Plin con QR y "coordinar por WhatsApp".
+- **Llaves de Culqi:** NUNCA las del sitio anterior (están en el dump y el proveedor tuvo acceso). Se generan nuevas en CulqiPanel y van en `NEXT_PUBLIC_CULQI_PUBLIC_KEY`, `CULQI_SECRET_KEY`, `CULQI_WEBHOOK_SECRET`. Sin ellas, la opción de tarjeta no aparece.
+- **Shalom:** se pide la agencia como texto; falta la API oficial de Shalom (credenciales de TWENTY).
+- **Promos "N x S/":** misma regla que la plataforma anterior (con N o más, cada prenda a precio/N), en `src/lib/pricing.ts`.
+- **Páginas de contenido:** `/nosotros`, `/blogs` + `/post/[slug]`, `/contacto` (formulario + preguntas frecuentes), `/tracking` (número de pedido + celular o email → `/pedido/[id]`), las 4 legales (`/terminos-y-condiciones`, `/politica-de-privacidad`, `/politicas-de-envio`, `/politicas-de-devolucion-y-cambio`) y `/libro-de-reclamaciones`. Todo se edita en Admin → Contenido / Blog. Los textos usan un formato simple tipo Markdown (`src/lib/rich-text.ts`, se muestra con `<RichText>`; nunca HTML).
+- **Libro de Reclamaciones:** hoja con número correlativo (`complaints.number`, código `LR-AAAA-00001`), constancia imprimible en `/libro-de-reclamaciones/constancia/[id]`, respuesta desde `/admin/reclamos` con el plazo de 15 días hábiles (`src/lib/business-days.ts`, con feriados de Perú). Las hojas no se borran (hay que guardarlas 2 años).
+- **Emails:** `server/services/email.ts` (Resend por HTTP, `RESEND_API_KEY` + `EMAIL_FROM`) y `notifications.ts`. Se envían con `after()` para no demorar la respuesta. En los logs nunca va el asunto ni el destinatario (datos personales): solo el `tag`.
+- **Formularios públicos:** límite por IP en BD (`server/services/rate-limit.ts`, se guarda un hash de la IP) + campo trampa `website` para bots.
+- **SEO:** `sitemap.xml`, `robots.txt`, `products-feed.json` (mismo formato que el anterior) y `llms.txt` se generan desde la BD. Redirecciones de URLs viejas (`/libro-reclamaciones`, `/storage/images/…`, `/api/<tabla>/media/…`) en `next.config.ts`.
+
+## Convenciones de la app
+- **Caché (Next 16, Cache Components):** las lecturas de la tienda están en `src/app/(store)/_data.ts` con `'use cache'` + `cacheTag` (`src/lib/cache-tags.ts`). Al editar desde el admin: `updateTag(cacheTags.product(slug))` o `updateTag(cacheTags.catalog)`. Nada de `new Date()` ni lecturas sin caché fuera de `<Suspense>`: rompe el prerender.
+- **Estado en la URL sin servidor:** filtros del catálogo y variante elegida (`?color=&talla=`) usan `useUrlSearch` (`src/lib/use-url-search.ts`), no `useSearchParams`, para que el HTML siga siendo estático. El hook escucha `history.pushState/replaceState` (Next no emite eventos): sin eso, un `<Link>` a la misma página con otra query (menú → otra categoría) no actualizaba el filtro.
+- **Animaciones (solo CSS del navegador, sin librerías):** clase `reveal` = aparece al hacer scroll (scroll-driven, en `globals.css`); transición de página con `<PageTransition>` en los `template.tsx` de `(store)`, `product/` y `post/`; la foto de la tarjeta "vuela" a la ficha con `<ViewTransition name=…>` (`productMorphName`/`postMorphName`): el nombre debe ser **único en la página** (por eso `ProductCard morph` es opcional) y la tarjeta usa `prefetch` para que la ficha llegue completa. Los paneles (`Sheet`) animan entrada y salida con `dialog.sheet` + `@starting-style`. Todo se desactiva con "reducir movimiento".
+- **Precios en céntimos** (`priceCents`), formato con `formatPrice` (`src/lib/money.ts`). Fotos por producto + color; la ruta es relativa al bucket (`item/TMW-0001.webp`) y la resuelve `src/lib/image-loader.ts`.
+- **Estilo:** tema oscuro de la marca (tokens en `src/app/globals.css`), botones de 44 px o más, paneles con `<Sheet>` (`<dialog>` nativo). Un `<fieldset>` con filas deslizables necesita `min-w-0`.
+- **Responsive (mobile first, probado de 280 px a 2560 px):** los estilos base son para teléfono; `md` (768) = tablet (ficha de producto en 2 columnas), `lg` (1024) = escritorio (menú de categorías, resumen lateral del checkout), `2xl` (1536) = contenedor ancho `2xl:max-w-[96rem]` y catálogo a 5 columnas. Reglas:
+  - Toda grilla de una columna lleva `grid-cols-1`: sin eso la columna crece con el texto más largo (un distrito, una fila de pedido) y la página se desborda en teléfonos chicos.
+  - Todo lo que se toca mide 40 px o más de alto (`min-h-10`); para achicarlo con mouse usar `pointer-fine:`, no `lg:` (un iPad horizontal también es `lg` y es táctil).
+  - Títulos grandes con `display-title` (tamaño fluido y corte con guion de palabras largas).
+- Antes de tocar APIs de Next, leer `node_modules/next/dist/docs/` (ver `AGENTS.md`): esta versión cambia mucho.
+
+## Desarrollo local
+```
+cp .env.example .env.local
+pnpm install
+pnpm db:setup       # Postgres en Docker (puerto 5433) + migraciones + seed
+ln -sfn ../assets/images public/media   # fotos locales (si no existe el symlink)
+pnpm admin:create --email tu@correo.com --name "Tu nombre"   # usuario del panel (muestra la contraseña)
+pnpm db:seed:demo   # opcional: pedidos ficticios para ver el admin con datos
+pnpm dev            # http://localhost:3000 (admin en /admin)
+pnpm test | pnpm test:int | pnpm lint | pnpm typecheck | pnpm build
+```
+**Producción (Neon + Vercel):** la BD es el proyecto Neon `little-flower-65465312` (cuenta de TWENTY, rama `production`, AWS us-east-1, igual que las funciones de Vercel en `iad1`). Sus URLs están en `.env.neon` (ignorado por git, Next no lo carga solo). En Vercel, `DATABASE_URL` = la URL **con pooler** (`-pooler` en el host); para migrar o cargar datos se usa la directa:
+```
+DATABASE_URL="$(grep '^DATABASE_URL_UNPOOLED=' .env.neon | cut -d= -f2- | tr -d '"')" pnpm db:migrate
+```
+Ojo: `neon link` escribe `DATABASE_URL` de Neon en `.env.local`; si se vuelve a correr, devolver `.env.local` a la BD de Docker.
+
+`pnpm test:int` usa `TEST_DATABASE_URL` (crear la BD una vez: `docker compose exec db psql -U twenty -c "create database twenty_test"`).
+En el admin cada página y cada acción llaman a `requireAdmin()` (`src/app/admin/_lib/auth.ts`); las páginas del admin exportan `instant = false`.
+Cambios de esquema: editar `schema.ts` → `pnpm db:generate --name <cambio>` → `pnpm db:migrate`.
+
+@AGENTS.md

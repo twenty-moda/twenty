@@ -1,0 +1,67 @@
+[
+ {
+  "id": "9fe75996-5654-4be2-88fc-91a3275cc260",
+  "slug": "estilo-y-tendencias",
+  "name": "Estilo y Tendencias",
+  "description": "Esta es la categoría principal de moda. Aquí es donde inspiras a tus clientes y les enseñas a usar tus productos.\r\n\r\nDe qué hablar: Guías de cómo combinar prendas (ej. \"Cómo llevar pantalones cargo en 2026\"), análisis de las tendencias que se ven en las pasarelas y en las calles, y avances de tus próximos lanzamientos de temporada.",
+  "image": null,
+  "banner": null,
+  "featured": "0",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-09-17 20:44:52",
+  "updated_at": "2026-07-14 09:09:46"
+ },
+ {
+  "id": "9fe759d3-4ac2-4b79-b83c-10ebdd613719",
+  "slug": "cultura-sneaker",
+  "name": "Cultura Sneaker",
+  "description": "En el mundo urbano, los tenis son una religión. Dedicarles una sección fija atraerá a los verdaderos fanáticos del streetwear.\r\n\r\nDe qué hablar: Historia de los modelos de tenis más icónicos, cómo limpiar y cuidar tus sneakers, lanzamientos globales más esperados y qué tipo de calzado combina mejor con la ropa de tu tienda.",
+  "image": null,
+  "banner": null,
+  "featured": "0",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-09-17 20:45:32",
+  "updated_at": "2026-07-14 09:09:51"
+ },
+ {
+  "id": "9fe75a92-6899-4113-b8ac-3462f97fadc2",
+  "slug": "street-culture-lifestyle",
+  "name": "Street Culture & Lifestyle",
+  "description": "La ropa urbana no existe en el vacío; nace de la música (hip-hop, trap, reggaetón), el arte urbano (graffiti) y los deportes como el skate o el basket. Esta categoría genera comunidad y engagement.\r\n\r\nDe qué hablar: Perfiles o entrevistas a artistas emergentes, playlists recomendadas para el mes, resúmenes de festivales de música o eventos de cultura urbana, y recomendaciones de series o documentales.",
+  "image": null,
+  "banner": null,
+  "featured": "0",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-09-17 20:47:38",
+  "updated_at": "2026-07-14 09:09:55"
+ },
+ {
+  "id": "a0552370-e53a-44c3-83ae-08888d9c95db",
+  "slug": "guias-de-compra-y-cuidado",
+  "name": "Guías de Compra y Cuidado",
+  "description": "Una categoría funcional para resolver las dudas más frecuentes de tus clientes antes de comprar y ayudarles a que su ropa dure más tiempo.\r\n\r\nDe qué hablar: Guías detalladas de tallas (clave para el estilo oversize), explicación de materiales (¿qué es el algodón heavyweight?), y consejos para lavar la ropa con estampados o serigrafía sin que se arruine.",
+  "image": null,
+  "banner": null,
+  "featured": "0",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-11-11 10:34:32",
+  "updated_at": "2026-07-14 09:10:00"
+ },
+ {
+  "id": "a055238d-722f-4739-99b1-d3f1d4d72b4f",
+  "slug": "comunidad-y-drop-de-la-semana",
+  "name": "Comunidad y Drop de la Semana",
+  "description": "El streetwear vive del sentido de pertenencia. Esta categoría sirve para humanizar tu marca y mostrar cómo se ven tus prendas en la vida real.\r\n\r\nDe qué hablar: Fotos de tus propios clientes usando tu ropa (repost de Instagram o TikTok), el detrás de escena de las sesiones de fotos de tu marca, o los outfits favoritos del equipo que trabaja en la tienda.",
+  "image": null,
+  "banner": null,
+  "featured": "0",
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-11-11 10:34:51",
+  "updated_at": "2026-07-14 09:10:04"
+ }
+]

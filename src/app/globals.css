@@ -1,0 +1,263 @@
+@import "tailwindcss" source("..");
+
+/*
+ * Marca TWENTY (brand/tokens.css): identidad monocromática sobre fondo negro, como el sitio actual.
+ * Amarillo, azul, rojo y verde solo para estados.
+ */
+@theme {
+  --color-ink: #000000;
+  --color-surface: #0d0d0d;
+  --color-raised: #1a1a1a;
+  --color-line: rgb(255 255 255 / 0.14);
+  --color-muted: #b1b1b1;
+  --color-subtle: #8c8c8c;
+  --color-sections: #f3f3f3;
+  --color-warning: #ffdd00;
+  --color-info: #0151fc;
+  --color-danger: #ff0033;
+  --color-success: #02de44;
+
+  --font-sans: var(--font-libre-franklin), ui-sans-serif, system-ui, sans-serif;
+
+  --animate-fade-in: fade-in 200ms ease-out;
+  --animate-shake: shake 360ms ease-in-out;
+  --animate-fade-up: fade-up 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-hero-zoom: hero-zoom 1600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-marquee: marquee 38s linear infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      translate: 0 16px;
+    }
+  }
+  @keyframes hero-zoom {
+    from {
+      scale: 1.08;
+    }
+  }
+  @keyframes marquee {
+    to {
+      translate: -50% 0;
+    }
+  }
+  @keyframes shake {
+    25% {
+      transform: translateX(-5px);
+    }
+    75% {
+      transform: translateX(5px);
+    }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+    scroll-padding-top: 4.5rem;
+  }
+  /* Con un panel abierto la página de fondo no se desplaza. */
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+  body {
+    @apply bg-ink text-white antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: #fff;
+    color: #000;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  /* Los buscadores traen su propio botón de borrar. */
+  input[type="search"]::-webkit-search-cancel-button {
+    appearance: none;
+  }
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Títulos grandes fluidos: crecen con la pantalla (26 px en un teléfono de 280 px, 48 px en tablet y escritorio)
+   y parten palabras largas con guion ("RECLAMA-CIONES") en vez de salirse de la pantalla. */
+@utility display-title {
+  font-size: clamp(1.625rem, 6.5vw + 0.5rem, 3rem);
+  line-height: 1.02;
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+
+/* Espacio para la barra inferior del iPhone. */
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}
+
+/*
+ * ─── Movimiento ───────────────────────────────────────────────────────────────
+ * Todo es CSS del navegador (sin librerías): no suma JavaScript ni afecta la velocidad.
+ * Quien activa "reducir movimiento" en su teléfono ve la web sin animaciones.
+ */
+
+/* Aparece al entrar en pantalla mientras se hace scroll (scroll-driven animations).
+   En navegadores sin soporte el contenido se ve normal, sin animación. */
+@utility reveal {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 22%;
+    }
+  }
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    translate: 0 36px;
+  }
+}
+
+/* Preguntas frecuentes: el acordeón se abre suave donde el navegador lo permite. */
+@utility smooth-details {
+  @supports selector(::details-content) {
+    interpolate-size: allow-keywords;
+    &::details-content {
+      block-size: 0;
+      overflow: clip;
+      transition:
+        block-size 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+        content-visibility 260ms allow-discrete;
+    }
+    &[open]::details-content {
+      block-size: auto;
+    }
+  }
+}
+
+/* Paneles (<dialog>): entran y salen deslizándose. */
+dialog.sheet {
+  transition:
+    translate 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    display 300ms allow-discrete,
+    overlay 300ms allow-discrete;
+}
+dialog.sheet::backdrop {
+  opacity: 0;
+  transition:
+    opacity 300ms ease,
+    display 300ms allow-discrete,
+    overlay 300ms allow-discrete;
+}
+dialog.sheet[open]::backdrop {
+  opacity: 1;
+  @starting-style {
+    opacity: 0;
+  }
+}
+dialog.sheet[data-side="left"] {
+  translate: -100% 0;
+}
+dialog.sheet[data-side="right"] {
+  translate: 100% 0;
+}
+dialog.sheet[data-side="bottom"] {
+  translate: 0 100%;
+  @media (width >= 48rem) {
+    translate: 100% 0;
+  }
+}
+dialog.sheet[open] {
+  translate: 0 0;
+  @starting-style {
+    translate: var(--sheet-from);
+  }
+}
+dialog.sheet[data-side="left"] {
+  --sheet-from: -100% 0;
+}
+dialog.sheet[data-side="right"] {
+  --sheet-from: 100% 0;
+}
+dialog.sheet[data-side="bottom"] {
+  --sheet-from: 0 100%;
+  @media (width >= 48rem) {
+    --sheet-from: 100% 0;
+  }
+}
+
+/* Transiciones entre páginas (View Transitions de React/Next): la página sale con un fundido corto
+   y la nueva entra subiendo un poco. La cabecera y el pie cambian al instante, sin animación. */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-group(root) {
+  animation: none;
+}
+::view-transition-old(root) {
+  display: none;
+}
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-old(.page-exit) {
+  animation: 140ms ease-in both vt-fade-out;
+}
+::view-transition-new(.page-enter) {
+  animation: 320ms cubic-bezier(0.2, 0.8, 0.2, 1) 80ms both vt-enter;
+}
+/* La foto de la tarjeta "vuela" hasta la ficha del producto o del artículo. */
+::view-transition-group(.morph) {
+  animation-duration: 420ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 10;
+}
+::view-transition-image-pair(.morph) {
+  animation-name: vt-via-blur;
+}
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-enter {
+  from {
+    opacity: 0;
+    translate: 0 14px;
+  }
+}
+@keyframes vt-via-blur {
+  30% {
+    filter: blur(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

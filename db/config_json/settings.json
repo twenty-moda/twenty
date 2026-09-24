@@ -1,0 +1,47 @@
+[
+ {
+  "id": "9edf1be9-3c25-4daa-8808-a28032071562",
+  "name": "title-font-url",
+  "description": null,
+  "value": "/cloud/30ace784-4ed1-422e-93dc-c269dd3ef61c.woff2",
+  "type": null,
+  "created_at": "2025-05-09 17:13:51",
+  "updated_at": "2026-07-13 08:25:30"
+ },
+ {
+  "id": "9edf1bf2-0737-424a-b3fb-f81b56ed311b",
+  "name": "title-font-name",
+  "description": null,
+  "value": "IronWood",
+  "type": null,
+  "created_at": "2025-05-09 17:13:57",
+  "updated_at": "2026-07-13 08:20:50"
+ },
+ {
+  "id": "9edf1c04-bc7a-437f-897f-fa832ffed7bb",
+  "name": "paragraph-font-url",
+  "description": null,
+  "value": "https://fonts.googleapis.com/css2?family=Libre+Franklin:ital,wght@0,100..900;1,100..900&display=swap",
+  "type": null,
+  "created_at": "2025-05-09 17:14:09",
+  "updated_at": "2026-07-13 07:15:24"
+ },
+ {
+  "id": "9edf1c14-a267-4e8a-a15a-571336767431",
+  "name": "paragraph-font-name",
+  "description": null,
+  "value": "Libre Franklin",
+  "type": null,
+  "created_at": "2025-05-09 17:14:20",
+  "updated_at": "2026-07-13 07:15:30"
+ },
+ {
+  "id": "a23f499f-8dcc-47dd-aa0c-6584c7864209",
+  "name": "title-font-source",
+  "description": null,
+  "value": "true",
+  "type": null,
+  "created_at": "2026-07-13 07:16:58",
+  "updated_at": "2026-07-13 07:16:58"
+ }
+]

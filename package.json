@@ -1,0 +1,51 @@
+{
+  "name": "twentymoda",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:int": "vitest run --config vitest.integration.mts",
+    "db:up": "docker compose up -d --wait db",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/server/db/seed/run.ts",
+    "db:seed:demo": "tsx src/server/db/seed/demo-orders.ts",
+    "admin:create": "tsx src/server/db/seed/create-admin.ts",
+    "db:setup": "pnpm db:up && pnpm db:migrate && pnpm db:seed"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20",
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "^0.45.3",
+    "lucide-react": "^1.47.0",
+    "next": "16.3.6",
+    "postgres": "^3.4.9",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "read-excel-file": "^9.3.10",
+    "sharp": "^0.35.4",
+    "write-excel-file": "^4.1.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.6",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.0.1"
+  },
+  "packageManager": "pnpm@11.1.1"
+}

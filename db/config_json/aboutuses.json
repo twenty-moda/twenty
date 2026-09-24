@@ -1,0 +1,62 @@
+[
+ {
+  "id": "9e23efae-e86a-4958-a3b8-036090e7345d",
+  "order_index": "0",
+  "name": "Sobre Nosotros",
+  "description": "<p>Twenty Moda no nació en una pasarela de alta costura ni bajo las luces de un centro comercial convencional. Nacimos en el corazón del motor textil de todo un país, en el Jirón Antonio Bazo, en Gamarra. Ahí, donde el ritmo de la ciudad nunca se detiene y donde la verdadera moda se vive y se respira en el día a día. </p><p>Constituida bajo el respaldo de <strong>Multiventa Peruano S.A.C.</strong> (RUC: 20612934020), la marca surgió de una necesidad clara: romper las reglas del mercado tradicional y ofrecer una alternativa de moda masculina urbana con carácter, calidad garantizada y ADN 100% callejero.</p><p>En un mundo donde muchas marcas intentan imponer moldes aburridos y repetitivos, nosotros decidimos mirar hacia el asfalto. Nos inspiramos en la energía de la juventud, en los códigos de la cultura urbana, el arte libre y la actitud de aquellos hombres que no piden permiso para destacar. </p><p>El nombre 'Twenty' (Veinte) representa esa mentalidad joven, rebelde y hambrienta de éxito que no entiende de edades, sino de actitud. Es esa energía que te impulsa a comerte el mundo.</p><p>Desde nuestra base en La Victoria, Lima, diseñamos piezas rudas, cómodas y con cortes modernos que conectan directamente con la identidad del joven peruano. No nos conformamos con ser una tienda de ropa más; somos un movimiento dinámico. Hoy, a través de nuestra plataforma online, llevamos esa misma fuerza desde Lima Metropolitana hasta el rincón más alejado de las provincias de todo el Perú. Porque sabemos que la calle tiene su propio lenguaje y su propia élite, y en <strong>Twenty Moda</strong> trabajamos de lunes a domingo para asegurarnos de que tú seas quien lidere el juego. </p><blockquote>No solo recorremos las calles... <strong>nosotros las dominamos</strong>.</blockquote>",
+  "slogan": null,
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-02-05 16:10:22",
+  "updated_at": "2026-07-13 15:57:01",
+  "correlative": "section-historia",
+  "title": "La Historia de Twenty Moda",
+  "image": "9ba06e18-9389-4a11-be9d-297268afb427.webp",
+  "link": null
+ },
+ {
+  "id": "9e23efae-e9ce-4baa-9909-066ffc119fe3",
+  "order_index": "0",
+  "name": "¿Por qué confiar en nosotros?",
+  "description": "<p>NULL</p>",
+  "slogan": null,
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-02-05 16:10:22",
+  "updated_at": "2026-07-13 15:57:18",
+  "correlative": "section-valores",
+  "title": "¿Por qué confiar en nosotros?",
+  "image": "2a3f03cc-824b-470a-b1e1-28edd46e2aa0.webp",
+  "link": null
+ },
+ {
+  "id": "9e23efae-ec14-450e-87cc-31757da7acd5",
+  "order_index": "0",
+  "name": "Visión",
+  "description": "<p>Convertirnos en la marca referente de moda urbana y cultura callejera a nivel nacional e internacional, liderando la escena del streetwear con lanzamientos icónicos, expandiendo nuestra comunidad global y demostrando que el estilo del asfalto tiene el poder de conquistar los escenarios del mundo entero.</p>",
+  "slogan": null,
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-02-05 16:10:22",
+  "updated_at": "2026-07-13 15:58:12",
+  "correlative": "section-vision",
+  "title": "Visión",
+  "image": "0871ef8c-24e0-4cc6-93fc-84f89563eab8.webp",
+  "link": null
+ },
+ {
+  "id": "9e23efae-ed9b-4643-b821-59a8c3ccafda",
+  "order_index": "0",
+  "name": "Misión",
+  "description": "<p>Empoderar a la juventud urbana a través de prendas de vestir que reflejen su verdadera identidad, libertad y actitud. Nos dedicamos a diseñar streetwear auténtico, cómodo y de alta calidad que sirva como una herramienta de expresión personal para quienes desafían las reglas del día a día.</p>",
+  "slogan": null,
+  "visible": "1",
+  "status": "1",
+  "created_at": "2025-02-05 16:10:22",
+  "updated_at": "2026-07-13 15:58:23",
+  "correlative": "section-mision",
+  "title": "Misión",
+  "image": null,
+  "link": null
+ }
+]
