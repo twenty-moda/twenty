@@ -134,7 +134,9 @@ pnpm test | pnpm test:int | pnpm lint | pnpm typecheck | pnpm build
 ```
 DATABASE_URL="$(grep '^DATABASE_URL_UNPOOLED=' .env.neon | cut -d= -f2- | tr -d '"')" pnpm db:migrate
 ```
-Ojo: `neon link` escribe `DATABASE_URL` de Neon en `.env.local`; si se vuelve a correr, devolver `.env.local` a la BD de Docker.
+Ojo: `neon link` y `vercel link` escriben en `.env.local` (`DATABASE_URL` de Neon, `VERCEL_OIDC_TOKEN`); si se vuelven a correr, devolver `DATABASE_URL` de `.env.local` a la BD de Docker.
+
+**Vercel:** proyecto `twentymoda` del equipo "Twenty" (`twenty10`, plan Hobby), conectado a `twenty-moda/twenty`: cada push a `main` despliega a producción (https://twentymoda.vercel.app hasta conectar el dominio). Funciones en `iad1`. Las variables de Production y Preview son *sensibles*: `vercel env pull` las devuelve vacías, así que se cargan por stdin (`printf '%s' "$VALOR" | vercel env add NOMBRE production --sensitive --yes`). Los despliegues de Preview usan la rama `preview` de Neon (URLs `PREVIEW_*` en `.env.neon`) para no escribir en producción: **cada migración se aplica a las dos ramas.**
 
 `pnpm test:int` usa `TEST_DATABASE_URL` (crear la BD una vez: `docker compose exec db psql -U twenty -c "create database twenty_test"`).
 En el admin cada página y cada acción llaman a `requireAdmin()` (`src/app/admin/_lib/auth.ts`); las páginas del admin exportan `instant = false`.
