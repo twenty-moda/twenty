@@ -1,13 +1,17 @@
 /** Emails que salen de los formularios públicos (constancia de reclamo, respuesta y avisos al equipo). */
+import { appUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
+import { DOCUMENT_LABEL } from "@/lib/order-status";
 import { COMPLAINT_TYPES } from "@/lib/public-forms";
 import { complaintCode, complaintDeadline, type Complaint } from "./complaints";
 import type { SiteSettings } from "./content";
-import { renderEmail, sendEmail } from "./email";
+import { sendEmail } from "./email";
+import { emailBrand, renderBrandedEmail } from "./email-layout";
+
+type Settings = Pick<SiteSettings, "company" | "contact" | "socials">;
 
 const dayFormat = new Intl.DateTimeFormat("es-PE", { timeZone: "UTC", day: "2-digit", month: "long", year: "numeric" });
 const dateTimeFormat = new Intl.DateTimeFormat("es-PE", { timeZone: "America/Lima", dateStyle: "long", timeStyle: "short" });
-const DOCS: Record<Complaint["documentType"], string> = { dni: "DNI", ce: "C.E.", pasaporte: "Pasaporte", ruc: "RUC" };
 
 /** Todas las filas de la hoja de reclamación (constancia, email y admin usan las mismas). */
 export function complaintRows(c: Complaint, company: SiteSettings["company"]): [string, string][] {
@@ -17,7 +21,7 @@ export function complaintRows(c: Complaint, company: SiteSettings["company"]): [
     ["Proveedor", [company.legalName, company.ruc && `RUC ${company.ruc}`, company.address].filter(Boolean).join(" · ")],
     ["Tipo", COMPLAINT_TYPES[c.type].label],
     ["Consumidor", c.name],
-    ["Documento", `${DOCS[c.documentType]} ${c.documentNumber}`],
+    ["Documento", `${DOCUMENT_LABEL[c.documentType]} ${c.documentNumber}`],
     ["Teléfono", c.phone],
     ["Email", c.email],
     ["Domicilio", [c.address, c.district, c.province, c.department].filter(Boolean).join(", ")],
@@ -31,33 +35,55 @@ export function complaintRows(c: Complaint, company: SiteSettings["company"]): [
   ];
 }
 
-export async function sendComplaintEmails(c: Complaint, settings: Pick<SiteSettings, "company" | "contact">, links: { constancia: string; admin: string }) {
+const teamInbox = (settings: Settings) => settings.company.notificationEmail || settings.contact.email;
+
+export async function sendComplaintEmails(c: Complaint, settings: Settings, links: { constancia: string; admin: string }) {
   const code = complaintCode(c);
+  const kind = COMPLAINT_TYPES[c.type].label.toLowerCase();
   const deadline = dayFormat.format(complaintDeadline(c));
   const rows = complaintRows(c, settings.company);
+  const brand = emailBrand(settings, appUrl());
   const tasks: Promise<unknown>[] = [];
 
-  const toConsumer = renderEmail({
-    title: `Recibimos tu ${COMPLAINT_TYPES[c.type].label.toLowerCase()} ${code}`,
-    intro: [
-      `Hola ${c.name.split(" ")[0]}, esta es la constancia de tu hoja de reclamación en el Libro de Reclamaciones virtual de TWENTY.`,
-      `Te responderemos a este correo a más tardar el ${deadline} (15 días hábiles).`,
-    ],
-    rows,
-    outro: [
-      `Puedes ver e imprimir tu constancia aquí: ${links.constancia}`,
-      "La formulación del reclamo no impide acudir a otras vías de solución de controversias ni es requisito previo para interponer una denuncia ante el INDECOPI.",
-    ],
-  });
-  tasks.push(sendEmail({ tag: "reclamo-constancia", to: c.email, subject: `TWENTY · Hoja de reclamación ${code}`, ...toConsumer, replyTo: settings.company.notificationEmail || undefined }));
+  const toConsumer = renderBrandedEmail(
+    {
+      preheader: `Te responderemos a más tardar el ${deadline}.`,
+      eyebrow: `Libro de Reclamaciones · ${code}`,
+      title: `Recibimos tu ${kind}`,
+      blocks: [
+        { type: "text", text: `Hola ${c.name.split(" ")[0]}, esta es la constancia de tu hoja de reclamación en el Libro de Reclamaciones virtual de TWENTY.` },
+        { type: "text", text: `Te responderemos a este correo a más tardar el ${deadline} (15 días hábiles).`, strong: true },
+        { type: "button", label: "Ver e imprimir constancia", url: links.constancia },
+        { type: "box", title: "Hoja de reclamación", blocks: [{ type: "rows", rows }] },
+        {
+          type: "text",
+          small: true,
+          muted: true,
+          text: "La formulación del reclamo no impide acudir a otras vías de solución de controversias ni es requisito previo para interponer una denuncia ante el INDECOPI.",
+        },
+      ],
+    },
+    brand,
+  );
+  tasks.push(sendEmail({ tag: "reclamo-constancia", to: c.email, subject: `Hoja de reclamación ${code}`, ...toConsumer, replyTo: teamInbox(settings) || undefined }));
 
-  const team = settings.company.notificationEmail || settings.contact.email;
+  const team = teamInbox(settings);
   if (team) {
-    const toTeam = renderEmail({
-      title: `Nuevo ${COMPLAINT_TYPES[c.type].label.toLowerCase()} ${code}`,
-      intro: [`Hay que responderlo a más tardar el ${deadline}.`, `Respóndelo desde el panel: ${links.admin}`],
-      rows,
-    });
+    const toTeam = renderBrandedEmail(
+      {
+        audience: "team",
+        tone: "danger",
+        preheader: `Hay que responderlo a más tardar el ${deadline}.`,
+        eyebrow: `Libro de Reclamaciones · ${code}`,
+        title: `Nuevo ${kind}`,
+        blocks: [
+          { type: "text", text: `${c.name} registró un ${kind}. Hay que responderlo a más tardar el ${deadline} (15 días hábiles).`, strong: true },
+          { type: "button", label: "Responder en el panel", url: links.admin },
+          { type: "box", title: "Hoja de reclamación", blocks: [{ type: "rows", rows }] },
+        ],
+      },
+      brand,
+    );
     tasks.push(sendEmail({ tag: "reclamo-aviso-equipo", to: team, subject: `Libro de Reclamaciones: ${code} (${c.name})`, ...toTeam, replyTo: c.email }));
   }
   for (const result of await Promise.allSettled(tasks)) {
@@ -65,37 +91,45 @@ export async function sendComplaintEmails(c: Complaint, settings: Pick<SiteSetti
   }
 }
 
-export async function sendComplaintResponse(c: Complaint, settings: Pick<SiteSettings, "company">) {
+export async function sendComplaintResponse(c: Complaint, settings: Settings) {
   const code = complaintCode(c);
-  const email = renderEmail({
-    title: `Respuesta a tu ${COMPLAINT_TYPES[c.type].label.toLowerCase()} ${code}`,
-    intro: [`Hola ${c.name.split(" ")[0]}, esta es la respuesta de ${settings.company.legalName || "TWENTY"} a tu hoja de reclamación.`],
-    rows: [
-      ["Hoja N°", code],
-      ["Tu reclamo", c.detail],
-      ["Respuesta", c.response ?? ""],
-    ],
-    outro: ["Si tienes dudas, responde a este correo."],
-  });
-  return sendEmail({ tag: "reclamo-respuesta", to: c.email, subject: `TWENTY · Respuesta a tu hoja de reclamación ${code}`, ...email, replyTo: settings.company.notificationEmail || undefined });
+  const email = renderBrandedEmail(
+    {
+      preheader: `Respuesta de ${settings.company.legalName || "TWENTY"} a tu hoja ${code}.`,
+      eyebrow: `Libro de Reclamaciones · ${code}`,
+      title: "Respuesta a tu reclamo",
+      blocks: [
+        { type: "text", text: `Hola ${c.name.split(" ")[0]}, esta es la respuesta de ${settings.company.legalName || "TWENTY"} a tu hoja de reclamación.` },
+        { type: "box", title: "Respuesta", blocks: [{ type: "text", text: c.response ?? "" }] },
+        { type: "rows", title: "Tu reclamo", rows: [["Hoja N°", code], ["Detalle", c.detail]] },
+        { type: "text", text: "Si tienes dudas, responde a este correo.", muted: true },
+      ],
+    },
+    emailBrand(settings, appUrl()),
+  );
+  return sendEmail({ tag: "reclamo-respuesta", to: c.email, subject: `Respuesta a tu hoja de reclamación ${code}`, ...email, replyTo: teamInbox(settings) || undefined });
 }
 
-export async function sendContactNotification(
-  message: { name: string; email: string; phone: string | null; message: string },
-  settings: Pick<SiteSettings, "company" | "contact">,
-  adminLink: string,
-) {
-  const team = settings.company.notificationEmail || settings.contact.email;
+export async function sendContactNotification(message: { name: string; email: string; phone: string | null; message: string }, settings: Settings, adminLink: string) {
+  const team = teamInbox(settings);
   if (!team) return { sent: false };
-  const email = renderEmail({
-    title: `Nuevo mensaje de ${message.name}`,
-    intro: ["Llegó un mensaje desde el formulario de contacto de la web.", `Míralo en el panel: ${adminLink}`],
-    rows: [
-      ["Nombre", message.name],
-      ["Email", message.email],
-      ...(message.phone ? ([["Teléfono", message.phone]] as [string, string][]) : []),
-      ["Mensaje", message.message],
-    ],
-  });
+  const email = renderBrandedEmail(
+    {
+      audience: "team",
+      preheader: message.message.slice(0, 120),
+      eyebrow: "Formulario de contacto",
+      title: `Mensaje de ${message.name}`,
+      blocks: [
+        { type: "box", blocks: [{ type: "text", text: message.message }] },
+        {
+          type: "rows",
+          rows: [["Nombre", message.name], ["Email", message.email], ...(message.phone ? ([["Teléfono", message.phone]] as [string, string][]) : [])],
+        },
+        { type: "text", text: "Responde este correo para contestarle directamente.", muted: true, small: true },
+        { type: "button", label: "Ver en el panel", url: adminLink, secondary: true },
+      ],
+    },
+    emailBrand(settings, appUrl()),
+  );
   return sendEmail({ tag: "contacto-aviso-equipo", to: team, subject: `Contacto web: ${message.name}`, ...email, replyTo: message.email });
 }

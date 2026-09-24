@@ -1,52 +1,63 @@
 /**
  * Envío de emails con Resend (API HTTP, sin SDK). Sin RESEND_API_KEY o EMAIL_FROM no se envía nada:
  * en desarrollo solo se avisa en consola, sin datos del destinatario.
+ * El remitente (EMAIL_FROM, p. ej. "TWENTY <pedidos@twentymoda.com>") tiene que ser de un dominio verificado en Resend.
  */
 /** `tag` identifica el tipo de email en los logs (nunca se registra el asunto ni el destinatario: tienen datos personales). */
-export type Email = { tag: string; to: string; subject: string; html: string; text: string; replyTo?: string };
+export type Email = {
+  tag: string;
+  to: string | string[];
+  subject: string;
+  html: string;
+  text: string;
+  replyTo?: string;
+  /** Resend no repite un envío con la misma clave en 24 h (por si una acción se reintenta). */
+  idempotencyKey?: string;
+};
 
 export function emailConfigured(): boolean {
   return !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
 }
 
+const MAX_ATTEMPTS = 3;
+
 export async function sendEmail(email: Email): Promise<{ sent: boolean }> {
   const key = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
+  const to = (Array.isArray(email.to) ? email.to : [email.to]).filter(Boolean);
   if (!key || !from) {
     console.info(`[email] No configurado (RESEND_API_KEY / EMAIL_FROM): no se envió el email "${email.tag}".`);
     return { sent: false };
   }
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [email.to], subject: email.subject, html: email.html, text: email.text, reply_to: email.replyTo }),
-  });
-  if (!res.ok) throw new Error(`Resend respondió ${res.status} al enviar el email "${email.tag}"`);
-  return { sent: true };
+  if (!to.length) return { sent: false };
+
+  const body = JSON.stringify({ from, to, subject: email.subject, html: email.html, text: email.text, reply_to: email.replyTo });
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        ...(email.idempotencyKey ? { "Idempotency-Key": email.idempotencyKey } : {}),
+      },
+      body,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.ok) return { sent: true };
+    // 429: se superó el límite de envíos por segundo. 5xx: falla de Resend. Se reintenta con una pausa corta.
+    if ((res.status === 429 || res.status >= 500) && attempt < MAX_ATTEMPTS) {
+      const wait = Math.min(Number(res.headers.get("retry-after")) || attempt, 5);
+      await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+      continue;
+    }
+    // El motivo sirve para el log ("domain is not verified"), pero sin direcciones de email.
+    const detail = await res
+      .json()
+      .then((b: { message?: string }) => b.message?.replace(/[^\s()<>@]+@[^\s()<>]+/g, "<email>"))
+      .catch(() => null);
+    throw new Error(`Resend respondió ${res.status} al enviar el email "${email.tag}"${detail ? `: ${detail}` : ""}`);
+  }
 }
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => ESCAPES[c]);
-
-/** Email simple con la marca: título, filas "etiqueta: valor" y párrafos. Devuelve HTML y texto plano. */
-export function renderEmail({ title, intro, rows = [], outro = [] }: { title: string; intro: string[]; rows?: [string, string][]; outro?: string[] }) {
-  const p = (t: string) => `<p style="margin:0 0 12px;line-height:1.5">${escapeHtml(t).replace(/\n/g, "<br>")}</p>`;
-  const html = [
-    `<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px">`,
-    `<p style="margin:0 0 24px;font-weight:800;letter-spacing:4px">TWENTY</p>`,
-    `<h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(title)}</h1>`,
-    ...intro.map(p),
-    rows.length
-      ? `<table style="width:100%;border-collapse:collapse;margin:16px 0">${rows
-          .map(
-            ([k, v]) =>
-              `<tr><td style="padding:6px 8px 6px 0;color:#666;vertical-align:top;white-space:nowrap">${escapeHtml(k)}</td><td style="padding:6px 0">${escapeHtml(v).replace(/\n/g, "<br>")}</td></tr>`,
-          )
-          .join("")}</table>`
-      : "",
-    ...outro.map(p),
-    `</div>`,
-  ].join("");
-  const text = [title, "", ...intro, "", ...rows.map(([k, v]) => `${k}: ${v}`), "", ...outro].join("\n");
-  return { html, text };
-}

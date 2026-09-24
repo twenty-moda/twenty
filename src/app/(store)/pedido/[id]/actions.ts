@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { getDb } from "@/server/db/client";
+import { notifyAfterResponse } from "@/server/order-events";
 import { culqiFromEnv, payOrderWithCulqi, type PayResult } from "@/server/services/payments";
 
 const payInputSchema = z.object({
@@ -27,7 +28,10 @@ export async function payWithCulqiAction(input: unknown): Promise<PayResult> {
   const client = culqiFromEnv();
   if (!client) return { status: "not_payable", message: "El pago con tarjeta no está disponible ahora." };
   try {
-    return await payOrderWithCulqi(getDb(), client, parsed.data);
+    const result = await payOrderWithCulqi(getDb(), client, parsed.data);
+    if (result.status !== "paid") return result;
+    if (result.change) notifyAfterResponse({ type: "status", change: result.change });
+    return { status: "paid" };
   } catch (error) {
     console.error("Culqi", error);
     return { status: "declined", message: "No pudimos comunicarnos con la pasarela. Espera un momento y vuelve a intentarlo: no se te cobró." };

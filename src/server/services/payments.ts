@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { PAID_STATUSES, type OrderStatus } from "@/lib/order-status";
 import type { Db } from "../db/client";
 import { orders, payments } from "../db/schema";
-import { changeOrderStatus } from "./orders";
+import { changeOrderStatus, type StatusChange } from "./orders";
 
 const CULQI_API = "https://api.culqi.com/v2";
 
@@ -65,7 +65,8 @@ export type PayInput = {
   authentication3DS?: Authentication3DS | null;
 };
 export type PayResult =
-  | { status: "paid" }
+  /** `change`: el pedido pasó a pagado en esta llamada (para los emails; no se devuelve al navegador). */
+  | { status: "paid"; change?: StatusChange }
   | { status: "review" }
   | { status: "declined"; message: string }
   | { status: "not_payable"; message: string };
@@ -102,7 +103,7 @@ export async function payOrderWithCulqi(db: Db, client: CulqiClient, input: PayI
   const outcome = interpretChargeResponse(response);
   if (outcome.kind === "review") return { status: "review" };
   if (outcome.kind === "declined") return { status: "declined", message: outcome.userMessage };
-  await recordCulqiPayment(db, {
+  const { change } = await recordCulqiPayment(db, {
     orderId: order.id,
     chargeId: outcome.chargeId,
     amountCents: order.totalCents,
@@ -110,7 +111,7 @@ export async function payOrderWithCulqi(db: Db, client: CulqiClient, input: PayI
     method: input.tokenId.startsWith("ype_") ? "yape" : "tarjeta",
     raw: response.body,
   });
-  return { status: "paid" };
+  return { status: "paid", change };
 }
 
 /**
@@ -120,7 +121,7 @@ export async function payOrderWithCulqi(db: Db, client: CulqiClient, input: PayI
 export async function recordCulqiPayment(
   db: Db,
   input: { orderId: string; chargeId: string; amountCents: number; method: "tarjeta" | "yape"; raw: unknown },
-): Promise<{ newlyPaid: boolean }> {
+): Promise<{ newlyPaid: boolean; change?: StatusChange }> {
   const inserted = await db
     .insert(payments)
     .values({
@@ -141,10 +142,10 @@ export async function recordCulqiPayment(
     note: `Pago con ${input.method === "yape" ? "Yape" : "tarjeta"} por Culqi (${input.chargeId})`,
     userId: null,
   });
-  return { newlyPaid: result.ok };
+  return result.ok ? { newlyPaid: true, change: result.change } : { newlyPaid: false };
 }
 
-export type WebhookResult = { handled: boolean; reason: string; orderId?: string };
+export type WebhookResult = { handled: boolean; reason: string; orderId?: string; change?: StatusChange };
 
 /** Evento de Culqi → si es un cargo exitoso de un pedido nuestro, lo registra (una sola vez). */
 export async function handleCulqiEvent(db: Db, client: CulqiClient, payload: unknown): Promise<WebhookResult> {
@@ -176,8 +177,8 @@ export async function handleCulqiEvent(db: Db, client: CulqiClient, payload: unk
 
   const source = (charge.source ?? {}) as Json;
   const method = typeof source.id === "string" && source.id.startsWith("ype_") ? "yape" : "tarjeta";
-  const { newlyPaid } = await recordCulqiPayment(db, { orderId, chargeId, amountCents: order.totalCents, method, raw: charge });
-  return { handled: true, reason: newlyPaid ? "pedido marcado como pagado" : "ya estaba registrado", orderId };
+  const { newlyPaid, change } = await recordCulqiPayment(db, { orderId, chargeId, amountCents: order.totalCents, method, raw: charge });
+  return { handled: true, reason: newlyPaid ? "pedido marcado como pagado" : "ya estaba registrado", orderId, change };
 }
 
 export async function listOrderPayments(db: Db, orderId: string) {

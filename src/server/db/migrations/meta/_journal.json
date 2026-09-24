@@ -36,6 +36,13 @@
       "when": 1790227727425,
       "tag": "0004_content_pages",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790279932131,
+      "tag": "0005_order_customer_message",
+      "breakpoints": true
     }
   ]
 }

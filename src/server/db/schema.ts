@@ -441,7 +441,10 @@ export const orderStatusHistory = pgTable(
       .references(() => orders.id, { onDelete: "cascade" }),
     fromStatus: orderStatus(),
     toStatus: orderStatus().notNull(),
+    /** Nota interna del equipo. */
     note: text(),
+    /** Mensaje para el cliente (va en el email del cambio de estado y en la página del pedido), p. ej. la clave de Shalom. */
+    customerMessage: text(),
     /** Quién hizo el cambio (null = el cliente o el sistema). */
     changedBy: uuid().references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamps.createdAt,

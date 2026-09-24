@@ -5,6 +5,7 @@ import { cacheTags } from "@/lib/cache-tags";
 import { checkoutSchema, fieldErrors, type CheckoutFieldErrors } from "@/lib/checkout-schema";
 import { culqiConfig } from "@/lib/culqi-config";
 import { getDb } from "@/server/db/client";
+import { notifyAfterResponse } from "@/server/order-events";
 import { getSiteSettings } from "@/server/services/content";
 import { expireUnpaidCardOrders, placeOrder } from "@/server/services/orders";
 
@@ -25,6 +26,7 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   const expired = await expireUnpaidCardOrders(db);
   for (const slug of expired.productSlugs) revalidateTag(cacheTags.product(slug), "max");
   if (expired.productSlugs.length) revalidateTag(cacheTags.catalog, "max");
+  notifyAfterResponse(...expired.changes.map((change) => ({ type: "status" as const, change })));
 
   const result = await placeOrder(db, parsed.data);
   if (!result.ok) {
@@ -48,5 +50,6 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   // El stock cambió: se refrescan las fichas vendidas (y el catálogo si alguna talla se agotó).
   for (const slug of result.productSlugs) revalidateTag(cacheTags.product(slug), "max");
   if (result.soldOut) revalidateTag(cacheTags.catalog, "max");
+  notifyAfterResponse({ type: "placed", orderId: result.orderId, paymentMethod: parsed.data.paymentMethod });
   return { ok: true, orderId: result.orderId, payNow: parsed.data.paymentMethod === "tarjeta" };
 }

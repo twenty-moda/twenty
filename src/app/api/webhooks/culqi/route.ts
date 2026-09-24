@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { getDb } from "@/server/db/client";
+import { notifyAfterResponse } from "@/server/order-events";
 import { culqiFromEnv, handleCulqiEvent } from "@/server/services/payments";
 
 /**
@@ -22,7 +23,8 @@ export async function POST(request: Request) {
   const client = culqiFromEnv();
   if (!client) return new Response("Culqi no configurado", { status: 503 });
   const payload = await request.json().catch(() => null);
-  const result = await handleCulqiEvent(getDb(), client, payload);
+  const { change, ...result } = await handleCulqiEvent(getDb(), client, payload);
+  if (change) notifyAfterResponse({ type: "status", change });
   // 200 también para eventos ignorados: así Culqi no los reintenta sin fin.
   return Response.json(result);
 }

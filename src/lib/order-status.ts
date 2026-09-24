@@ -60,3 +60,17 @@ export const OPEN_STATUSES: OrderStatus[] = ["pendiente", "por_verificar", "paga
 export const PAID_STATUSES: OrderStatus[] = ["pagado", "en_preparacion", "enviado", "entregado"];
 
 export const formatOrderNumber = (n: number) => `#${n}`;
+
+/** Pasos que ve el cliente (página del pedido y emails). "Por verificar" cuenta como el primero. */
+export const ORDER_PROGRESS: { status: OrderStatus; label: string }[] = [
+  { status: "pendiente", label: "Pedido recibido" },
+  { status: "pagado", label: "Pago confirmado" },
+  { status: "en_preparacion", label: "Preparando" },
+  { status: "enviado", label: "En camino" },
+  { status: "entregado", label: "Entregado" },
+];
+/** Índice en ORDER_PROGRESS; -1 si está anulado o rechazado. */
+export const progressIndex = (s: OrderStatus) => (s === "por_verificar" ? 0 : ORDER_PROGRESS.findIndex((p) => p.status === s));
+
+export const PAYMENT_METHOD_LABEL = { yape_plin: "Yape o Plin (QR)", whatsapp: "Coordinar por WhatsApp", tarjeta: "Tarjeta o Yape (Culqi)" } as const;
+export const DOCUMENT_LABEL = { dni: "DNI", ce: "C.E.", pasaporte: "Pasaporte", ruc: "RUC" } as const;

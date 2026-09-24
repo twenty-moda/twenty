@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { headers } from "next/headers";
-import { siteUrl } from "@/lib/links";
+import { appUrl } from "@/lib/links";
 import { getDb } from "@/server/db/client";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/services/rate-limit";
 
@@ -12,4 +12,5 @@ export async function allowRequest(action: keyof typeof RATE_LIMITS): Promise<bo
   return consumeRateLimit(getDb(), `${action}:${hash}`, RATE_LIMITS[action]);
 }
 
-export const absoluteUrl = (path: string) => `${siteUrl()}${path}`;
+/** Enlace absoluto para emails y constancias (ver appUrl). */
+export const absoluteUrl = (path: string) => `${appUrl()}${path}`;

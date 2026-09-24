@@ -181,7 +181,7 @@ export function CompanyForm({ company }: { company: SiteSettings["company"] }) {
         name="notificationEmail"
         type="email"
         defaultValue={company.notificationEmail}
-        hint="Aquí llegan los reclamos y los mensajes de contacto (cuando el envío de emails esté activo)."
+        hint="Aquí llegan los avisos de pedidos nuevos y anulados, los reclamos y los mensajes de contacto. Los admins del panel también reciben los de pedidos."
       />
     </SettingForm>
   );

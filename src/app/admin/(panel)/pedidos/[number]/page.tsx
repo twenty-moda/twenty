@@ -6,8 +6,9 @@ import { notFound } from "next/navigation";
 import { AdminPage, Card, formatDateTime, StatusBadge } from "@/components/admin/ui";
 import { siteUrl, whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
-import { formatOrderNumber, STATUS_INFO } from "@/lib/order-status";
+import { DOCUMENT_LABEL, formatOrderNumber, PAYMENT_METHOD_LABEL, STATUS_INFO } from "@/lib/order-status";
 import { getDb } from "@/server/db/client";
+import { emailConfigured } from "@/server/services/email";
 import { getOrderByNumber } from "@/server/services/orders";
 import { listOrderPayments } from "@/server/services/payments";
 import { requireAdmin } from "../../../_lib/auth";
@@ -17,9 +18,6 @@ export async function generateMetadata({ params }: PageProps<"/admin/pedidos/[nu
   const { number } = await params;
   return { title: `Pedido #${number}` };
 }
-
-const PAYMENT_LABEL = { yape_plin: "Yape o Plin (QR)", whatsapp: "Coordinar por WhatsApp", tarjeta: "Tarjeta o Yape (Culqi)" } as const;
-const DOC_LABEL = { dni: "DNI", ce: "C.E.", pasaporte: "Pasaporte", ruc: "RUC" } as const;
 
 // El admin se arma en el servidor en cada visita (lee la sesión): no se exige navegación instantánea.
 export const instant = false;
@@ -48,12 +46,17 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
           Pedido {orderLabel} <StatusBadge status={order.status} />
         </span>
       }
-      description={`${formatDateTime(order.createdAt)} · ${formatPrice(order.totalCents)} · ${PAYMENT_LABEL[order.paymentMethod]}`}
+      description={`${formatDateTime(order.createdAt)} · ${formatPrice(order.totalCents)} · ${PAYMENT_METHOD_LABEL[order.paymentMethod]}`}
     >
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="space-y-4">
           <Card title="Cambiar estado">
-            <StatusChanger orderId={order.id} status={order.status} whatsappHref={whatsappUrl(order.phone.startsWith("51") ? order.phone : `51${order.phone}`, message)} />
+            <StatusChanger
+              orderId={order.id}
+              status={order.status}
+              whatsappHref={whatsappUrl(order.phone.startsWith("51") ? order.phone : `51${order.phone}`, message)}
+              emailEnabled={emailConfigured()}
+            />
           </Card>
 
           <Card title={`Prendas (${order.items.reduce((s, i) => s + i.quantity, 0)})`}>
@@ -110,6 +113,7 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
                       {formatDateTime(h.createdAt)} · {h.changedByName ?? "Cliente / web"}
                     </span>
                     {h.note ? <span className="mt-1 block text-muted">“{h.note}”</span> : null}
+                    {h.customerMessage ? <span className="mt-1 block text-muted">Al cliente: “{h.customerMessage}”</span> : null}
                   </span>
                 </li>
               ))}
@@ -141,7 +145,7 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
                 </a>
               </p>
               <p className="text-muted">
-                {DOC_LABEL[order.documentType]} {order.documentNumber}
+                {DOCUMENT_LABEL[order.documentType]} {order.documentNumber}
               </p>
               <p className="border-t border-line pt-2">
                 {order.invoiceType === "factura" ? (

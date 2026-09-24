@@ -9,6 +9,7 @@ const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
 const { placeOrder, getOrderByNumber } = await import("./orders");
 const { payOrderWithCulqi, handleCulqiEvent, interpretChargeResponse } = await import("./payments");
+const { planOrderEmails } = await import("./order-notifications");
 
 let db: Db;
 const variantId = randomUUID();
@@ -81,7 +82,7 @@ describe("payOrderWithCulqi", () => {
     const order = await newOrder();
     const { client, calls } = fakeCulqi([{ status: 201, body: { object: "charge", id: "chr_test_ok" } }]);
     const result = await payOrderWithCulqi(db, client, { orderId: order.orderId, tokenId: "tkn_test_1", email: "pago@example.com", deviceId: "dev-1" });
-    expect(result).toEqual({ status: "paid" });
+    expect(result).toMatchObject({ status: "paid", change: { from: "pendiente", to: "pagado", changedBy: null } });
     expect(calls[0]).toMatchObject({ amount: 4000, currency_code: "PEN", source_id: "tkn_test_1", metadata: { order_id: order.orderId } });
     const saved = await getOrderByNumber(db, order.number);
     expect(saved?.status).toBe("pagado");
@@ -96,7 +97,7 @@ describe("payOrderWithCulqi", () => {
     ]);
     expect(await payOrderWithCulqi(db, client, { orderId: order.orderId, tokenId: "tkn_test_2", email: "pago@example.com" })).toEqual({ status: "review" });
     const auth = { eci: "05", xid: "x", cavv: "c", protocolVersion: "2.1.0", directoryServerTransactionId: "d" };
-    expect(await payOrderWithCulqi(db, client, { orderId: order.orderId, tokenId: "tkn_test_2", email: "pago@example.com", authentication3DS: auth })).toEqual({ status: "paid" });
+    expect(await payOrderWithCulqi(db, client, { orderId: order.orderId, tokenId: "tkn_test_2", email: "pago@example.com", authentication3DS: auth })).toMatchObject({ status: "paid" });
     expect(calls[1]).toMatchObject({ authentication_3DS: auth });
   });
 
@@ -114,6 +115,7 @@ describe("payOrderWithCulqi", () => {
     const order = await newOrder();
     const { client, calls } = fakeCulqi([{ status: 201, body: { object: "charge", id: "chr_once" } }]);
     await payOrderWithCulqi(db, client, { orderId: order.orderId, tokenId: "tkn_a", email: "pago@example.com" });
+    // Sin `change`: el email de "pago confirmado" no se repite.
     expect(await payOrderWithCulqi(db, client, { orderId: order.orderId, tokenId: "tkn_b", email: "pago@example.com" })).toEqual({ status: "paid" });
     expect(calls).toHaveLength(1);
   });
@@ -130,7 +132,11 @@ describe("expireUnpaidCardOrders (cron)", () => {
     const in30 = new Date(Date.now() + 30 * 60 * 1000);
     expect((await expireUnpaidCardOrders(db, in30)).numbers).toEqual([]);
     const in90 = new Date(Date.now() + 90 * 60 * 1000);
-    expect((await expireUnpaidCardOrders(db, in90)).numbers).toEqual([card.number]);
+    const expired = await expireUnpaidCardOrders(db, in90);
+    expect(expired.numbers).toEqual([card.number]);
+    // Anulación automática: el plan de emails la reconoce por changedBy null + tarjeta + pendiente.
+    expect(expired.changes).toMatchObject([{ orderId: card.orderId, from: "pendiente", to: "anulado", changedBy: null, paymentMethod: "tarjeta", restocked: true }]);
+    expect(planOrderEmails({ type: "status", change: expired.changes[0] })).toEqual({ customer: "expirado", team: null });
 
     expect((await getOrderByNumber(db, card.number))?.status).toBe("anulado");
     expect((await getOrderByNumber(db, whatsapp.number))?.status).toBe("pendiente");
@@ -146,8 +152,13 @@ describe("handleCulqiEvent (webhook)", () => {
     const { client } = fakeCulqi([], { chr_wh: charge });
     const event = { object: "event", type: "charge.creation.succeeded", data: JSON.stringify({ id: "chr_wh" }) };
 
-    expect(await handleCulqiEvent(db, client, event)).toMatchObject({ handled: true, reason: "pedido marcado como pagado" });
-    expect(await handleCulqiEvent(db, client, event)).toMatchObject({ handled: true, reason: "ya estaba registrado" });
+    const first = await handleCulqiEvent(db, client, event);
+    expect(first).toMatchObject({ handled: true, reason: "pedido marcado como pagado" });
+    // El primer aviso trae el cambio (salen los emails); el repetido no, así no se duplican.
+    expect(first.change && planOrderEmails({ type: "status", change: first.change })).toEqual({ customer: "pagado", team: null });
+    const again = await handleCulqiEvent(db, client, event);
+    expect(again).toMatchObject({ handled: true, reason: "ya estaba registrado" });
+    expect(again.change).toBeUndefined();
     const rows = await db.select().from(schema.payments).where(eq(schema.payments.orderId, order.orderId));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ method: "yape", amountCents: 4000 });

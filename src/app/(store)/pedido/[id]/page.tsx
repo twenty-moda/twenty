@@ -8,7 +8,7 @@ import { CulqiPay } from "@/components/checkout/culqi-pay";
 import { culqiConfig } from "@/lib/culqi-config";
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
-import { formatOrderNumber, STATUS_INFO, type OrderStatus } from "@/lib/order-status";
+import { formatOrderNumber, ORDER_PROGRESS as PROGRESS, progressIndex, STATUS_INFO } from "@/lib/order-status";
 import { cn } from "@/lib/cn";
 import { getDb } from "@/server/db/client";
 import { getOrderForCustomer } from "@/server/services/orders";
@@ -17,14 +17,7 @@ import { getSiteSettings } from "../../_data";
 export const metadata: Metadata = { title: "Tu pedido", robots: { index: false } };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PROGRESS: { status: OrderStatus; label: string }[] = [
-  { status: "pendiente", label: "Pedido recibido" },
-  { status: "pagado", label: "Pago confirmado" },
-  { status: "en_preparacion", label: "Preparando" },
-  { status: "enviado", label: "En camino" },
-  { status: "entregado", label: "Entregado" },
-];
-const progressIndex = (s: OrderStatus) => (s === "por_verificar" ? 0 : PROGRESS.findIndex((p) => p.status === s));
+const messageDate = new Intl.DateTimeFormat("es-PE", { timeZone: "America/Lima", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 export default function OrderPage({ params, searchParams }: PageProps<"/pedido/[id]">) {
   return (
@@ -49,6 +42,8 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
   const whatsapp = settings.contact.whatsapp;
   const culqi = culqiConfig();
   const DeliveryIcon = order.shippingKind === "lima_delivery" ? Truck : order.shippingKind === "agency" ? Package : Store;
+  // Lo que el equipo le escribió al cambiar el estado (p. ej. la clave de recojo de Shalom), lo último primero.
+  const messages = order.history.filter((h) => h.customerMessage).reverse();
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -84,6 +79,24 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
             </p>
           ) : null}
         </>
+      ) : null}
+
+      {messages.length ? (
+        <section className="mt-8 rounded-2xl border border-line p-5" aria-labelledby="mensajes">
+          <h2 id="mensajes" className="flex items-center gap-2 font-semibold">
+            <MessageCircle className="size-5" aria-hidden /> Mensajes de TWENTY
+          </h2>
+          <ul className="mt-3 space-y-3 text-sm">
+            {messages.map((h) => (
+              <li key={h.id}>
+                <p className="whitespace-pre-line">{h.customerMessage}</p>
+                <p className="mt-0.5 text-xs text-subtle">
+                  {STATUS_INFO[h.toStatus].customerLabel} · {messageDate.format(h.createdAt)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {order.status === "pendiente" && order.paymentMethod === "tarjeta" ? (

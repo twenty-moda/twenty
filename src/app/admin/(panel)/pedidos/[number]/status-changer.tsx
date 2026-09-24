@@ -2,7 +2,7 @@
 
 import { MessageCircle } from "lucide-react";
 import { useActionState, useState } from "react";
-import { FormAlert } from "@/components/admin/form-controls";
+import { FormAlert, Toggle } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
 import { inputClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
@@ -27,9 +27,11 @@ type StatusChangerProps = {
   orderId: string;
   status: OrderStatus;
   whatsappHref: string | null;
+  /** Resend configurado: se puede avisar al cliente por email. */
+  emailEnabled: boolean;
 };
 
-export function StatusChanger({ orderId, status, whatsappHref }: StatusChangerProps) {
+export function StatusChanger({ orderId, status, whatsappHref, emailEnabled }: StatusChangerProps) {
   const [state, action, pending] = useActionState(changeStatusAction.bind(null, orderId), idle);
   const [confirming, setConfirming] = useState<OrderStatus | null>(null);
   const next = allowedTransitions(status);
@@ -47,10 +49,18 @@ export function StatusChanger({ orderId, status, whatsappHref }: StatusChangerPr
     <form action={action} className="space-y-4">
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium">
-          Nota <span className="font-normal text-subtle">(opcional, queda en el historial)</span>
+          Nota interna <span className="font-normal text-subtle">(opcional, solo la ve el equipo)</span>
         </span>
         <input name="note" placeholder="Ej. Pagó con Yape, operación 123456" className={inputClass} />
       </label>
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-medium">
+          Mensaje para el cliente{" "}
+          <span className="font-normal text-subtle">(opcional, lo ve en {emailEnabled ? "el email y en " : ""}la página de su pedido)</span>
+        </span>
+        <input name="customerMessage" maxLength={1000} placeholder="Ej. Tu clave de recojo en Shalom es 1234" className={inputClass} />
+      </label>
+      {emailEnabled ? <Toggle name="notifyCustomer" defaultChecked label="Avisar al cliente por email" hint="Le llega un email con el nuevo estado de su pedido." /> : null}
       <div className="flex flex-wrap gap-2">
         {next.map((to) => {
           const danger = DANGER.includes(to);

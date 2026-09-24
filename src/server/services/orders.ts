@@ -180,6 +180,7 @@ async function loadOrder(db: Db, where: ReturnType<typeof eq>) {
         fromStatus: orderStatusHistory.fromStatus,
         toStatus: orderStatusHistory.toStatus,
         note: orderStatusHistory.note,
+        customerMessage: orderStatusHistory.customerMessage,
         createdAt: orderStatusHistory.createdAt,
         changedByName: users.name,
       })
@@ -197,12 +198,17 @@ export function getOrderByNumber(db: Db, number: number) {
   return loadOrder(db, eq(orders.number, number));
 }
 
+/** Pedido completo (con notas internas): solo para el equipo y los emails. */
+export function getOrderById(db: Db, id: string) {
+  return loadOrder(db, eq(orders.id, id));
+}
+
 /** Vista del cliente (por el id no adivinable del enlace). Sin notas internas. */
 export async function getOrderForCustomer(db: Db, id: string) {
   const order = await loadOrder(db, eq(orders.id, id));
   if (!order) return null;
   const { internalNote: _internal, history, ...rest } = order;
-  return { ...rest, history: history.map(({ changedByName: _by, ...h }) => h) };
+  return { ...rest, history: history.map(({ changedByName: _by, note: _note, ...h }) => h) };
 }
 
 /**
@@ -274,14 +280,26 @@ export async function countOrdersByStatus(db: Db) {
 
 // ─── Cambios de estado ───────────────────────────────────────────────────────
 
+/** Un cambio de estado ya guardado: con esto se decide qué emails salen (ver order-notifications.ts). */
+export type StatusChange = {
+  orderId: string;
+  /** Fila del historial (sirve de clave para no mandar el mismo email dos veces). */
+  historyId: string;
+  from: OrderStatus;
+  to: OrderStatus;
+  changedBy: string | null;
+  restocked: boolean;
+  paymentMethod: (typeof orders.$inferSelect)["paymentMethod"];
+};
+
 export type ChangeStatusResult =
-  | { ok: true; restocked: boolean; productSlugs: string[] }
+  | { ok: true; restocked: boolean; productSlugs: string[]; change: StatusChange }
   | { ok: false; message: string };
 
 /** Cambia el estado con historial. Al anular o rechazar devuelve el stock (una sola vez). */
 export async function changeOrderStatus(
   db: Db,
-  input: { orderId: string; to: OrderStatus; note?: string | null; userId: string | null },
+  input: { orderId: string; to: OrderStatus; note?: string | null; customerMessage?: string | null; userId: string | null },
 ): Promise<ChangeStatusResult> {
   return db.transaction(async (tx) => {
     const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId)).for("update").limit(1);
@@ -311,14 +329,31 @@ export async function changeOrderStatus(
       .update(orders)
       .set({ status: input.to, updatedAt: now, ...(restocked ? { stockRestoredAt: now } : {}) })
       .where(eq(orders.id, order.id));
-    await tx.insert(orderStatusHistory).values({
-      orderId: order.id,
-      fromStatus: order.status,
-      toStatus: input.to,
-      note: input.note?.trim() || null,
-      changedBy: input.userId,
-    });
-    return { ok: true, restocked, productSlugs };
+    const [history] = await tx
+      .insert(orderStatusHistory)
+      .values({
+        orderId: order.id,
+        fromStatus: order.status,
+        toStatus: input.to,
+        note: input.note?.trim() || null,
+        customerMessage: input.customerMessage?.trim() || null,
+        changedBy: input.userId,
+      })
+      .returning({ id: orderStatusHistory.id });
+    return {
+      ok: true,
+      restocked,
+      productSlugs,
+      change: {
+        orderId: order.id,
+        historyId: history.id,
+        from: order.status,
+        to: input.to,
+        changedBy: input.userId,
+        restocked,
+        paymentMethod: order.paymentMethod,
+      },
+    };
   });
 }
 
@@ -438,7 +473,7 @@ export const CARD_PAYMENT_WINDOW_MINUTES = 60;
  * Anula los pedidos con tarjeta que no se pagaron a tiempo y devuelve su stock (lo corre el cron).
  * Los de Yape con QR y WhatsApp no se anulan solos: el equipo decide, porque suelen pagar más tarde.
  */
-export async function expireUnpaidCardOrders(db: Db, now = new Date()): Promise<{ numbers: number[]; productSlugs: string[] }> {
+export async function expireUnpaidCardOrders(db: Db, now = new Date()): Promise<{ numbers: number[]; productSlugs: string[]; changes: StatusChange[] }> {
   const before = new Date(now.getTime() - CARD_PAYMENT_WINDOW_MINUTES * 60 * 1000);
   const stale = await db
     .select({ id: orders.id, number: orders.number })
@@ -446,6 +481,7 @@ export async function expireUnpaidCardOrders(db: Db, now = new Date()): Promise<
     .where(and(eq(orders.status, "pendiente"), eq(orders.paymentMethod, "tarjeta"), lte(orders.createdAt, before), isNull(orders.stockRestoredAt)));
   const numbers: number[] = [];
   const productSlugs = new Set<string>();
+  const changes: StatusChange[] = [];
   for (const order of stale) {
     const result = await changeOrderStatus(db, {
       orderId: order.id,
@@ -455,8 +491,9 @@ export async function expireUnpaidCardOrders(db: Db, now = new Date()): Promise<
     });
     if (result.ok) {
       numbers.push(order.number);
+      changes.push(result.change);
       for (const slug of result.productSlugs) productSlugs.add(slug);
     }
   }
-  return { numbers, productSlugs: [...productSlugs] };
+  return { numbers, productSlugs: [...productSlugs], changes };
 }
