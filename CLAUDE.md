@@ -134,7 +134,9 @@ pnpm test | pnpm test:int | pnpm lint | pnpm typecheck | pnpm build
 ```
 DATABASE_URL="$(grep '^DATABASE_URL_UNPOOLED=' .env.neon | cut -d= -f2- | tr -d '"')" pnpm db:migrate
 ```
-Ojo: `neon link` y `vercel link` escriben en `.env.local` (`DATABASE_URL` de Neon, `VERCEL_OIDC_TOKEN`); si se vuelven a correr, devolver `DATABASE_URL` de `.env.local` a la BD de Docker.
+Ojo: `neon link`, `vercel link` y `vercel blob create-store` escriben en `.env.local` (este último lo **reemplaza entero**); si se vuelven a correr, restaurarlo desde `.env.example` y devolver `DATABASE_URL` a la BD de Docker.
+
+**Imágenes (Vercel Blob):** store público `twenty-media` (`store_aBAb8Q5RsCJSFi6X`, región `iad1`), conectado a Production y Preview; `NEXT_PUBLIC_MEDIA_URL=https://abab8q5rscjsfi6x.public.blob.vercel-storage.com`. `server/storage.ts` usa Blob si hay `BLOB_READ_WRITE_TOKEN`, si no R2 (`R2_*`), si no la carpeta local. Cada archivo tiene nombre único y caché de un año (las fotos por SKU se guardan como `item/TMW-0001-<8 hex>.webp` y reemplazan la anterior). Para subir las imágenes que usa la BD: `DATABASE_URL=<neon directa> BLOB_READ_WRITE_TOKEN=<token de Vercel> pnpm media:upload` (salta las que ya están). Plan Hobby: 1 GB, 2.000 escrituras y 10 GB de transferencia al mes, y si se pasa **Blob se bloquea 30 días**: antes de vender, pasar a Vercel Pro. `vercel blob put` falla en Node 26 (bug de la CLI): usar `pnpm media:upload`.
 
 **Vercel:** proyecto `twentymoda` del equipo "Twenty" (`twenty10`, plan Hobby), conectado a `twenty-moda/twenty`: cada push a `main` despliega a producción (https://twentymoda.vercel.app hasta conectar el dominio). Funciones en `iad1`. Las variables de Production y Preview son *sensibles*: `vercel env pull` las devuelve vacías, así que se cargan por stdin (`printf '%s' "$VALOR" | vercel env add NOMBRE production --sensitive --yes`). Los despliegues de Preview usan la rama `preview` de Neon (URLs `PREVIEW_*` en `.env.neon`) para no escribir en producción: **cada migración se aplica a las dos ramas.**
 

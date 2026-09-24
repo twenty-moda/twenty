@@ -62,8 +62,9 @@ export async function uploadSkuPhotoAction(fd: FormData): Promise<PhotoResult> {
   if (!target) return { ok: false, message: `No hay ninguna prenda con el SKU ${parsed.sku}.` };
   try {
     const base = parsed.position ? `${parsed.sku}_${String(parsed.position).padStart(2, "0")}` : parsed.sku;
-    const path = await saveImage(await file.arrayBuffer(), "item", base);
-    await attachPhoto(db, target, path, parsed.position);
+    // Nombre nuevo en cada subida (el CDN guarda las fotos un año); attachPhoto reemplaza la versión anterior.
+    const path = await saveImage(await file.arrayBuffer(), "item", `${base}-${crypto.randomUUID().slice(0, 8)}`);
+    await attachPhoto(db, target, path, parsed.position, base);
   } catch (error) {
     if (error instanceof InvalidImageError) return { ok: false, message: error.message };
     throw error;

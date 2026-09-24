@@ -7,7 +7,7 @@ const TRANSFORM = process.env.NEXT_PUBLIC_MEDIA_TRANSFORM;
 /**
  * Las rutas relativas ("item/TMW-0001.webp") se resuelven contra el bucket de medios (R2/S3 + CDN).
  * Las que empiezan con "/" son archivos de /public. Con NEXT_PUBLIC_MEDIA_TRANSFORM=cloudflare
- * el CDN entrega cada imagen al ancho pedido; si no, se sirve el original y el ancho va como query.
+ * el CDN entrega cada imagen al ancho pedido; si no, se sirve el original.
  */
 export default function mediaLoader({ src, width, quality }: LoaderArgs): string {
   const isAbsolute = /^https?:\/\//.test(src);
@@ -17,5 +17,6 @@ export default function mediaLoader({ src, width, quality }: LoaderArgs): string
     const { origin, pathname } = new URL(url);
     return `${origin}/cdn-cgi/image/width=${width},quality=${quality ?? 75},format=auto${pathname}`;
   }
-  return `${url}${url.includes("?") ? "&" : "?"}w=${width}`;
+  // Sin transformación se sirve el original: la misma URL para todos los anchos, así el CDN la guarda una sola vez.
+  return url;
 }

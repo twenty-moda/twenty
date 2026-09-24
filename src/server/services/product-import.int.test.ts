@@ -68,3 +68,22 @@ describe("parsePhotoName", () => {
     expect(parsePhotoName("foto sin sku.png")).toBeNull();
   });
 });
+
+describe("fotos por SKU", () => {
+  it("una nueva subida del mismo SKU y posición reemplaza la foto anterior (nombre nuevo, misma posición)", async () => {
+    const { attachPhoto, findVariantForPhoto } = await import("./product-import");
+    const [variant] = await db.select().from(schema.productVariants).where(eq(schema.productVariants.sku, "TMW-9001"));
+    const target = await findVariantForPhoto(db, "TMW-9001");
+    if (!variant || !target) throw new Error("falta la variante de prueba");
+    const photos = () => db.select().from(schema.productImages).where(eq(schema.productImages.productId, target.productId)).orderBy(schema.productImages.path);
+
+    await attachPhoto(db, target, "item/TMW-9001.webp", 0, "TMW-9001");
+    await attachPhoto(db, target, "item/TMW-9001_02-aaaaaaaa.webp", 2, "TMW-9001_02");
+    await attachPhoto(db, target, "item/TMW-9001-bbbbbbbb.webp", 0, "TMW-9001");
+
+    const paths = (await photos()).map((p) => p.path);
+    expect(paths).toContain("item/TMW-9001-bbbbbbbb.webp");
+    expect(paths).toContain("item/TMW-9001_02-aaaaaaaa.webp");
+    expect(paths).not.toContain("item/TMW-9001.webp");
+  });
+});

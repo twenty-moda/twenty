@@ -9,7 +9,7 @@ import { formatPrice } from "@/lib/money";
 import type { ImportIssue, ImportRow, ParsedSheet } from "@/lib/product-import";
 import { slugify } from "@/lib/slug";
 import type { Db } from "../db/client";
-import { categories, colors, fits, products, productVariants, sizes } from "../db/schema";
+import { categories, colors, fits, productImages, products, productVariants, sizes } from "../db/schema";
 import { addProductImage, ensureColor, ensureSize, nextSku } from "./admin-products";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -283,6 +283,28 @@ export async function findVariantForPhoto(db: Db, sku: string) {
   return row ?? null;
 }
 
-export async function attachPhoto(db: Db, target: { productId: string; colorId: string; productName: string; colorName: string }, path: string, position: number) {
-  await addProductImage(db, { productId: target.productId, colorId: target.colorId, path, alt: `${target.productName} - ${target.colorName}`, position });
+/**
+ * Asigna una foto subida con el nombre del SKU. Cada subida se guarda con un nombre nuevo
+ * ("item/TMW-0001-a1b2c3d4.webp") para que el CDN nunca muestre la versión anterior; si el producto ya tenía
+ * una foto de ese mismo SKU y posición (`base`, p. ej. "TMW-0001" o "TMW-0001_02"), esta la reemplaza.
+ */
+export async function attachPhoto(
+  db: Db,
+  target: { productId: string; colorId: string; productName: string; colorName: string },
+  path: string,
+  position: number,
+  base: string,
+) {
+  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const previous = await db
+    .delete(productImages)
+    .where(and(eq(productImages.productId, target.productId), sql`${productImages.path} ~ ${`^item/${escaped}(-[0-9a-f]{8})?\\.webp$`}`))
+    .returning({ position: productImages.position });
+  await addProductImage(db, {
+    productId: target.productId,
+    colorId: target.colorId,
+    path,
+    alt: `${target.productName} - ${target.colorName}`,
+    position: previous[0]?.position ?? position,
+  });
 }

@@ -17,10 +17,12 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/server/db/seed/run.ts",
     "db:seed:demo": "tsx src/server/db/seed/demo-orders.ts",
+    "media:upload": "tsx src/server/db/seed/upload-media.ts",
     "admin:create": "tsx src/server/db/seed/create-admin.ts",
     "db:setup": "pnpm db:up && pnpm db:migrate && pnpm db:seed"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
     "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.3",
