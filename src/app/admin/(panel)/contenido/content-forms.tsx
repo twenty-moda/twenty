@@ -144,13 +144,25 @@ export function SlideForm({ slide }: { slide?: Slide }) {
       </div>
       <FieldError state={state} name="image" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Text label="Título corto" name="title" defaultValue={slide?.title} placeholder="Tendencia juvenil" />
-        <Text label="Titular grande (H1)" name="seoHeading" defaultValue={slide?.seoHeading ?? ""} placeholder="Moda joven en TWENTY" />
+        <Text label="Título corto" name="title" defaultValue={slide?.title} placeholder="Lanzamiento de nueva temporada" hint="La etiqueta que va sobre el titular." />
+        <Text
+          label="Titular grande (H1)"
+          name="seoHeading"
+          defaultValue={slide?.seoHeading ?? ""}
+          placeholder="Aduéñate de la calle"
+          hint="Sale enorme en el inicio; la última palabra va en contorno. Mejor corto: 2 a 4 palabras."
+        />
       </div>
       <Text label="Texto" name="description" defaultValue={slide?.description ?? ""} placeholder="Opcional" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr_100px]">
         <Text label="Botón" name="ctaLabel" defaultValue={slide?.ctaLabel ?? ""} placeholder="Ver catálogo" />
-        <Text label="Enlace" name="href" defaultValue={slide?.href ?? ""} placeholder="/catalogo?categoria=jacket" hint="Una página de la tienda, p. ej. /catalogo?promo=…" />
+        <Text
+          label="Enlace"
+          name="href"
+          defaultValue={slide?.href ?? ""}
+          placeholder="/catalogo?categoria=jacket"
+          hint="Una página de la tienda, p. ej. /catalogo?promo=… Si es una prenda (/product/…), su precio aparece sobre la foto."
+        />
         <Text label="Orden" name="position" type="number" defaultValue={String(slide?.position ?? 0)} />
       </div>
       <FieldError state={state} name="href" />

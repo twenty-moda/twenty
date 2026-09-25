@@ -13,8 +13,9 @@ export type ImageSpec = {
 
 export const IMAGE_SPECS = {
   product: { width: 1200, height: 1600, shape: "vertical 3:4" },
-  bannerDesktop: { width: 1200, height: 1200, shape: "cuadrada", note: "Deja el texto lejos de los bordes." },
-  bannerMobile: { width: 1080, height: 1080, shape: "cuadrada", note: "Deja el texto lejos de los bordes." },
+  // Hero de la portada: la web pone el titular y los botones, así que la foto va limpia.
+  bannerDesktop: { width: 1200, height: 1500, shape: "vertical 4:5", note: "Una foto sin texto encima: el titular y el botón los pone la web. Lo importante al centro." },
+  bannerMobile: { width: 1080, height: 1350, shape: "vertical 4:5", note: "Sin texto encima: en el teléfono ocupa toda la pantalla y el titular va abajo. La persona al centro y arriba." },
   category: { width: 900, height: 1200, shape: "vertical 3:4" },
   post: { width: 1600, height: 1200, shape: "horizontal 4:3", note: "En la lista se ve cuadrada: lo importante al centro." },
   about: { width: 1600, height: 1200, shape: "horizontal 4:3", note: "En computadora se recorta arriba y abajo." },

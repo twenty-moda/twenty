@@ -44,7 +44,8 @@ describe("imageWarnings", () => {
     expect(imageWarnings({ width: 600, height: 800 }, IMAGE_SPECS.product)).toEqual([
       "Mide 600 × 800 px: puede verse borrosa. Lo ideal es 1200 × 1600 px.",
     ]);
-    expect(imageWarnings({ width: 1920, height: 1080 }, IMAGE_SPECS.bannerDesktop)).toEqual(["No es cuadrada: en la tienda se recortará a los costados."]);
+    // El banner del inicio es vertical (foto del hero): una horizontal se recorta a los costados.
+    expect(imageWarnings({ width: 2400, height: 1600 }, IMAGE_SPECS.bannerDesktop)).toEqual(["No es vertical 4:5: en la tienda se recortará a los costados."]);
     expect(imageWarnings({ width: 1200, height: 1200 }, IMAGE_SPECS.product)).toEqual(["No es vertical 3:4: en la tienda se recortará a los costados."]);
   });
 });
