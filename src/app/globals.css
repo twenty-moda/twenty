@@ -344,8 +344,10 @@ html[data-splash="out"] {
 /* Botón flotante de WhatsApp (components/store/whatsapp-float.tsx). En el teléfono sube por encima de la barra de
    compra fija (ficha, carrito, checkout: alto = pt-3 + botón h-13 + borde + pb-safe) y no se muestra en el checkout,
    que marca [data-hide-whatsapp]. Aparece después de la pantalla de carga. */
-.whatsapp-float {
+:root {
   --sticky-bar: calc(0.75rem + 3.25rem + 1px + max(env(safe-area-inset-bottom), 0.75rem));
+}
+.whatsapp-float {
   bottom: max(env(safe-area-inset-bottom), 1rem);
   transition: bottom 200ms ease;
   animation: whatsapp-in 450ms cubic-bezier(0.2, 0.8, 0.2, 1) 700ms both;
@@ -367,6 +369,31 @@ html[data-splash="out"] {
 }
 html:has([data-hide-whatsapp]) .whatsapp-float {
   display: none;
+}
+
+/* Crédito al final del footer (components/store/site-footer.tsx): debajo deja libre el alto del botón de WhatsApp
+   (botón de 3.5rem + su distancia al borde + aire) y de la barra de compra fija, para que al llegar al final de la
+   página nada lo tape. */
+.footer-credit {
+  padding-bottom: 1.5rem;
+}
+html:has(.whatsapp-float) .footer-credit {
+  padding-bottom: calc(max(env(safe-area-inset-bottom), 1rem) + 4.5rem);
+}
+@media (width >= 64rem) {
+  html:has(.whatsapp-float) .footer-credit {
+    padding-bottom: 6rem;
+  }
+}
+@media (width < 48rem) {
+  html:has([data-sticky-bar="md"]) .footer-credit {
+    padding-bottom: calc(var(--sticky-bar) + 5.25rem);
+  }
+}
+@media (width < 64rem) {
+  html:has([data-sticky-bar="lg"]) .footer-credit {
+    padding-bottom: calc(var(--sticky-bar) + 5.25rem);
+  }
 }
 @keyframes whatsapp-in {
   from {

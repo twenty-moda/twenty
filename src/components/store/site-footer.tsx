@@ -132,22 +132,30 @@ export function SiteFooter({ categories, showPromos, settings, year }: SiteFoote
               </li>
             ))}
           </ul>
-          <div className="flex flex-col gap-1 text-xs text-subtle md:items-end">
-            <p>
-              © {year} TWENTY{company.legalName ? ` · ${company.legalName}` : ""}
-              {company.ruc ? ` · RUC ${company.ruc}` : ""}
-            </p>
-            {/* Sin noreferrer: así la visita llega a la analítica de Mathyu's Solutions como referida desde la tienda. */}
-            <a
-              href="https://mathyusolutions.com/es/"
-              target="_blank"
-              rel="noopener"
-              className="group inline-flex min-h-10 items-center self-start md:self-auto pointer-fine:min-h-0"
-            >
-              Web hecha por&nbsp;<span className="font-semibold text-muted underline underline-offset-4 group-hover:text-white">Mathyu&apos;s Solutions</span>
-            </a>
-          </div>
+          <p className="text-xs text-subtle">
+            © {year} TWENTY{company.legalName ? ` · ${company.legalName}` : ""}
+            {company.ruc ? ` · RUC ${company.ruc}` : ""}
+          </p>
         </div>
+      </div>
+
+      {/* Crédito de quien hizo la web. Sin noreferrer: así la visita llega a la analítica de Mathyu's Solutions como
+          referida desde la tienda. `.footer-credit` (globals.css) deja libre abajo el alto del botón de WhatsApp. */}
+      <div className="footer-credit border-t border-line px-4 pt-6 text-center">
+        <a
+          href="https://mathyusolutions.com/es/"
+          target="_blank"
+          rel="noopener"
+          className="group inline-flex flex-col items-center gap-0.5 rounded-xl border border-line px-5 py-2.5 hover:border-white/40"
+        >
+          <span className="text-[11px] font-semibold tracking-widest text-muted uppercase">Web hecha por</span>
+          <span className="inline-flex items-center gap-1.5 text-base font-bold">
+            Mathyu&apos;s Solutions
+            <svg viewBox="0 0 16 16" className="size-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden>
+              <path d="M5 11 11 5M6 5h5v5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        </a>
       </div>
     </footer>
   );
