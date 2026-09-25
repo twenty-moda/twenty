@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Suspense } from "react";
+import { OutfitExperience } from "@/components/product/outfit-experience";
 import { ProductDetails } from "@/components/product/product-details";
 import { ProductExperience } from "@/components/product/product-experience";
 import { JsonLd } from "@/components/store/json-ld";
@@ -17,7 +18,7 @@ export async function generateMetadata({ params }: PageProps<"/product/[slug]">)
   const { slug } = await params;
   const product = await getProduct(slug);
   if (!product) return { title: "Producto no encontrado", robots: { index: false } };
-  const image = product.colors[0]?.images[0];
+  const image = product.kind === "outfit" ? product.images[0] : product.colors[0]?.images[0];
   const description =
     product.metaDescription ??
     [product.description, `${product.category.name}${product.fit ? ` ${product.fit.name}` : ""} de TWENTY. Envío en 24 a 48 horas en Lima.`]
@@ -51,7 +52,6 @@ async function ProductContent({ params }: Pick<PageProps<"/product/[slug]">, "pa
 
   const [cards, settings] = await Promise.all([getProductCards(), getSiteSettings()]);
   const related = cards.filter((c) => c.category.slug === product.category.slug && c.id !== product.id && c.inStock).slice(0, 8);
-  const prices = product.variants.map((v) => v.priceCents / 100);
   const url = `${siteUrl()}/product/${product.slug}`;
   const breadcrumbs = [
     { href: "/catalogo", label: "Catálogo" },
@@ -59,15 +59,45 @@ async function ProductContent({ params }: Pick<PageProps<"/product/[slug]">, "pa
     ...(product.fit ? [{ href: catalogUrl({ categoria: product.category.slug, fit: product.fit.slug }), label: product.fit.name }] : []),
   ];
 
+  const details = <ProductDetails description={product.description} shipping={settings.productInfo.shipping} returns={settings.productInfo.returns} />;
+
+  if (product.kind === "outfit") {
+    const available = product.pieces.every((piece) => piece.variants.some((v) => v.stock > 0));
+    return (
+      <>
+        <OutfitExperience outfit={product} whatsapp={settings.contact.whatsapp} breadcrumbs={breadcrumbs} details={details} />
+        <ProductRail title="Más conjuntos" products={related} href={catalogUrl({ categoria: product.category.slug })} layout="rail" morph />
+        <JsonLd
+          data={{
+            "@context": "https://schema.org",
+            "@type": "Product",
+            name: product.name,
+            description: product.description ?? undefined,
+            image: product.images.slice(0, 3).map((i) => absoluteMediaUrl(i.path)),
+            brand: { "@type": "Brand", name: "TWENTY" },
+            category: product.category.name,
+            offers: {
+              "@type": "Offer",
+              url,
+              priceCurrency: "PEN",
+              price: product.priceCents / 100,
+              availability: available ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            },
+          }}
+        />
+      </>
+    );
+  }
+
+  const prices = product.variants.map((v) => v.priceCents / 100);
+  // Conjuntos que llevan esta prenda: se ofrecen arriba de "También te puede gustar".
+  const outfits = cards.filter((c) => c.outfit?.pieceProductIds.includes(product.id) && c.inStock);
+
   return (
     <>
-      <ProductExperience
-        product={product}
-        whatsapp={settings.contact.whatsapp}
-        breadcrumbs={breadcrumbs}
-        details={<ProductDetails description={product.description} shipping={settings.productInfo.shipping} returns={settings.productInfo.returns} />}
-      />
+      <ProductExperience product={product} whatsapp={settings.contact.whatsapp} breadcrumbs={breadcrumbs} details={details} />
 
+      {outfits.length ? <ProductRail title="Cómpralo en conjunto" products={outfits} layout="rail" /> : null}
       <ProductRail title="También te puede gustar" products={related} href={catalogUrl({ categoria: product.category.slug })} layout="rail" morph />
 
       <JsonLd

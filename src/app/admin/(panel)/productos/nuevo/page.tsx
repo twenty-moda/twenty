@@ -9,17 +9,22 @@ import { ProductForm } from "../product-form";
 export const instant = false;
 export const metadata: Metadata = { title: "Nuevo producto" };
 
-export default async function NewProductPage() {
+export default async function NewProductPage({ searchParams }: PageProps<"/admin/productos/nuevo">) {
   await requireAdmin();
+  const outfit = (await searchParams).tipo === "conjunto";
   const options = await getCatalogOptions(getDb());
   return (
     <AdminPage
       back={{ href: "/admin/productos", label: "Productos" }}
-      title="Nuevo producto"
-      description="Paso 1: los datos. Luego agregas variantes (color y talla) y fotos. ¿Son muchos? Usa la carga masiva con Excel."
+      title={outfit ? "Nuevo conjunto" : "Nuevo producto"}
+      description={
+        outfit
+          ? "Paso 1: los datos. Luego eliges sus prendas (el cliente escoge color y talla de cada una), el precio del conjunto y sus fotos."
+          : "Paso 1: los datos. Luego agregas variantes (color y talla) y fotos. ¿Son muchos? Usa la carga masiva con Excel."
+      }
     >
       <Card>
-        <ProductForm productId={null} categories={options.categories} fits={options.fits} />
+        <ProductForm productId={null} kind={outfit ? "outfit" : "single"} categories={options.categories} fits={options.fits} />
       </Card>
     </AdminPage>
   );

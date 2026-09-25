@@ -76,7 +76,8 @@ export function CatalogBrowser({ products, categories, showPromos }: CatalogBrow
       <div className="px-4 pt-6 lg:px-6">
         <h1 className="text-2xl font-extrabold tracking-tight uppercase [overflow-wrap:anywhere] md:text-3xl">{category?.name ?? "Catálogo"}</h1>
         <p className="mt-1 text-sm text-muted" aria-live="polite">
-          {results.length} {results.length === 1 ? "prenda" : "prendas"}
+          {results.length}{" "}
+          {results.length && results.every((r) => r.outfit) ? (results.length === 1 ? "conjunto" : "conjuntos") : results.length === 1 ? "prenda" : "prendas"}
         </p>
       </div>
 

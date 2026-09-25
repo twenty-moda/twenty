@@ -36,7 +36,10 @@ export async function getProduct(slug: string) {
   "use cache";
   cacheLife("hours");
   cacheTag(cacheTags.catalog, cacheTags.product(slug));
-  return catalog.getProductDetail(getDb(), slug);
+  const product = await catalog.getProductDetail(getDb(), slug);
+  // Un conjunto muestra el stock y los precios de sus prendas: se refresca también cuando cambia alguna.
+  if (product?.kind === "outfit") cacheTag(...product.pieces.map((piece) => cacheTags.product(piece.slug)));
+  return product;
 }
 
 export async function getLegacyProductUrl(slug: string) {

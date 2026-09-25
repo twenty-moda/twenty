@@ -5,6 +5,7 @@
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL, formatOrderNumber, ORDER_PROGRESS, PAYMENT_METHOD_LABEL, progressIndex, type OrderStatus } from "@/lib/order-status";
+import { groupOrderItems } from "@/lib/outfits";
 import type { SiteSettings } from "./content";
 import type { EmailBlock, EmailContent } from "./email-layout";
 import type { OrderDetail } from "./orders";
@@ -32,15 +33,28 @@ function totalsBlock(order: OrderDetail): EmailBlock {
   };
 }
 
+/** Prendas del pedido. Un conjunto va en un solo renglón con cada pieza (y su SKU para el equipo) debajo. */
 function itemsBlock(order: OrderDetail, withSku = false): EmailBlock {
   return {
     type: "items",
-    items: order.items.map((i) => ({
-      name: i.productName,
-      detail: [withSku && i.sku, i.colorName, `Talla ${i.sizeLabel}`, `x${i.quantity}`].filter(Boolean).join(" · "),
-      price: formatPrice(i.totalCents),
-      image: i.image,
-    })),
+    items: groupOrderItems(order.items).map((group) =>
+      group.kind === "single"
+        ? {
+            name: group.item.productName,
+            detail: [withSku && group.item.sku, group.item.colorName, `Talla ${group.item.sizeLabel}`, `x${group.item.quantity}`].filter(Boolean).join(" · "),
+            price: formatPrice(group.item.totalCents),
+            image: group.item.image,
+          }
+        : {
+            name: group.name,
+            detail: [
+              ...group.items.map((i) => `${i.productName}: ${[withSku && i.sku, i.colorName, `talla ${i.sizeLabel}`].filter(Boolean).join(" · ")}`),
+              `Conjunto · x${group.quantity}`,
+            ].join("\n"),
+            price: formatPrice(group.totalCents),
+            image: group.items[0].image,
+          },
+    ),
   };
 }
 

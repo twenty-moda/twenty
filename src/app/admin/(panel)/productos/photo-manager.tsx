@@ -12,12 +12,25 @@ import { deletePhotoAction, movePhotoAction, setPhotoColorAction, uploadProductP
 type Photo = { id: string; path: string; colorId: string | null };
 type Color = { id: string; name: string };
 
-export function PhotoManager({ productId, photos, colors }: { productId: string; photos: Photo[]; colors: Color[] }) {
+/** `outfit`: fotos de un conjunto (sin colores: todas juntas, la primera es la principal). */
+export function PhotoManager({ productId, photos, colors, outfit = false }: { productId: string; photos: Photo[]; colors: Color[]; outfit?: boolean }) {
   const knownColor = new Set(colors.map((c) => c.id));
   const groups: { color: Color | null; photos: Photo[] }[] = [
     ...colors.map((c) => ({ color: c, photos: photos.filter((p) => p.colorId === c.id) })),
     { color: null, photos: photos.filter((p) => !p.colorId || !knownColor.has(p.colorId)) },
   ];
+
+  if (outfit) {
+    return (
+      <div className="space-y-6">
+        <p className="text-sm text-muted">
+          Fotos del conjunto puesto (la primera es la principal). Las de cada prenda se toman de su ficha al elegir color. Tamaño ideal:{" "}
+          {specLabel(IMAGE_SPECS.product)}. {FORMAT_HINT}
+        </p>
+        <PhotoGroup productId={productId} color={null} photos={photos} colors={[]} title="Fotos del conjunto" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -34,7 +47,7 @@ export function PhotoManager({ productId, photos, colors }: { productId: string;
   );
 }
 
-function PhotoGroup({ productId, color, photos, colors }: { productId: string; color: Color | null; photos: Photo[]; colors: Color[] }) {
+function PhotoGroup({ productId, color, photos, colors, title }: { productId: string; color: Color | null; photos: Photo[]; colors: Color[]; title?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +76,7 @@ function PhotoGroup({ productId, color, photos, colors }: { productId: string; c
     <section>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="font-semibold">
-          {color ? color.name : "Sin color asignado"} <span className="text-sm font-normal text-muted">· {photos.length} {photos.length === 1 ? "foto" : "fotos"}</span>
+          {title ?? (color ? color.name : "Sin color asignado")} <span className="text-sm font-normal text-muted">· {photos.length} {photos.length === 1 ? "foto" : "fotos"}</span>
         </h3>
         <input ref={inputRef} type="file" accept="image/*" multiple className="sr-only" onChange={(e) => e.target.files?.length && upload(e.target.files)} id={`upload-${color?.id ?? "general"}`} />
         <label htmlFor={`upload-${color?.id ?? "general"}`} className={cn(buttonClass("secondary", "sm"), "cursor-pointer", progress && "pointer-events-none opacity-60")}>
@@ -82,7 +95,7 @@ function PhotoGroup({ productId, color, photos, colors }: { productId: string; c
             <li key={p.id} className="group relative overflow-hidden rounded-lg border border-line bg-raised">
               <div className="relative aspect-3/4">
                 <Image src={p.path} alt="" fill sizes="160px" className="object-cover" />
-                {i === 0 && color ? <span className="absolute top-1 left-1 rounded bg-white px-1.5 py-0.5 text-[11px] font-bold text-black">Principal</span> : null}
+                {i === 0 && (color || title) ? <span className="absolute top-1 left-1 rounded bg-white px-1.5 py-0.5 text-[11px] font-bold text-black">Principal</span> : null}
               </div>
               <div className="flex items-center gap-0.5 p-1">
                 <button type="button" aria-label="Mover antes" disabled={i === 0} onClick={() => startTransition(() => movePhotoAction(p.id, -1))} className="grid h-10 min-w-0 flex-1 place-items-center rounded-md hover:bg-surface disabled:opacity-30">
@@ -108,19 +121,21 @@ function PhotoGroup({ productId, color, photos, colors }: { productId: string; c
                   <Trash2 className="size-4" aria-hidden />
                 </button>
               </div>
-              <select
-                aria-label="Color de la foto"
-                value={p.colorId ?? ""}
-                onChange={(e) => startTransition(() => setPhotoColorAction(p.id, e.target.value || null))}
-                className="w-full border-t border-line bg-surface px-1 py-1.5 text-xs"
-              >
-                <option value="">Sin color</option>
-                {colors.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              {colors.length ? (
+                <select
+                  aria-label="Color de la foto"
+                  value={p.colorId ?? ""}
+                  onChange={(e) => startTransition(() => setPhotoColorAction(p.id, e.target.value || null))}
+                  className="w-full border-t border-line bg-surface px-1 py-1.5 text-xs"
+                >
+                  <option value="">Sin color</option>
+                  {colors.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -131,7 +146,7 @@ function PhotoGroup({ productId, color, photos, colors }: { productId: string; c
           className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line py-8 text-sm text-muted hover:border-white/40"
         >
           <ImagePlus className="size-6" aria-hidden />
-          Sube las fotos de {color?.name ?? "este producto"}
+          Sube las fotos de {color?.name ?? (title ? "este conjunto" : "este producto")}
         </button>
       )}
     </section>

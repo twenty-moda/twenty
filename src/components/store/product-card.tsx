@@ -74,8 +74,17 @@ export function ProductCard({ product, eager = false, sizes = "(min-width: 1024p
 
         <div className="mt-2.5 space-y-1 px-0.5">
           <h3 className="line-clamp-2 text-sm leading-snug">{product.name}</h3>
-          <Price priceCents={product.priceCents} compareAtPriceCents={product.compareAtPriceCents} from={product.hasPriceRange} />
-          {colorCount > 1 ? <p className="text-xs text-subtle">{colorCount} colores</p> : null}
+          <Price
+            priceCents={product.priceCents}
+            compareAtPriceCents={product.compareAtPriceCents}
+            from={product.hasPriceRange}
+            compareLabel={product.outfit ? "Por separado" : undefined}
+          />
+          {product.outfit ? (
+            <p className="text-xs text-subtle">Conjunto · {product.outfit.pieceProductIds.length} piezas</p>
+          ) : colorCount > 1 ? (
+            <p className="text-xs text-subtle">{colorCount} colores</p>
+          ) : null}
         </div>
       </Link>
     </article>

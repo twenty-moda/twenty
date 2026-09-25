@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_OUTFIT_PIECES, MIN_OUTFIT_PIECES } from "./outfits";
 
 /** Celular peruano: 9 dígitos que empiezan con 9 (se aceptan espacios y +51). */
 export function normalizePhone(value: string): string {
@@ -23,10 +24,14 @@ const optionalText = (max: number) =>
     .optional()
     .transform((v) => v || undefined);
 
-export const checkoutItemSchema = z.object({
-  variantId: z.uuid(),
-  quantity: z.number().int().min(1).max(10),
-});
+const quantity = z.number().int().min(1).max(10);
+
+/** Una prenda (variante) o un conjunto con la variante elegida de cada pieza, en orden. */
+export const checkoutItemSchema = z.union([
+  z.object({ variantId: z.uuid(), quantity }),
+  z.object({ outfitId: z.uuid(), variantIds: z.array(z.uuid()).min(MIN_OUTFIT_PIECES).max(MAX_OUTFIT_PIECES), quantity }),
+]);
+export type CheckoutItem = z.infer<typeof checkoutItemSchema>;
 
 export const checkoutSchema = z
   .object({

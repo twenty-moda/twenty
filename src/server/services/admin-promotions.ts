@@ -45,6 +45,8 @@ export async function listPromotableProducts(db: Db) {
     })
     .from(products)
     .innerJoin(categories, eq(categories.id, products.categoryId))
+    // Los conjuntos tienen su propio precio: no entran en las promos "N x S/".
+    .where(eq(products.kind, "single"))
     .orderBy(asc(categories.position), asc(products.name));
 }
 

@@ -1,9 +1,7 @@
 "use client";
 
 import { MessageCircle, Ruler, Tag } from "lucide-react";
-import Image from "next/image";
 import { useRef, useState, ViewTransition, type ReactNode } from "react";
-import { cn } from "@/lib/cn";
 import { siteUrl, whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { useUrlSearch } from "@/lib/use-url-search";
@@ -13,6 +11,7 @@ import { cartStore } from "../cart/cart-store";
 import { Breadcrumbs, type Crumb } from "../store/breadcrumbs";
 import { Price, promotionLabel } from "../store/price";
 import { productMorphName } from "../store/product-card";
+import { ColorSwatches, SizeGrid } from "./option-pickers";
 import { ProductGallery } from "./product-gallery";
 import { SizeGuideSheet } from "./size-guide-sheet";
 
@@ -154,30 +153,7 @@ export function ProductExperience({ product, whatsapp, breadcrumbs, details }: P
             <span className="text-muted">Color: </span>
             <span className="font-semibold">{color.name}</span>
           </legend>
-          <div className="no-scrollbar -mx-1 mt-2 flex gap-2 overflow-x-auto p-1 md:flex-wrap md:overflow-visible">
-            {product.colors.map((c) => {
-              const inStock = colorHasStock(c.id);
-              const active = c.id === color.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => chooseColor(c.id)}
-                  aria-pressed={active}
-                  aria-label={`${c.name}${inStock ? "" : " (agotado)"}`}
-                  title={c.name}
-                  className={cn(
-                    "relative aspect-3/4 w-14 shrink-0 overflow-hidden rounded-md bg-raised ring-offset-2 ring-offset-ink transition",
-                    active ? "ring-2 ring-white" : "opacity-80 hover:opacity-100",
-                    !inStock && "opacity-40",
-                  )}
-                >
-                  {c.images[0] ? <Image src={c.images[0].path} alt="" fill sizes="56px" className="object-cover" /> : null}
-                  {!inStock ? <span aria-hidden className="absolute inset-0 bg-[linear-gradient(to_top_right,transparent_48%,white_49%,white_51%,transparent_52%)]" /> : null}
-                </button>
-              );
-            })}
-          </div>
+          <ColorSwatches colors={product.colors} activeId={color.id} inStock={colorHasStock} onChoose={chooseColor} />
         </fieldset>
 
         <fieldset ref={sizesRef} className="mt-6 min-w-0" aria-describedby={needsSize ? "talla-error" : undefined}>
@@ -192,31 +168,16 @@ export function ProductExperience({ product, whatsapp, breadcrumbs, details }: P
               </button>
             ) : null}
           </div>
-          <div className="mt-3 grid grid-cols-5 gap-2">
-            {product.sizes.map((s) => {
-              const v = stockOf(color.id, s.id);
-              const available = !!v && v.stock > 0;
-              const active = s.id === size?.id;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => chooseSize(s.label)}
-                  disabled={!available}
-                  aria-pressed={active}
-                  aria-label={`Talla ${s.label}${available ? "" : v ? " (agotada)" : " (no disponible en este color)"}`}
-                  className={cn(
-                    "h-12 rounded-lg border text-sm font-semibold transition",
-                    active ? "border-white bg-white text-black" : "border-line hover:border-white/50",
-                    !available && "cursor-not-allowed border-transparent bg-raised text-subtle line-through",
-                    needsSize && !active && available && "border-warning",
-                  )}
-                >
-                  {s.label}
-                </button>
-              );
-            })}
-          </div>
+          <SizeGrid
+            sizes={product.sizes}
+            activeId={size?.id}
+            stateOf={(sizeId) => {
+              const v = stockOf(color.id, sizeId);
+              return !v ? "missing" : v.stock > 0 ? "available" : "sold-out";
+            }}
+            onChoose={chooseSize}
+            highlight={needsSize}
+          />
           {needsSize ? (
             <p id="talla-error" role="alert" className="mt-2 text-sm text-warning">
               Elige tu talla para agregar al carrito.

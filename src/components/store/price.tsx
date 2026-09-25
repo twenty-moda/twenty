@@ -7,10 +7,12 @@ type PriceProps = {
   /** Muestra "Desde" cuando las variantes tienen precios distintos. */
   from?: boolean;
   size?: "sm" | "lg";
+  /** Qué es el precio tachado para lectores de pantalla ("Antes"; en un conjunto, "Por separado"). */
+  compareLabel?: string;
   className?: string;
 };
 
-export function Price({ priceCents, compareAtPriceCents, from, size = "sm", className }: PriceProps) {
+export function Price({ priceCents, compareAtPriceCents, from, size = "sm", compareLabel = "Antes", className }: PriceProps) {
   const percent = discountPercent(priceCents, compareAtPriceCents);
   return (
     <p className={cn("flex flex-wrap items-baseline gap-x-2", className)}>
@@ -21,7 +23,7 @@ export function Price({ priceCents, compareAtPriceCents, from, size = "sm", clas
       {percent ? (
         <>
           <s className={cn("text-subtle", size === "lg" ? "text-base" : "text-xs")}>
-            <span className="sr-only">Antes </span>
+            <span className="sr-only">{compareLabel} </span>
             {formatPrice(compareAtPriceCents!)}
           </s>
           <span className={cn("font-semibold text-danger", size === "lg" ? "text-sm" : "text-xs")}>-{percent}%</span>

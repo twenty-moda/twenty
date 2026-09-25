@@ -7,6 +7,7 @@ import { AdminPage, Card, formatDateTime, StatusBadge } from "@/components/admin
 import { siteUrl, whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL, formatOrderNumber, PAYMENT_METHOD_LABEL, STATUS_INFO } from "@/lib/order-status";
+import { groupOrderItems } from "@/lib/outfits";
 import { isShalomOrder } from "@/lib/shalom";
 import { ShalomTrackingCard } from "@/components/store/shalom-tracking";
 import { getShalomTracking } from "@/app/(store)/_data";
@@ -105,24 +106,50 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
 
           <Card title={`Prendas (${order.items.reduce((s, i) => s + i.quantity, 0)})`}>
             <ul className="divide-y divide-line">
-              {order.items.map((item) => (
-                <li key={item.id} className="flex gap-3 py-3 first:pt-0">
-                  <span className="relative aspect-3/4 w-14 shrink-0 overflow-hidden rounded-md bg-raised">
-                    {item.image ? <Image src={item.image} alt="" fill sizes="56px" className="object-cover" /> : null}
-                  </span>
-                  <span className="min-w-0 flex-1 text-sm">
-                    <span className="block font-medium">{item.productName}</span>
-                    <span className="block text-muted">
-                      {item.colorName} · Talla {item.sizeLabel} · <span className="font-mono">{item.sku}</span>
+              {groupOrderItems(order.items).map((group) =>
+                group.kind === "single" ? (
+                  <li key={group.item.id} className="flex gap-3 py-3 first:pt-0">
+                    <ItemPhoto image={group.item.image} />
+                    <span className="min-w-0 flex-1 text-sm">
+                      <span className="block font-medium">{group.item.productName}</span>
+                      <span className="block text-muted">
+                        {group.item.colorName} · Talla {group.item.sizeLabel} · <span className="font-mono">{group.item.sku}</span>
+                      </span>
+                      <span className="block text-muted">
+                        {group.item.quantity} × {formatPrice(group.item.unitPriceCents)}
+                        {group.item.discountCents ? <span className="text-success"> · promo -{formatPrice(group.item.discountCents)}</span> : null}
+                      </span>
                     </span>
-                    <span className="block text-muted">
-                      {item.quantity} × {formatPrice(item.unitPriceCents)}
-                      {item.discountCents ? <span className="text-success"> · promo -{formatPrice(item.discountCents)}</span> : null}
-                    </span>
-                  </span>
-                  <span className="text-sm font-semibold">{formatPrice(item.totalCents)}</span>
-                </li>
-              ))}
+                    <span className="text-sm font-semibold">{formatPrice(group.item.totalCents)}</span>
+                  </li>
+                ) : (
+                  <li key={group.key} className="py-3 first:pt-0">
+                    <p className="flex justify-between gap-3 text-sm">
+                      <span>
+                        <span className="font-medium">{group.name}</span>
+                        <span className="text-muted">
+                          {" "}
+                          · conjunto · {group.quantity} × {formatPrice(group.totalCents / group.quantity)}
+                        </span>
+                      </span>
+                      <span className="font-semibold">{formatPrice(group.totalCents)}</span>
+                    </p>
+                    <ul className="mt-2 space-y-2 border-l-2 border-line pl-3">
+                      {group.items.map((item) => (
+                        <li key={item.id} className="flex gap-3">
+                          <ItemPhoto image={item.image} />
+                          <span className="min-w-0 flex-1 text-sm">
+                            <span className="block">{item.productName}</span>
+                            <span className="block text-muted">
+                              {item.colorName} · Talla {item.sizeLabel} · <span className="font-mono">{item.sku}</span> · x{item.quantity}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ),
+              )}
             </ul>
             <dl className="mt-3 space-y-2 border-t border-line pt-4 text-sm">
               <div className="flex justify-between">
@@ -283,6 +310,14 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
         </div>
       </div>
     </AdminPage>
+  );
+}
+
+function ItemPhoto({ image }: { image: string | null }) {
+  return (
+    <span className="relative aspect-3/4 w-14 shrink-0 overflow-hidden rounded-md bg-raised">
+      {image ? <Image src={image} alt="" fill sizes="56px" className="object-cover" /> : null}
+    </span>
   );
 }
 

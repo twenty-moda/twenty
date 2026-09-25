@@ -11,7 +11,9 @@ import { saveProductAction } from "./actions";
 type Option = { id: string; name: string };
 type ProductFormProps = {
   productId: string | null;
-  categories: Option[];
+  /** Prenda (con variantes) o conjunto (con piezas). Se elige al crear y no cambia. */
+  kind: "single" | "outfit";
+  categories: (Option & { slug?: string })[];
   fits: Option[];
   initial?: {
     name: string;
@@ -27,7 +29,10 @@ type ProductFormProps = {
   };
 };
 
-export function ProductForm({ productId, categories, fits, initial }: ProductFormProps) {
+export function ProductForm({ productId, kind, categories, fits, initial }: ProductFormProps) {
+  const outfit = kind === "outfit";
+  // Un conjunto nuevo va en la categoría Conjuntos si existe.
+  const defaultCategory = initial?.categoryId ?? (outfit ? categories.find((c) => c.slug === "conjuntos")?.id : undefined) ?? "";
   const [state, action] = useActionState(saveProductAction.bind(null, productId), idle);
   const [status, setStatus] = useState(initial?.status ?? "draft");
   const [name, setName] = useState(initial?.name ?? "");
@@ -37,9 +42,17 @@ export function ProductForm({ productId, categories, fits, initial }: ProductFor
   return (
     <form action={action} className="space-y-5">
       <input type="hidden" name="status" value={status} />
+      <input type="hidden" name="kind" value={kind} />
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium">Nombre</span>
-        <input name="name" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Ej. Baggy Jean T-20" className={inputClass} />
+        <input
+          name="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          placeholder={outfit ? "Ej. Conjunto Lino Boxi Fit" : "Ej. Baggy Jean T-20"}
+          className={inputClass}
+        />
         <FieldError state={state} name="name" />
       </label>
 
@@ -47,7 +60,7 @@ export function ProductForm({ productId, categories, fits, initial }: ProductFor
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium">Categoría</span>
           <SelectWrap>
-            <select name="categoryId" defaultValue={initial?.categoryId ?? ""} required className={selectClass}>
+            <select name="categoryId" defaultValue={defaultCategory} required className={selectClass}>
               <option value="" disabled>
                 Elige una categoría
               </option>
@@ -82,17 +95,19 @@ export function ProductForm({ productId, categories, fits, initial }: ProductFor
         <textarea name="description" rows={3} defaultValue={initial?.description ?? ""} placeholder="Material, detalles, cómo le queda…" className={cn(inputClass, "h-auto py-3")} />
       </label>
 
-      <label className="block">
-        <span className="mb-1.5 block text-sm font-medium">Guía de tallas</span>
-        <textarea
-          name="sizeGuide"
-          rows={5}
-          defaultValue={initial?.sizeGuide ?? ""}
-          placeholder={"TALLA 28\nCintura: 80 cm\nLargo: 101 cm\n\nTALLA 30\nCintura: 82 cm"}
-          className={cn(inputClass, "h-auto py-3 font-mono text-sm")}
-        />
-        <span className="mt-1.5 block text-xs text-muted">Escribe “TALLA …” y debajo las medidas: en la tienda se muestra como tabla.</span>
-      </label>
+      {outfit ? null : (
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium">Guía de tallas</span>
+          <textarea
+            name="sizeGuide"
+            rows={5}
+            defaultValue={initial?.sizeGuide ?? ""}
+            placeholder={"TALLA 28\nCintura: 80 cm\nLargo: 101 cm\n\nTALLA 30\nCintura: 82 cm"}
+            className={cn(inputClass, "h-auto py-3 font-mono text-sm")}
+          />
+          <span className="mt-1.5 block text-xs text-muted">Escribe “TALLA …” y debajo las medidas: en la tienda se muestra como tabla.</span>
+        </label>
+      )}
 
       <div>
         <span className="mb-1.5 block text-sm font-medium">Estado</span>
@@ -107,7 +122,15 @@ export function ProductForm({ productId, categories, fits, initial }: ProductFor
           ]}
         />
         <span className="mt-1.5 block text-xs text-muted">
-          {status === "active" ? "Se ve en la tienda (si tiene variantes activas)." : status === "draft" ? "No se ve en la tienda: útil mientras cargas fotos." : "Retirado de la tienda; se conserva para los pedidos."}
+          {status === "active"
+            ? outfit
+              ? "Se ve en la tienda (si tiene precio y al menos 2 prendas)."
+              : "Se ve en la tienda (si tiene variantes activas)."
+            : status === "draft"
+              ? outfit
+                ? "No se ve en la tienda: útil mientras eliges las prendas y subes fotos."
+                : "No se ve en la tienda. Si es pieza de un conjunto, igual se vende dentro del conjunto."
+              : "Retirado de la tienda; se conserva para los pedidos."}
         </span>
       </div>
 
@@ -137,7 +160,7 @@ export function ProductForm({ productId, categories, fits, initial }: ProductFor
       </details>
 
       <FormAlert state={state} />
-      <SubmitButton>{productId ? "Guardar cambios" : "Crear producto"}</SubmitButton>
+      <SubmitButton>{productId ? "Guardar cambios" : outfit ? "Crear conjunto" : "Crear producto"}</SubmitButton>
     </form>
   );
 }

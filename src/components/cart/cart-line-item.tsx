@@ -25,7 +25,7 @@ export function CartLineItem({ line, onNavigate }: { line: CartLine; onNavigate?
             <Link href={`/product/${line.productSlug}`} onClick={onNavigate} className="line-clamp-2 text-sm leading-snug">
               {line.productName}
             </Link>
-            <p className="mt-0.5 text-xs text-muted">{variantLabel(line)}</p>
+            <LineOptions line={line} className="mt-0.5" />
           </div>
           <button
             type="button"
@@ -68,9 +68,23 @@ export function CartLineItem({ line, onNavigate }: { line: CartLine; onNavigate?
           </div>
         </div>
         {line.quantity >= maxQuantity && line.stock <= MAX_UNITS_PER_LINE ? (
-          <p className="mt-1 text-xs text-warning">Es todo el stock disponible de esta talla.</p>
+          <p className="mt-1 text-xs text-warning">{line.outfit ? "Es todo el stock disponible de estas tallas." : "Es todo el stock disponible de esta talla."}</p>
         ) : null}
       </div>
     </li>
+  );
+}
+
+/** Color y talla de la línea; en un conjunto, los de cada pieza (una por renglón). */
+export function LineOptions({ line, className }: { line: CartLine; className?: string }) {
+  if (!line.outfit) return <p className={`text-xs text-muted ${className ?? ""}`}>{variantLabel(line)}</p>;
+  return (
+    <ul className={`space-y-0.5 text-xs text-muted ${className ?? ""}`}>
+      {line.outfit.pieces.map((p, i) => (
+        <li key={`${p.variantId}-${i}`}>
+          {p.label}: {p.colorName}, talla {p.sizeLabel}
+        </li>
+      ))}
+    </ul>
   );
 }

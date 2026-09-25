@@ -4,7 +4,26 @@ export const MAX_UNITS_PER_LINE = 10;
 
 export type CartPromotion = { id: string; name: string; quantity: number; bundlePriceCents: number };
 
+/** Una pieza elegida de un conjunto (color y talla de una de sus prendas). */
+export type OutfitLinePiece = {
+  variantId: string;
+  /** "Camisa", "Pantalón"… */
+  label: string;
+  productName: string;
+  productSlug: string;
+  colorName: string;
+  sizeLabel: string;
+  image: string | null;
+  /** Precio de la prenda por separado (el "antes" del conjunto). */
+  priceCents: number;
+  stock: number;
+};
+
 export type CartLine = {
+  /**
+   * Clave de la línea: el id de la variante, o en un conjunto `conjunto:<producto>:<variante>,<variante>` (ver
+   * outfitLineKey). El servidor recibe las variantes del conjunto aparte, en `outfit`.
+   */
   variantId: string;
   quantity: number;
   productSlug: string;
@@ -17,6 +36,8 @@ export type CartLine = {
   /** Stock conocido la última vez que se validó con el servidor. */
   stock: number;
   promotion: CartPromotion | null;
+  /** Solo conjuntos: las piezas elegidas. En la línea, colorName y sizeLabel van vacíos. */
+  outfit?: { id: string; pieces: OutfitLinePiece[] } | null;
 };
 
 /** Datos frescos de una variante según el servidor. `available: false` = ya no se vende. */
@@ -27,7 +48,16 @@ export type CartNotice =
   | { type: "reduced"; productName: string; variantLabel: string; quantity: number }
   | { type: "price"; productName: string; variantLabel: string; before: number; after: number };
 
-export const variantLabel = (line: Pick<CartLine, "colorName" | "sizeLabel">) => `${line.colorName} · Talla ${line.sizeLabel}`;
+export const variantLabel = (line: Pick<CartLine, "colorName" | "sizeLabel" | "outfit">) =>
+  line.outfit
+    ? line.outfit.pieces.map((p) => `${p.label}: ${p.colorName}, talla ${p.sizeLabel}`).join(" · ")
+    : `${line.colorName} · Talla ${line.sizeLabel}`;
+
+/** Lo que el servidor necesita de una línea (checkout y revisión del carrito). */
+export const lineItem = (line: Pick<CartLine, "variantId" | "quantity" | "outfit">) =>
+  line.outfit
+    ? { outfitId: line.outfit.id, variantIds: line.outfit.pieces.map((p) => p.variantId), quantity: line.quantity }
+    : { variantId: line.variantId, quantity: line.quantity };
 
 export function clampQuantity(quantity: number, stock: number): number {
   return Math.max(0, Math.min(Math.floor(quantity), stock, MAX_UNITS_PER_LINE));

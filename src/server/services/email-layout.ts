@@ -247,7 +247,7 @@ function blockText(block: EmailBlock): string[] {
     case "rows":
       return [...(block.title ? [block.title.toUpperCase()] : []), ...block.rows.map(([k, v]) => `${k}: ${v}`), ""];
     case "items":
-      return [...block.items.map((i) => `- ${i.name} (${i.detail}): ${i.price}`), ""];
+      return [...block.items.map((i) => `- ${i.name} (${i.detail.replace(/\n/g, "; ")}): ${i.price}`), ""];
     case "totals":
       return [...block.rows.map((r) => `${r.label}: ${r.value}`), ""];
     case "progress":

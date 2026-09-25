@@ -1,6 +1,7 @@
 /** Catálogo desde el admin: productos, variantes, fotos, inventario, categorías y fits. */
 import { and, asc, desc, eq, ilike, inArray, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { MAX_OUTFIT_PIECES, MIN_OUTFIT_PIECES, pieceLabel } from "@/lib/outfits";
 import { compareSizes, sizeRank } from "@/lib/sizes";
 import { slugify } from "@/lib/slug";
 import type { Db } from "../db/client";
@@ -9,6 +10,7 @@ import {
   colors,
   fits,
   orderItems,
+  outfitPieces,
   productImages,
   productRedirects,
   products,
@@ -47,6 +49,9 @@ export async function listAdminProducts(db: Db, filter: AdminProductFilter = {})
       name: products.name,
       status: products.status,
       isFeatured: products.isFeatured,
+      kind: products.kind,
+      outfitPriceCents: products.outfitPriceCents,
+      pieces: sql<number>`(select count(*)::int from ${outfitPieces} op where op.outfit_id = ${products.id})`,
       categoryName: categories.name,
       updatedAt: products.updatedAt,
       variants: sql<number>`(select count(*)::int from ${productVariants} v where v.product_id = ${products.id})`,
@@ -62,7 +67,8 @@ export async function listAdminProducts(db: Db, filter: AdminProductFilter = {})
     .orderBy(desc(products.updatedAt));
 
   if (filter.problem === "sin-fotos") return rows.filter((r) => r.images === 0);
-  if (filter.problem === "sin-stock") return rows.filter((r) => r.totalStock === 0);
+  // Un conjunto no tiene stock propio (es el de sus prendas).
+  if (filter.problem === "sin-stock") return rows.filter((r) => r.kind === "single" && r.totalStock === 0);
   return rows;
 }
 
@@ -102,7 +108,94 @@ export async function getAdminProduct(db: Db, id: string) {
       .orderBy(asc(colors.position), asc(colors.name), asc(sizes.position)),
     db.select().from(productImages).where(eq(productImages.productId, id)).orderBy(asc(productImages.position)),
   ]);
-  return { product, variants: variantRows, images: imageRows };
+  const pieces = product.kind === "outfit" ? await listOutfitPieces(db, id) : [];
+  return { product, variants: variantRows, images: imageRows, pieces };
+}
+
+/** Piezas de un conjunto con lo que el panel necesita para avisar (stock, estado, precio). */
+export async function listOutfitPieces(db: Db, outfitId: string) {
+  return db
+    .select({
+      productId: outfitPieces.productId,
+      label: outfitPieces.label,
+      name: products.name,
+      slug: products.slug,
+      status: products.status,
+      categoryName: categories.name,
+      minPrice: sql<number | null>`(select min(v.price_cents) from ${productVariants} v where v.product_id = ${products.id} and v.is_active)`,
+      totalStock: sql<number>`(select coalesce(sum(v.stock), 0)::int from ${productVariants} v where v.product_id = ${products.id} and v.is_active)`,
+    })
+    .from(outfitPieces)
+    .innerJoin(products, eq(products.id, outfitPieces.productId))
+    .innerJoin(categories, eq(categories.id, products.categoryId))
+    .where(eq(outfitPieces.outfitId, outfitId))
+    .orderBy(asc(outfitPieces.position));
+}
+
+/** Prendas que pueden ser pieza de un conjunto (las que no son conjuntos ni están archivadas). */
+export async function listOutfitCandidates(db: Db) {
+  return db
+    .select({
+      id: products.id,
+      name: products.name,
+      status: products.status,
+      categoryName: categories.name,
+      minPrice: sql<number | null>`(select min(v.price_cents) from ${productVariants} v where v.product_id = ${products.id} and v.is_active)`,
+      totalStock: sql<number>`(select coalesce(sum(v.stock), 0)::int from ${productVariants} v where v.product_id = ${products.id} and v.is_active)`,
+    })
+    .from(products)
+    .innerJoin(categories, eq(categories.id, products.categoryId))
+    .where(and(eq(products.kind, "single"), ne(products.status, "archived")))
+    .orderBy(asc(categories.position), asc(products.name));
+}
+
+export const outfitInputSchema = z.object({
+  priceCents: z.number({ error: "Escribe el precio del conjunto" }).int().positive("Escribe el precio del conjunto"),
+  pieces: z
+    .array(z.object({ productId: z.uuid("Elige la prenda"), label: z.string().trim().max(40).nullable() }))
+    .min(MIN_OUTFIT_PIECES, `Un conjunto lleva al menos ${MIN_OUTFIT_PIECES} prendas`)
+    .max(MAX_OUTFIT_PIECES, `Un conjunto lleva como máximo ${MAX_OUTFIT_PIECES} prendas`),
+});
+
+/** Guarda el precio y las piezas de un conjunto. Devuelve los slugs a refrescar (el conjunto y sus prendas). */
+export async function saveOutfit(db: Db, outfitId: string, input: z.infer<typeof outfitInputSchema>): Promise<ServiceResult<{ slugs: string[] }>> {
+  const [outfit] = await db.select({ kind: products.kind, slug: products.slug }).from(products).where(eq(products.id, outfitId)).limit(1);
+  if (!outfit || outfit.kind !== "outfit") return { ok: false, message: "El conjunto no existe." };
+  const ids = [...new Set(input.pieces.map((p) => p.productId))];
+  const rows = await db
+    .select({ id: products.id, kind: products.kind, status: products.status, slug: products.slug, name: products.name, categoryName: categories.name })
+    .from(products)
+    .innerJoin(categories, eq(categories.id, products.categoryId))
+    .where(inArray(products.id, ids));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const piece of input.pieces) {
+    const row = byId.get(piece.productId);
+    if (!row) return { ok: false, message: "Una de las prendas ya no existe." };
+    if (row.kind !== "single") return { ok: false, message: `“${row.name}” es un conjunto: elige prendas.` };
+    if (row.status === "archived") return { ok: false, message: `“${row.name}” está archivada: publícala o elige otra.` };
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.update(products).set({ outfitPriceCents: input.priceCents }).where(eq(products.id, outfitId));
+    await tx.delete(outfitPieces).where(eq(outfitPieces.outfitId, outfitId));
+    await tx.insert(outfitPieces).values(
+      input.pieces.map((piece, position) => {
+        // Si el nombre es el de la categoría, no se guarda: así sigue a la categoría si se renombra.
+        const label = piece.label && piece.label !== pieceLabel(null, byId.get(piece.productId)!.categoryName) ? piece.label : null;
+        return { outfitId, position, productId: piece.productId, label };
+      }),
+    );
+  });
+  return { ok: true, slugs: [outfit.slug, ...rows.map((r) => r.slug)] };
+}
+
+/** Conjuntos que llevan una prenda (para no borrarla ni archivarla sin avisar). */
+export async function outfitsUsing(db: Db, productId: string) {
+  return db
+    .select({ id: products.id, name: products.name })
+    .from(outfitPieces)
+    .innerJoin(products, eq(products.id, outfitPieces.outfitId))
+    .where(eq(outfitPieces.productId, productId));
 }
 
 // ─── Guardar producto ────────────────────────────────────────────────────────
@@ -123,8 +216,10 @@ export const productInputSchema = z.object({
   isFeatured: z.boolean(),
   metaTitle: z.string().trim().max(70).nullable().optional(),
   metaDescription: z.string().trim().max(170).nullable().optional(),
+  /** Solo al crear: prenda o conjunto. No se cambia después. */
+  kind: z.enum(["single", "outfit"]).default("single"),
 });
-export type ProductInput = z.infer<typeof productInputSchema>;
+export type ProductInput = z.input<typeof productInputSchema>;
 
 /** Crea o actualiza. Si cambia el slug, la URL vieja redirige a la nueva (no se pierde SEO). */
 export async function saveProduct(
@@ -156,7 +251,10 @@ export async function saveProduct(
 
   return db.transaction(async (tx) => {
     if (!id) {
-      const [created] = await tx.insert(products).values(values).returning({ id: products.id });
+      const [created] = await tx
+        .insert(products)
+        .values({ ...values, kind: input.kind ?? "single" })
+        .returning({ id: products.id });
       return { ok: true as const, id: created.id, slug, previousSlug: null };
     }
     const [current] = await tx.select({ slug: products.slug }).from(products).where(eq(products.id, id)).limit(1);
@@ -191,10 +289,14 @@ export async function getImageProduct(db: Db, imageId: string) {
 export async function deleteProduct(db: Db, id: string): Promise<ServiceResult<{ slug: string }>> {
   const [product] = await db.select({ slug: products.slug }).from(products).where(eq(products.id, id)).limit(1);
   if (!product) return { ok: false, message: "El producto no existe." };
+  const outfits = await outfitsUsing(db, id);
+  if (outfits.length) {
+    return { ok: false, message: `Es parte de ${outfits.length === 1 ? "el conjunto" : "los conjuntos"} ${outfits.map((o) => `“${o.name}”`).join(", ")}: quítala del conjunto antes de eliminarla.` };
+  }
   const [sold] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(orderItems)
-    .where(eq(orderItems.productId, id));
+    .where(or(eq(orderItems.productId, id), eq(orderItems.outfitId, id)));
   if (sold.n > 0) {
     // Con ventas no se borra: se archiva para conservar la historia de los pedidos.
     await db.update(products).set({ status: "archived" }).where(eq(products.id, id));

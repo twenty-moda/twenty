@@ -1,11 +1,12 @@
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { normalizePhone, type CheckoutInput } from "@/lib/checkout-schema";
 import { canTransition, OPEN_STATUSES, PAID_STATUSES, RESTOCK_STATUSES, type OrderStatus } from "@/lib/order-status";
+import { allocateOutfitPrice, outfitLineKey } from "@/lib/outfits";
 import { priceLines } from "@/lib/pricing";
 import { shippingOptions, type ShippingKind } from "@/lib/shipping";
 import type { Db } from "../db/client";
 import { customers, orderItems, orders, orderStatusHistory, products, productVariants, users } from "../db/schema";
-import { getVariantSnapshots } from "./cart";
+import { getOutfitSnapshots, getVariantSnapshots } from "./cart";
 import { getDistrict, listShippingMethods, toShippingInfo } from "./shipping";
 
 /**
@@ -29,18 +30,50 @@ class OutOfStockError extends Error {
  * Crea el pedido. El precio, las promos y el envío se recalculan aquí (no se confía en el navegador), y el
  * stock se descuenta en la misma transacción con `stock = stock - n WHERE stock >= n`: si dos personas compran
  * la última unidad a la vez, solo una lo logra y la otra recibe "out_of_stock" sin que se venda de más.
+ * Los conjuntos descuentan el stock de cada pieza (el mismo que su venta por separado). En los errores, `variantIds`
+ * son las claves de las líneas del carrito (la variante, o la del conjunto).
  */
 export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrderResult> {
+  // Prendas sueltas por variante y conjuntos por línea (mismo conjunto con las mismas tallas = una línea).
   const quantities = new Map<string, number>();
-  for (const item of input.items) quantities.set(item.variantId, (quantities.get(item.variantId) ?? 0) + item.quantity);
+  const outfitRequests = new Map<string, { outfitId: string; variantIds: string[]; quantity: number }>();
+  for (const item of input.items) {
+    if ("outfitId" in item) {
+      const key = outfitLineKey(item.outfitId, item.variantIds);
+      const prev = outfitRequests.get(key);
+      outfitRequests.set(key, { outfitId: item.outfitId, variantIds: item.variantIds, quantity: (prev?.quantity ?? 0) + item.quantity });
+    } else {
+      quantities.set(item.variantId, (quantities.get(item.variantId) ?? 0) + item.quantity);
+    }
+  }
   const variantIds = [...quantities.keys()].sort();
+  const outfitKeys = [...outfitRequests.keys()];
 
-  const snapshots = await getVariantSnapshots(db, variantIds);
+  const [snapshots, outfitSnapshots] = await Promise.all([
+    getVariantSnapshots(db, variantIds),
+    getOutfitSnapshots(db, [...outfitRequests.values()]),
+  ]);
   const byId = new Map(snapshots.map((s) => [s.variantId, s]));
-  const unavailable = variantIds.filter((id) => !byId.get(id)?.available);
+  const outfitByKey = new Map(outfitSnapshots.map((s) => [s.variantId, s]));
+  const unavailable = [...variantIds.filter((id) => !byId.get(id)?.available), ...outfitKeys.filter((key) => !outfitByKey.get(key)?.available)];
   if (unavailable.length) return { ok: false, code: "unavailable", variantIds: unavailable };
-  const short = variantIds.filter((id) => byId.get(id)!.stock < quantities.get(id)!);
-  if (short.length) return { ok: false, code: "out_of_stock", variantIds: short };
+
+  // Lo que se descuenta de cada variante: sus unidades sueltas más las de los conjuntos que la llevan.
+  const demand = new Map<string, number>();
+  const linesUsing = new Map<string, string[]>();
+  const stockOf = new Map<string, number>();
+  const need = (variantId: string, qty: number, lineKey: string, stock: number) => {
+    demand.set(variantId, (demand.get(variantId) ?? 0) + qty);
+    linesUsing.set(variantId, [...new Set([...(linesUsing.get(variantId) ?? []), lineKey])]);
+    stockOf.set(variantId, stock);
+  };
+  for (const id of variantIds) need(id, quantities.get(id)!, id, byId.get(id)!.stock);
+  for (const key of outfitKeys) {
+    for (const piece of outfitByKey.get(key)!.outfit.pieces) need(piece.variantId, outfitRequests.get(key)!.quantity, key, piece.stock);
+  }
+  const shortLines = (ids: string[]) => [...new Set(ids.flatMap((id) => linesUsing.get(id) ?? [id]))];
+  const short = [...demand.keys()].filter((id) => stockOf.get(id)! < demand.get(id)!);
+  if (short.length) return { ok: false, code: "out_of_stock", variantIds: shortLines(short) };
 
   const methods = (await listShippingMethods(db)).map(toShippingInfo);
   const district = input.ubigeo ? await getDistrict(db, input.ubigeo) : null;
@@ -52,16 +85,19 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
   if (option.kind === "lima_delivery" && !input.address) return { ok: false, code: "address", message: "Escribe la dirección de entrega." };
   if (isAgency && !input.agencyName) return { ok: false, code: "agency", message: "Escribe la agencia donde recogerás tu pedido." };
 
-  const pricing = priceLines(
-    variantIds.map((id) => ({
+  // Los conjuntos tienen su precio y no entran en las promos "N x S/".
+  const pricing = priceLines([
+    ...variantIds.map((id) => ({
       variantId: id,
       quantity: quantities.get(id)!,
       unitPriceCents: byId.get(id)!.priceCents,
       promotion: byId.get(id)!.promotion,
     })),
-  );
+    ...outfitKeys.map((key) => ({ variantId: key, quantity: outfitRequests.get(key)!.quantity, unitPriceCents: outfitByKey.get(key)!.priceCents, promotion: null })),
+  ]);
   const lineById = new Map(pricing.lines.map((l) => [l.variantId, l]));
   const totalCents = pricing.totalCents + option.priceCents;
+  const stockIds = [...demand.keys()].sort(); // siempre en el mismo orden: dos compras a la vez no se bloquean entre sí
 
   try {
     return await db.transaction(async (tx) => {
@@ -81,8 +117,8 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
         .returning({ id: customers.id });
 
       let soldOut = false;
-      for (const id of variantIds) {
-        const qty = quantities.get(id)!;
+      for (const id of stockIds) {
+        const qty = demand.get(id)!;
         const updated = await tx
           .update(productVariants)
           .set({ stock: sql`${productVariants.stock} - ${qty}` })
@@ -129,34 +165,60 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
         })
         .returning({ id: orders.id, number: orders.number });
 
-      const variantRows = await tx
-        .select({ id: productVariants.id, sku: productVariants.sku, productId: productVariants.productId })
-        .from(productVariants)
-        .where(inArray(productVariants.id, variantIds));
+      const variantRows = variantIds.length
+        ? await tx
+            .select({ id: productVariants.id, sku: productVariants.sku, productId: productVariants.productId })
+            .from(productVariants)
+            .where(inArray(productVariants.id, variantIds))
+        : [];
       const variantInfo = new Map(variantRows.map((v) => [v.id, v]));
 
-      await tx.insert(orderItems).values(
-        variantIds.map((id) => {
-          const s = byId.get(id)!;
-          const line = lineById.get(id)!;
-          return {
-            orderId: order.id,
-            variantId: id,
-            productId: variantInfo.get(id)?.productId ?? null,
-            productName: s.productName,
-            productSlug: s.productSlug,
-            sku: variantInfo.get(id)?.sku ?? "",
-            colorName: s.colorName,
-            sizeLabel: s.sizeLabel,
-            image: s.image,
-            unitPriceCents: s.priceCents,
-            compareAtPriceCents: s.compareAtPriceCents,
-            quantity: quantities.get(id)!,
-            discountCents: line.discountCents,
-            totalCents: line.totalCents,
-          };
-        }),
-      );
+      const singleItems = variantIds.map((id) => {
+        const s = byId.get(id)!;
+        const line = lineById.get(id)!;
+        return {
+          orderId: order.id,
+          variantId: id,
+          productId: variantInfo.get(id)?.productId ?? null,
+          productName: s.productName,
+          productSlug: s.productSlug,
+          sku: variantInfo.get(id)?.sku ?? "",
+          colorName: s.colorName,
+          sizeLabel: s.sizeLabel,
+          image: s.image,
+          unitPriceCents: s.priceCents,
+          compareAtPriceCents: s.compareAtPriceCents,
+          quantity: quantities.get(id)!,
+          discountCents: line.discountCents,
+          totalCents: line.totalCents,
+        };
+      });
+      // Conjuntos: una fila por pieza, con el precio del conjunto repartido (el total del conjunto cuadra exacto).
+      const outfitItems = outfitKeys.flatMap((key, index) => {
+        const snapshot = outfitByKey.get(key)!;
+        const { quantity } = outfitRequests.get(key)!;
+        const shares = allocateOutfitPrice(snapshot.priceCents, snapshot.outfit.pieces.map((p) => p.priceCents));
+        return snapshot.outfit.pieces.map((piece, i) => ({
+          orderId: order.id,
+          variantId: piece.variantId,
+          productId: piece.productId,
+          productName: piece.productName,
+          productSlug: piece.productSlug,
+          sku: piece.sku,
+          colorName: piece.colorName,
+          sizeLabel: piece.sizeLabel,
+          image: piece.image,
+          unitPriceCents: shares[i],
+          compareAtPriceCents: piece.priceCents > shares[i] ? piece.priceCents : null,
+          quantity,
+          discountCents: 0,
+          totalCents: shares[i] * quantity,
+          outfitId: snapshot.outfit.id,
+          outfitName: snapshot.productName,
+          outfitLine: index + 1,
+        }));
+      });
+      await tx.insert(orderItems).values([...singleItems, ...outfitItems]);
       await tx.insert(orderStatusHistory).values({ orderId: order.id, toStatus: "pendiente", note: "Pedido creado en la web" });
 
       return {
@@ -164,13 +226,19 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
         orderId: order.id,
         number: order.number,
         totalCents,
-        productSlugs: [...new Set(variantIds.map((id) => byId.get(id)!.productSlug))],
+        // Fichas a refrescar: las prendas vendidas y los conjuntos (su ficha muestra el stock de cada pieza).
+        productSlugs: [
+          ...new Set([
+            ...variantIds.map((id) => byId.get(id)!.productSlug),
+            ...outfitKeys.flatMap((key) => [outfitByKey.get(key)!.productSlug, ...outfitByKey.get(key)!.outfit.pieces.map((p) => p.productSlug)]),
+          ]),
+        ],
         soldOut,
         shippingKind: option.kind,
       };
     });
   } catch (error) {
-    if (error instanceof OutOfStockError) return { ok: false, code: "out_of_stock", variantIds: [error.variantId] };
+    if (error instanceof OutOfStockError) return { ok: false, code: "out_of_stock", variantIds: shortLines([error.variantId]) };
     throw error;
   }
 }

@@ -27,7 +27,8 @@ export function promoSections(products: ProductCard[]): PromoSections {
       const group = bundles.get(p.promotion.id) ?? { promotion: p.promotion, products: [] };
       group.products.push(p);
       bundles.set(p.promotion.id, group);
-    } else if (p.compareAtPriceCents) {
+    } else if (p.compareAtPriceCents && !p.outfit) {
+      // Los conjuntos muestran su precio "por separado" tachado, pero no son prendas rebajadas.
       discounted.push(p);
     }
   }

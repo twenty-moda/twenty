@@ -35,7 +35,7 @@ async function loadExisting(db: Conn) {
     db.select({ id: fits.id, name: fits.name, slug: fits.slug }).from(fits),
     db.select({ id: colors.id, slug: colors.slug }).from(colors),
     db.select({ id: sizes.id, label: sizes.label }).from(sizes),
-    db.select({ id: products.id, slug: products.slug, name: products.name }).from(products),
+    db.select({ id: products.id, slug: products.slug, name: products.name, kind: products.kind }).from(products),
     db
       .select({
         id: productVariants.id,
@@ -86,6 +86,10 @@ function resolve(parsed: ParsedSheet, existing: Existing) {
     }
     const productSlug = slugify(row.product);
     const product = existing.product.get(productSlug);
+    if (product?.kind === "outfit") {
+      issues.push({ row: row.row, message: `“${row.product}” es un conjunto: sus prendas se cargan como productos aparte y el conjunto se arma en el panel.` });
+      continue;
+    }
     const colorId = existing.color.get(slugify(row.color));
     const sizeId = existing.size.get(row.size);
     const variant =

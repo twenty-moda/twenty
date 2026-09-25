@@ -19,6 +19,7 @@ function card(overrides: Partial<ProductCard> & Pick<ProductCard, "slug">): Prod
     isFeatured: false,
     promotion: null,
     position: 0,
+    outfit: null,
     ...overrides,
   };
 }

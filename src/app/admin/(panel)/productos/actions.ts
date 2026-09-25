@@ -12,7 +12,10 @@ import {
   getImageProduct,
   getProductSlug,
   moveProductImage,
+  outfitInputSchema,
+  outfitsUsing,
   productInputSchema,
+  saveOutfit,
   saveProduct,
   saveVariants,
   updateProductImage,
@@ -41,15 +44,35 @@ export async function saveProductAction(productId: string | null, _: ActionState
     isFeatured: form.bool(fd, "isFeatured"),
     metaTitle: form.optional(fd, "metaTitle"),
     metaDescription: form.optional(fd, "metaDescription"),
+    kind: form.text(fd, "kind") === "outfit" ? "outfit" : "single",
   });
   if (!parsed.success) return zodFailure(parsed.error);
 
-  const result = await saveProduct(getDb(), productId, parsed.data);
+  const db = getDb();
+  const result = await saveProduct(db, productId, parsed.data);
   if (!result.ok) return failure(result.message, { slug: result.message });
   refreshStore(result.slug, result.previousSlug);
   if (!productId) redirect(`/admin/productos/${result.id}?nuevo=1`);
   refresh();
-  return success(result.previousSlug ? `Guardado. La dirección anterior /product/${result.previousSlug} redirige a la nueva.` : "Producto guardado.");
+  const saved = result.previousSlug ? `Guardado. La dirección anterior /product/${result.previousSlug} redirige a la nueva.` : "Producto guardado.";
+  // Una prenda archivada deja sin vender los conjuntos que la llevan (en borrador sí: se vende solo dentro del conjunto).
+  const outfits = parsed.data.status === "archived" ? await outfitsUsing(db, result.id) : [];
+  if (outfits.length) {
+    for (const o of outfits) refreshStore(await getProductSlug(db, o.id));
+    return success(`${saved} Ojo: es parte de ${outfits.map((o) => `“${o.name}”`).join(", ")}; ese conjunto no se vende hasta que cambies esa pieza.`);
+  }
+  return success(saved);
+}
+
+export async function saveOutfitAction(productId: string, input: unknown): Promise<ActionState> {
+  await requireAdmin();
+  const parsed = outfitInputSchema.safeParse(input);
+  if (!parsed.success) return failure(parsed.error.issues[0].message);
+  const result = await saveOutfit(getDb(), productId, parsed.data);
+  if (!result.ok) return failure(result.message);
+  refreshStore(...result.slugs);
+  refresh();
+  return success("Conjunto guardado.");
 }
 
 export async function saveVariantsAction(productId: string, variants: unknown): Promise<ActionState> {
@@ -109,9 +132,10 @@ export async function deletePhotoAction(imageId: string) {
   await afterImageChange(imageId, () => deleteProductImage(getDb(), imageId));
 }
 
-export async function deleteProductAction(productId: string) {
+export async function deleteProductAction(productId: string): Promise<ActionState> {
   await requireAdmin();
   const result = await deleteProduct(getDb(), productId);
-  if (result.ok) refreshStore(result.slug);
+  if (!result.ok) return failure(result.message);
+  refreshStore(result.slug);
   redirect("/admin/productos");
 }

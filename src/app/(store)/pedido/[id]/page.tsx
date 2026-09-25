@@ -12,6 +12,7 @@ import { culqiConfig } from "@/lib/culqi-config";
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { formatOrderNumber, STATUS_INFO } from "@/lib/order-status";
+import { groupOrderItems } from "@/lib/outfits";
 import { getDb } from "@/server/db/client";
 import { getOrderForCustomer } from "@/server/services/orders";
 import { listPaymentProofs, MAX_PROOFS_PER_ORDER } from "@/server/services/payment-proofs";
@@ -214,20 +215,39 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
       <section className="mt-4 rounded-2xl border border-line p-5">
         <h2 className="font-semibold">Tu compra</h2>
         <ul className="mt-3 space-y-3">
-          {order.items.map((item) => (
-            <li key={item.id} className="flex gap-3 text-sm">
-              <span className="relative aspect-3/4 w-12 shrink-0 overflow-hidden rounded bg-raised">
-                {item.image ? <Image src={item.image} alt="" fill sizes="48px" className="object-cover" /> : null}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block">{item.productName}</span>
-                <span className="block text-xs text-muted">
-                  {item.colorName} · Talla {item.sizeLabel} · x{item.quantity}
+          {groupOrderItems(order.items).map((group) =>
+            group.kind === "single" ? (
+              <li key={group.item.id} className="flex gap-3 text-sm">
+                <span className="relative aspect-3/4 w-12 shrink-0 overflow-hidden rounded bg-raised">
+                  {group.item.image ? <Image src={group.item.image} alt="" fill sizes="48px" className="object-cover" /> : null}
                 </span>
-              </span>
-              <span>{formatPrice(item.totalCents)}</span>
-            </li>
-          ))}
+                <span className="min-w-0 flex-1">
+                  <span className="block">{group.item.productName}</span>
+                  <span className="block text-xs text-muted">
+                    {group.item.colorName} · Talla {group.item.sizeLabel} · x{group.item.quantity}
+                  </span>
+                </span>
+                <span>{formatPrice(group.item.totalCents)}</span>
+              </li>
+            ) : (
+              <li key={group.key} className="flex gap-3 text-sm">
+                <span className="relative aspect-3/4 w-12 shrink-0 overflow-hidden rounded bg-raised">
+                  {group.items[0].image ? <Image src={group.items[0].image} alt="" fill sizes="48px" className="object-cover" /> : null}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block">
+                    {group.name} <span className="text-muted">· x{group.quantity}</span>
+                  </span>
+                  {group.items.map((item) => (
+                    <span key={item.id} className="block text-xs text-muted">
+                      {item.productName}: {item.colorName}, talla {item.sizeLabel}
+                    </span>
+                  ))}
+                </span>
+                <span>{formatPrice(group.totalCents)}</span>
+              </li>
+            ),
+          )}
         </ul>
         <dl className="mt-4 space-y-2 border-t border-line pt-4 text-sm">
           <div className="flex justify-between">

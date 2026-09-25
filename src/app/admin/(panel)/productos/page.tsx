@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Layers, Plus } from "lucide-react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -46,11 +46,16 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
   return (
     <AdminPage
       title="Productos"
-      description="Toca un producto para editar sus datos, variantes y fotos."
+      description="Toca un producto para editar sus datos, variantes y fotos. Los conjuntos venden varias prendas juntas con el stock de cada una."
       actions={
-        <Link href="/admin/productos/nuevo" className={buttonClass("primary")}>
-          <Plus className="size-4" aria-hidden /> Nuevo producto
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/productos/nuevo?tipo=conjunto" className={buttonClass("secondary")}>
+            <Layers className="size-4" aria-hidden /> Nuevo conjunto
+          </Link>
+          <Link href="/admin/productos/nuevo" className={buttonClass("primary")}>
+            <Plus className="size-4" aria-hidden /> Nuevo producto
+          </Link>
+        </div>
       }
     >
       <div className="space-y-4">
@@ -84,20 +89,31 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
                     <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
                       <span>{p.categoryName}</span>
                       <span>·</span>
-                      <span>
-                        {p.variants} {p.variants === 1 ? "variante" : "variantes"}
-                      </span>
+                      {p.kind === "outfit" ? (
+                        <span>Conjunto de {p.pieces} prendas</span>
+                      ) : (
+                        <span>
+                          {p.variants} {p.variants === 1 ? "variante" : "variantes"}
+                        </span>
+                      )}
                       {p.images === 0 ? <span className="text-warning">· Sin fotos</span> : null}
                     </span>
                   </span>
-                  <span className="hidden text-right text-sm sm:block">
-                    <span className="block font-semibold">
-                      {p.minPrice === null ? "—" : p.minPrice === p.maxPrice ? formatPrice(p.minPrice) : `${formatPrice(p.minPrice)} – ${formatPrice(p.maxPrice!)}`}
+                  {p.kind === "outfit" ? (
+                    <span className="hidden text-right text-sm sm:block">
+                      <span className="block font-semibold">{p.outfitPriceCents ? formatPrice(p.outfitPriceCents) : "Sin precio"}</span>
+                      <span className="block text-xs text-muted">Stock de sus prendas</span>
                     </span>
-                    <span className={p.totalStock === 0 ? "block text-xs text-danger" : "block text-xs text-muted"}>
-                      {p.totalStock === 0 ? "Sin stock" : `${p.totalStock} en stock`}
+                  ) : (
+                    <span className="hidden text-right text-sm sm:block">
+                      <span className="block font-semibold">
+                        {p.minPrice === null ? "—" : p.minPrice === p.maxPrice ? formatPrice(p.minPrice) : `${formatPrice(p.minPrice)} – ${formatPrice(p.maxPrice!)}`}
+                      </span>
+                      <span className={p.totalStock === 0 ? "block text-xs text-danger" : "block text-xs text-muted"}>
+                        {p.totalStock === 0 ? "Sin stock" : `${p.totalStock} en stock`}
+                      </span>
                     </span>
-                  </span>
+                  )}
                   <Badge tone={STATUS[p.status].tone}>{STATUS[p.status].label}</Badge>
                 </Link>
               </li>

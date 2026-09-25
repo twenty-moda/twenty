@@ -4,7 +4,7 @@ import { AlertCircle, ShieldCheck, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { refreshCart } from "@/app/(store)/cart/actions";
-import { cartTotals, reconcileCart, type CartNotice } from "@/lib/cart";
+import { cartTotals, lineItem, reconcileCart, type CartNotice } from "@/lib/cart";
 import { formatPrice } from "@/lib/money";
 import { priceLines } from "@/lib/pricing";
 import { CartLineItem } from "./cart-line-item";
@@ -34,7 +34,7 @@ export function CartView() {
   useEffect(() => {
     if (refreshed.current || lines.length === 0) return;
     refreshed.current = true;
-    refreshCart(lines.map((l) => l.variantId))
+    refreshCart(lines.map(lineItem))
       .then((snapshots) => {
         const result = reconcileCart(cartStore.getSnapshot(), snapshots);
         cartStore.replace(result.lines);

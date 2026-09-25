@@ -9,12 +9,13 @@ import { placeOrderAction } from "@/app/(store)/checkout/actions";
 import { getCheckoutAccountAction, type CheckoutAccount } from "@/app/(store)/cuenta/actions";
 import { addressSummary } from "@/lib/account-forms";
 import { agencyLabel } from "@/lib/shalom";
-import { cartTotals, variantLabel, type CartLine } from "@/lib/cart";
+import { cartTotals, lineItem, type CartLine } from "@/lib/cart";
 import { checkoutSchema, fieldErrors, normalizePhone, type CheckoutFieldErrors, type CheckoutInput } from "@/lib/checkout-schema";
 import { cn } from "@/lib/cn";
 import { formatPrice } from "@/lib/money";
 import { priceLines, type PricingResult } from "@/lib/pricing";
 import type { ShippingKind, ShippingMethodInfo } from "@/lib/shipping";
+import { LineOptions } from "../cart/cart-line-item";
 import { cartStore, useCartLines, useHydrated } from "../cart/cart-store";
 import { promotionLabel } from "../store/price";
 import { Field, inputClass, Segmented, SelectWrap, selectClass } from "../ui/form";
@@ -188,7 +189,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     paymentMethod: form.paymentMethod || undefined,
     note: form.note,
     saveAddress: canSaveAddress && saveAddress,
-    items: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+    items: lines.map(lineItem),
   });
 
   /** Valida con el mismo esquema del servidor, mostrando solo los errores de los pasos hasta `upTo`. */
@@ -790,7 +791,7 @@ function OrderSummary({
             </span>
             <span className="min-w-0 flex-1 text-sm">
               <span className="line-clamp-1">{l.productName}</span>
-              <span className="block text-xs text-muted">{variantLabel(l)}</span>
+              <LineOptions line={l} />
             </span>
             <span className="text-sm">{formatPrice(l.priceCents * l.quantity)}</span>
           </li>

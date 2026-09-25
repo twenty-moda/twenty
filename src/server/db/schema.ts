@@ -28,6 +28,8 @@ const timestamps = {
 export const productStatus = pgEnum("product_status", ["active", "draft", "archived"]);
 export const gender = pgEnum("gender", ["hombre", "mujer", "unisex"]);
 export const promotionType = pgEnum("promotion_type", ["bundle_price"]);
+/** "single" = prenda con variantes propias; "outfit" = conjunto de varias prendas (ver outfit_pieces). */
+export const productKind = pgEnum("product_kind", ["single", "outfit"]);
 
 // ─── Catálogo ────────────────────────────────────────────────────────────────
 
@@ -95,6 +97,9 @@ export const products = pgTable(
       .references(() => categories.id),
     fitId: uuid().references(() => fits.id, { onDelete: "set null" }),
     gender: gender().notNull().default("hombre"),
+    kind: productKind().notNull().default("single"),
+    /** Solo conjuntos: precio del conjunto completo (las prendas salen del stock de cada una). */
+    outfitPriceCents: integer(),
     status: productStatus().notNull().default("draft"),
     isFeatured: boolean().notNull().default(false),
     position: integer().notNull().default(0),
@@ -135,6 +140,26 @@ export const productVariants = pgTable(
     check("product_variants_stock_non_negative", sql`${t.stock} >= 0`),
     check("product_variants_price_positive", sql`${t.priceCents} > 0`),
   ],
+);
+
+/**
+ * Piezas de un conjunto: cada una es otra prenda del catálogo y el cliente elige su color y talla. El stock es el de
+ * esas prendas, así que se comparte con su venta por separado. Una prenda que es pieza no se puede borrar (restrict).
+ */
+export const outfitPieces = pgTable(
+  "outfit_pieces",
+  {
+    outfitId: uuid()
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    position: integer().notNull(),
+    productId: uuid()
+      .notNull()
+      .references(() => products.id, { onDelete: "restrict" }),
+    /** Cómo se llama la pieza en la ficha ("Camisa", "Pantalón"); vacío = el nombre de su categoría. */
+    label: text(),
+  },
+  (t) => [primaryKey({ columns: [t.outfitId, t.position] }), index("outfit_pieces_product_idx").on(t.productId)],
 );
 
 /** Las fotos son por producto + color (todas las tallas de un color comparten fotos). */
@@ -413,6 +438,13 @@ export const orderItems = pgTable(
     quantity: integer().notNull(),
     discountCents: integer().notNull().default(0),
     totalCents: integer().notNull(),
+    /**
+     * Prenda vendida dentro de un conjunto: una fila por pieza (con su variante, para el stock y el empaque) y el precio
+     * del conjunto repartido entre las piezas. `outfitLine` agrupa las piezas de un mismo conjunto en el pedido.
+     */
+    outfitId: uuid(),
+    outfitName: text(),
+    outfitLine: integer(),
   },
   (t) => [index("order_items_order_idx").on(t.orderId), check("order_items_quantity_positive", sql`${t.quantity} > 0`)],
 );
