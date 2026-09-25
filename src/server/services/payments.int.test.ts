@@ -9,7 +9,7 @@ const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
 const { placeOrder, getOrderByNumber } = await import("./orders");
 const { payOrderWithCulqi, handleCulqiEvent, interpretChargeResponse } = await import("./payments");
-const { planOrderEmails } = await import("./order-notifications");
+const { planOrderEmails, notifyOrderEvent } = await import("./order-notifications");
 const { processProofImage, submitPaymentProof, listPaymentProofs, getPaymentProofImage, MAX_PROOFS_PER_ORDER } = await import("./payment-proofs");
 const sharp = (await import("sharp")).default;
 
@@ -189,12 +189,12 @@ describe("captura del pago con Yape/Plin", () => {
     expect(proof.height).toBe(1400);
     const result = await submitPaymentProof(db, order.orderId, proof);
     expect(result).toMatchObject({ ok: true });
-    expect(result.ok && result.change && planOrderEmails({ type: "status", change: result.change })).toEqual({ customer: "por_verificar", team: "comprobante" });
+    expect(result.ok && result.change && planOrderEmails({ type: "status", change: result.change })).toEqual({ customer: "por_verificar", team: null });
     expect((await getOrderByNumber(db, order.number))?.status).toBe("por_verificar");
 
     // Una segunda captura (se equivocó de imagen) se suma sin volver a cambiar el estado.
     const again = await submitPaymentProof(db, order.orderId, proof);
-    expect(again).toEqual({ ok: true, change: null });
+    expect(again).toMatchObject({ ok: true, change: null });
     const proofs = await listPaymentProofs(db, order.orderId);
     expect(proofs).toHaveLength(2);
     const image = await getPaymentProofImage(db, proofs[0].id, order.orderId);
@@ -202,6 +202,38 @@ describe("captura del pago con Yape/Plin", () => {
     expect((await sharp(image!.image).metadata()).format).toBe("webp");
     // Con el id de otro pedido no se ve.
     expect(await getPaymentProofImage(db, proofs[0].id, randomUUID())).toBeNull();
+  });
+
+  it("el email al equipo lleva la captura en JPEG, dentro del email y adjunta", async () => {
+    const order = await newOrder();
+    const result = await submitPaymentProof(db, order.orderId, await processProofImage(await screenshot()));
+    if (!result.ok) throw new Error("no se guardó la captura");
+    const [admin] = await db.insert(schema.users).values({ name: "Admin Pagos", email: `admin-${randomUUID()}@example.com`, role: "admin" }).returning();
+
+    const sent: { to: string[]; html: string; attachments?: { filename: string; content: string; content_type: string; content_id: string }[] }[] = [];
+    const realFetch = globalThis.fetch;
+    const env = { key: process.env.RESEND_API_KEY, from: process.env.EMAIL_FROM };
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.EMAIL_FROM = "TWENTY <pedidos@example.com>";
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      sent.push(JSON.parse(String(init.body)));
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+    try {
+      await notifyOrderEvent(db, { type: "proof", orderId: order.orderId, proofId: result.proofId }, "https://tienda.example");
+    } finally {
+      globalThis.fetch = realFetch;
+      process.env.RESEND_API_KEY = env.key;
+      process.env.EMAIL_FROM = env.from;
+      await db.delete(schema.users).where(eq(schema.users.id, admin.id));
+    }
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0].to).toContain(admin.email);
+    expect(sent[0].html).toContain('src="cid:captura-pago"');
+    const [attachment] = sent[0].attachments!;
+    expect(attachment).toMatchObject({ filename: `captura-pedido-${order.number}.jpg`, content_type: "image/jpeg", content_id: "captura-pago" });
+    expect((await sharp(Buffer.from(attachment.content, "base64")).metadata()).format).toBe("jpeg");
   });
 
   it("no acepta capturas en pedidos ya pagados, ni más del máximo, ni archivos que no son imagen", async () => {

@@ -4,6 +4,14 @@
  * El remitente (EMAIL_FROM, p. ej. "TWENTY <pedidos@twentymoda.com>") tiene que ser de un dominio verificado en Resend.
  */
 /** `tag` identifica el tipo de email en los logs (nunca se registra el asunto ni el destinatario: tienen datos personales). */
+export type EmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+  /** Con id, la imagen se puede mostrar dentro del email con <img src="cid:id">. */
+  contentId?: string;
+};
+
 export type Email = {
   tag: string;
   to: string | string[];
@@ -11,6 +19,7 @@ export type Email = {
   html: string;
   text: string;
   replyTo?: string;
+  attachments?: EmailAttachment[];
   /** Resend no repite un envío con la misma clave en 24 h (por si una acción se reintenta). */
   idempotencyKey?: string;
 };
@@ -31,7 +40,13 @@ export async function sendEmail(email: Email): Promise<{ sent: boolean }> {
   }
   if (!to.length) return { sent: false };
 
-  const body = JSON.stringify({ from, to, subject: email.subject, html: email.html, text: email.text, reply_to: email.replyTo });
+  const attachments = email.attachments?.map((a) => ({
+    filename: a.filename,
+    content: a.content.toString("base64"),
+    content_type: a.contentType,
+    content_id: a.contentId,
+  }));
+  const body = JSON.stringify({ from, to, subject: email.subject, html: email.html, text: email.text, reply_to: email.replyTo, attachments });
   for (let attempt = 1; ; attempt++) {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",

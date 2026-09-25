@@ -46,7 +46,7 @@ const MAX_PROOF_BYTES = 4 * 1024 * 1024;
 
 export type ProofUploadResult = { ok: true } | { ok: false; message: string };
 
-/** Captura del pago con Yape/Plin: se guarda, el pedido pasa a "Pago por verificar" y se avisa al equipo. */
+/** Captura del pago con Yape/Plin: se guarda, el pedido pasa a "Pago por verificar" y le llega al equipo por email. */
 export async function uploadPaymentProofAction(orderId: string, formData: FormData): Promise<ProofUploadResult> {
   if (!z.uuid().safeParse(orderId).success) return { ok: false, message: "No encontramos tu pedido." };
   const file = formData.get("file");
@@ -58,7 +58,8 @@ export async function uploadPaymentProofAction(orderId: string, formData: FormDa
     const proof = await processProofImage(await file.arrayBuffer());
     const result = await submitPaymentProof(getDb(), orderId, proof);
     if (!result.ok) return result;
-    if (result.change) notifyAfterResponse({ type: "status", change: result.change });
+    // Cliente: "estamos verificando tu pago" (solo la primera vez). Equipo: cada captura, con la imagen.
+    notifyAfterResponse(...(result.change ? [{ type: "status" as const, change: result.change }] : []), { type: "proof", orderId, proofId: result.proofId });
   } catch (error) {
     if (error instanceof InvalidProofError) return { ok: false, message: error.message };
     console.error("[captura de pago]", error instanceof Error ? error.message : error);

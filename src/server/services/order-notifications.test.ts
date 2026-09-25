@@ -29,9 +29,9 @@ describe("planOrderEmails", () => {
     expect(status({ from: "por_verificar" })).toEqual({ customer: "pagado", team: null });
   });
 
-  it("la captura de Yape/Plin que sube el cliente avisa al equipo para verificarla", () => {
-    expect(status({ from: "pendiente", to: "por_verificar", changedBy: null })).toEqual({ customer: "por_verificar", team: "comprobante" });
-    // Si la marca un admin, ya la vio: solo se avisa al cliente.
+  it("cada captura de Yape/Plin que sube el cliente le llega al equipo; el paso a por verificar solo al cliente", () => {
+    expect(planOrderEmails({ type: "proof", orderId: "o1", proofId: "p1" })).toEqual({ customer: null, team: "comprobante" });
+    expect(status({ from: "pendiente", to: "por_verificar", changedBy: null })).toEqual({ customer: "por_verificar", team: null });
     expect(status({ from: "pendiente", to: "por_verificar" })).toEqual({ customer: "por_verificar", team: null });
   });
 
@@ -145,10 +145,16 @@ describe("emails de pedidos", () => {
     expect(html).not.toContain("libro-de-reclamaciones");
   });
 
-  it("equipo: captura de pago recibida, con enlace al pedido en el panel", () => {
-    const email = teamOrderEmail("comprobante", order, ctx);
-    const { text } = renderBrandedEmail(email.content, brand);
+  it("equipo: captura de pago con la imagen dentro del email y enlace al pedido en el panel", () => {
+    const email = teamOrderEmail("comprobante", order, ctx, undefined, { src: "cid:captura-pago", nth: 1 });
+    const { html, text } = renderBrandedEmail(email.content, brand);
     expect(email.subject).toContain("Captura de pago · Pedido #1001 · S/ 200");
+    expect(html).toContain('src="cid:captura-pago"');
     expect(text).toContain("https://tienda.example/admin/pedidos/1001");
+    expect(text).toContain("La captura también va adjunta");
+
+    const again = teamOrderEmail("comprobante", order, ctx, undefined, { src: "cid:captura-pago", nth: 2 });
+    expect(again.subject).toContain("Otra captura de pago · Pedido #1001");
+    expect(again.content.title).toBe("Nueva captura de pago");
   });
 });

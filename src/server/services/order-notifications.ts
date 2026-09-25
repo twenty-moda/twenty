@@ -17,15 +17,21 @@ import { sendEmail } from "./email";
 import { emailBrand, renderBrandedEmail } from "./email-layout";
 import { customerOrderEmail, teamOrderEmail, type CustomerEmailKind, type TeamEmailKind } from "./order-emails";
 import { getOrderById, type OrderDetail, type StatusChange } from "./orders";
+import { getPaymentProofForEmail } from "./payment-proofs";
+
+const PROOF_CID = "captura-pago";
 
 export type OrderEvent =
   | { type: "placed"; orderId: string; paymentMethod: OrderDetail["paymentMethod"] }
   /** `notifyCustomer: false`: el admin desmarcó "Avisar al cliente por email". */
-  | { type: "status"; change: StatusChange; notifyCustomer?: boolean };
+  | { type: "status"; change: StatusChange; notifyCustomer?: boolean }
+  /** El cliente subió una captura del pago con Yape/Plin: le llega al equipo con la imagen. */
+  | { type: "proof"; orderId: string; proofId: string };
 
 const FORWARD: Partial<Record<OrderStatus, number>> = { pendiente: 0, por_verificar: 1, pagado: 2, en_preparacion: 3, enviado: 4, entregado: 5 };
 
 export function planOrderEmails(event: OrderEvent): { customer: CustomerEmailKind | null; team: TeamEmailKind | null } {
+  if (event.type === "proof") return { customer: null, team: "comprobante" };
   if (event.type === "placed") {
     // Con tarjeta todavía no hay nada que confirmar: los emails salen cuando Culqi confirma el pago.
     const card = event.paymentMethod === "tarjeta";
@@ -45,10 +51,9 @@ export function planOrderEmails(event: OrderEvent): { customer: CustomerEmailKin
         return { customer: null, team: null };
       default: {
         const forward = (FORWARD[to] ?? 0) > (FORWARD[from] ?? 0);
-        // Pago con Culqi (sin admin de por medio): para el equipo es el pedido nuevo.
-        // Captura de Yape/Plin subida por el cliente: el equipo tiene que verificarla.
-        const team =
-          to === "pagado" && automatic && paymentMethod === "tarjeta" ? "nuevo" : to === "por_verificar" && automatic && paymentMethod === "yape_plin" ? "comprobante" : null;
+        // Pago con Culqi (sin admin de por medio): para el equipo es el pedido nuevo. La captura de Yape/Plin se avisa
+        // aparte (evento "proof", con la imagen), también cuando el cliente sube otra.
+        const team = to === "pagado" && automatic && paymentMethod === "tarjeta" ? "nuevo" : null;
         return { customer: forward ? to : null, team };
       }
     }
@@ -71,15 +76,20 @@ export async function teamRecipients(db: Db, settings: SiteSettings, excludeUser
 export async function notifyOrderEvent(db: Db, event: OrderEvent, baseUrl: string): Promise<void> {
   const plan = planOrderEmails(event);
   if (!plan.customer && !plan.team) return;
-  const orderId = event.type === "placed" ? event.orderId : event.change.orderId;
-  const [order, settings] = await Promise.all([getOrderById(db, orderId), getSiteSettings(db)]);
+  const orderId = event.type === "status" ? event.change.orderId : event.orderId;
+  const [order, settings, proof] = await Promise.all([
+    getOrderById(db, orderId),
+    getSiteSettings(db),
+    event.type === "proof" ? getPaymentProofForEmail(db, event.proofId) : null,
+  ]);
   if (!order) return;
 
   const brand = emailBrand(settings, baseUrl);
   const ctx = { settings, baseUrl };
   const history = event.type === "status" ? order.history.find((h) => h.id === event.change.historyId) : undefined;
   // Si la acción se reintenta, Resend no repite el email (misma clave durante 24 h).
-  const key = event.type === "placed" ? `pedido-${order.id}-creado` : `pedido-${order.id}-${event.change.historyId}`;
+  const key =
+    event.type === "placed" ? `pedido-${order.id}-creado` : event.type === "proof" ? `pedido-${order.id}-captura-${event.proofId}` : `pedido-${order.id}-${event.change.historyId}`;
   const tasks: Promise<unknown>[] = [];
 
   if (plan.customer) {
@@ -99,7 +109,9 @@ export async function notifyOrderEvent(db: Db, event: OrderEvent, baseUrl: strin
     const to = await teamRecipients(db, settings, event.type === "status" ? event.change.changedBy : null);
     if (to.length) {
       const change = event.type === "status" ? { by: history?.changedByName ?? null, note: history?.note ?? null, restocked: event.change.restocked } : undefined;
-      const email = teamOrderEmail(plan.team, order, ctx, change);
+      // La captura va dentro del email (cid) y adjunta, para verla sin entrar al panel y poder guardarla.
+      const filename = `captura-pedido-${order.number}${proof && proof.nth > 1 ? `-${proof.nth}` : ""}.jpg`;
+      const email = teamOrderEmail(plan.team, order, ctx, change, proof ? { src: `cid:${PROOF_CID}`, nth: proof.nth } : undefined);
       tasks.push(
         sendEmail({
           tag: `equipo-${plan.team}`,
@@ -107,6 +119,7 @@ export async function notifyOrderEvent(db: Db, event: OrderEvent, baseUrl: strin
           subject: email.subject,
           ...renderBrandedEmail(email.content, brand),
           replyTo: order.email,
+          attachments: proof ? [{ filename, content: proof.jpeg, contentType: "image/jpeg", contentId: PROOF_CID }] : undefined,
           idempotencyKey: `${key}-equipo`,
         }),
       );

@@ -277,7 +277,14 @@ const NEXT_STEP: Record<OrderDetail["paymentMethod"], string> = {
   whatsapp: "Escríbele por WhatsApp para coordinar el pago.",
 };
 
-export function teamOrderEmail(kind: TeamEmailKind, order: OrderDetail, { settings, baseUrl }: Ctx, change?: { by: string | null; note: string | null; restocked: boolean }): OrderEmail {
+/** `proof`: la captura del pago ("comprobante"): `src` de la imagen (cid: del adjunto) y qué número de captura es. */
+export function teamOrderEmail(
+  kind: TeamEmailKind,
+  order: OrderDetail,
+  { settings, baseUrl }: Ctx,
+  change?: { by: string | null; note: string | null; restocked: boolean },
+  proof?: { src: string; nth: number },
+): OrderEmail {
   const number = formatOrderNumber(order.number);
   const total = formatPrice(order.totalCents);
   const adminButton: EmailBlock = { type: "button", label: "Abrir en el panel", url: `${baseUrl}/admin/pedidos/${order.number}` };
@@ -333,19 +340,28 @@ export function teamOrderEmail(kind: TeamEmailKind, order: OrderDetail, { settin
   }
 
   if (kind === "comprobante") {
+    const again = (proof?.nth ?? 1) > 1;
     return {
-      subject: `Captura de pago · Pedido ${number} · ${total} · ${order.customerName}`,
+      subject: `${again ? "Otra captura" : "Captura"} de pago · Pedido ${number} · ${total} · ${order.customerName}`,
       content: {
         audience: "team",
-        preheader: `${order.customerName} subió la captura de ${total}. Verifica el pago.`,
+        preheader: `${order.customerName} subió ${again ? "otra captura" : "la captura"} del pago de ${total}. Verifica el pago.`,
         eyebrow: `Pedido ${number} · ${PAYMENT_METHOD_LABEL[order.paymentMethod]}`,
-        title: "Captura de pago recibida",
+        title: again ? "Nueva captura de pago" : "Captura de pago recibida",
         blocks: [
           {
             type: "text",
-            text: `${order.customerName} subió la captura del pago de ${total} por Yape o Plin. Revisa que el monto haya llegado y márcalo como pagado (o rechazado) en el panel.`,
+            text: again
+              ? `${order.customerName} subió otra captura del pago de ${total} (la ${proof!.nth}.ª): puede que la anterior estuviera equivocada. Revisa que el monto haya llegado y confírmalo en el panel.`
+              : `${order.customerName} subió la captura del pago de ${total} por Yape o Plin. Revisa que el monto haya llegado y márcalo como pagado (o rechazado) en el panel.`,
           },
-          { type: "button", label: "Ver la captura en el panel", url: `${baseUrl}/admin/pedidos/${order.number}` },
+          ...(proof
+            ? ([
+                { type: "image", src: proof.src, alt: `Captura del pago del pedido ${number}`, width: 280 },
+                { type: "text", text: "La captura también va adjunta a este email.", muted: true, small: true },
+              ] as const)
+            : []),
+          { type: "button", label: "Confirmar en el panel", url: `${baseUrl}/admin/pedidos/${order.number}` },
           items,
         ],
       },
