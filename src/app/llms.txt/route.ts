@@ -17,6 +17,7 @@ export async function GET() {
     "",
     "## Catálogo",
     `- [Catálogo completo](${base}/catalogo): todos los productos con filtros por categoría, corte, talla y color.`,
+    `- [Promos](${base}/promos): promociones "N x S/" (llevando N prendas de la promo) y prendas con descuento.`,
     `- [Feed de productos](${base}/products-feed.json): todos los SKU con precio, talla, color y stock en JSON.`,
     ...categories.map((c) => `- [${c.name}](${base}${catalogUrl({ categoria: c.slug })}): ${c.productCount} ${c.productCount === 1 ? "producto" : "productos"}.`),
     "",

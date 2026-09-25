@@ -1,6 +1,7 @@
 "use client";
 
 import { Search, SlidersHorizontal, X } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import {
   applyFilters,
@@ -21,13 +22,13 @@ import { promotionLabel } from "../store/price";
 import { ProductCard } from "../store/product-card";
 import { FilterSheet } from "./filter-sheet";
 
-type CatalogBrowserProps = { products: ProductCardData[]; categories: CategoryLink[] };
+type CatalogBrowserProps = { products: ProductCardData[]; categories: CategoryLink[]; showPromos: boolean };
 
 /**
  * Catálogo con filtros instantáneos en el navegador: todas las fichas vienen en el HTML estático
  * (bueno para SEO y CDN) y filtrar no hace peticiones. El estado vive en la URL para compartirlo.
  */
-export function CatalogBrowser({ products, categories }: CatalogBrowserProps) {
+export function CatalogBrowser({ products, categories, showPromos }: CatalogBrowserProps) {
   const [search, setSearch] = useUrlSearch();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filters = parseFilters(new URLSearchParams(search));
@@ -104,6 +105,15 @@ export function CatalogBrowser({ products, categories }: CatalogBrowserProps) {
         <CategoryChip href="/catalogo" active={!filters.categoria} onSelect={() => selectCategory(null)}>
           Todo
         </CategoryChip>
+        {/* No es un filtro: lleva a /promos (todas las promos y rebajas, por secciones). */}
+        {showPromos ? (
+          <Link
+            href="/promos"
+            className="inline-flex h-10 shrink-0 items-center rounded-full border border-line px-4 text-sm font-semibold whitespace-nowrap text-danger hover:border-white/40"
+          >
+            Promos
+          </Link>
+        ) : null}
         {categories.map((c) => (
           <CategoryChip key={c.slug} href={catalogUrl({ categoria: c.slug })} active={c.slug === filters.categoria} onSelect={() => selectCategory(c.slug)}>
             {c.name}

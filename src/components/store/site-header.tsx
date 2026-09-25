@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, ChevronRight, Clock, Info, Mail, MapPin, Menu, MessageCircle, PackageSearch, Search, ShoppingBag, UserRound } from "lucide-react";
+import { BadgePercent, BookOpen, ChevronRight, Clock, Info, Mail, MapPin, Menu, MessageCircle, PackageSearch, Search, ShoppingBag, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -16,6 +16,8 @@ import { SearchPanel } from "./search-panel";
 
 type SiteHeaderProps = {
   categories: CategoryLink[];
+  /** Prendas en /promos (0 = no hay promos y no se muestra el enlace). */
+  promoCount: number;
   contact: SiteSettings["contact"];
   socials: SiteSettings["socials"];
   store: SiteSettings["store"];
@@ -50,7 +52,7 @@ const MORE_LINKS = [
   { href: "/blogs", label: "Blog", icon: BookOpen },
 ];
 
-export function SiteHeader({ categories, contact, socials, store }: SiteHeaderProps) {
+export function SiteHeader({ categories, promoCount, contact, socials, store }: SiteHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const { openCart } = useCartUI();
@@ -76,9 +78,16 @@ export function SiteHeader({ categories, contact, socials, store }: SiteHeaderPr
                 Todo
               </Link>
             </li>
-            {/* Escritorio: 7 categorías; en pantallas más anchas entran todas. */}
+            {promoCount ? (
+              <li>
+                <Link href="/promos" className="py-4 text-danger hover:opacity-75">
+                  Promos
+                </Link>
+              </li>
+            ) : null}
+            {/* Escritorio: 7 categorías (6 si está "Promos"); en pantallas más anchas entran todas. */}
             {categories.map((c, i) => (
-              <li key={c.slug} className={i >= 7 ? "hidden xl:list-item" : undefined}>
+              <li key={c.slug} className={i >= (promoCount ? 6 : 7) ? "hidden xl:list-item" : undefined}>
                 <Link href={catalogUrl({ categoria: c.slug })} className="py-4 hover:text-muted">
                   {c.name}
                 </Link>
@@ -124,6 +133,18 @@ export function SiteHeader({ categories, contact, socials, store }: SiteHeaderPr
                 Ver todo el catálogo <ChevronRight className="size-5 text-subtle" aria-hidden />
               </Link>
             </li>
+            {promoCount ? (
+              <li>
+                <Link href="/promos" onClick={closeMenu} className="flex h-16 items-center gap-3 rounded-lg px-3 hover:bg-raised">
+                  <span className="grid size-11 shrink-0 place-items-center rounded-full bg-danger text-white">
+                    <BadgePercent className="size-6" aria-hidden />
+                  </span>
+                  <span className="flex-1 font-semibold text-danger">Promos</span>
+                  <span className="text-xs text-subtle tabular-nums">{promoCount}</span>
+                  <ChevronRight className="size-5 text-subtle" aria-hidden />
+                </Link>
+              </li>
+            ) : null}
             {categories.map((c) => (
               <li key={c.slug}>
                 <Link
@@ -191,7 +212,7 @@ export function SiteHeader({ categories, contact, socials, store }: SiteHeaderPr
         </div>
       </Sheet>
 
-      <SearchPanel open={searchOpen} onClose={() => setSearchOpen(false)} categories={categories} />
+      <SearchPanel open={searchOpen} onClose={() => setSearchOpen(false)} categories={categories} showPromos={promoCount > 0} />
     </header>
   );
 }

@@ -43,9 +43,9 @@ function LinkList({ title, links }: { title: string; links: { href: string; labe
   );
 }
 
-type SiteFooterProps = { categories: CategoryLink[]; settings: SiteSettings; year: number };
+type SiteFooterProps = { categories: CategoryLink[]; showPromos: boolean; settings: SiteSettings; year: number };
 
-export function SiteFooter({ categories, settings, year }: SiteFooterProps) {
+export function SiteFooter({ categories, showPromos, settings, year }: SiteFooterProps) {
   const { contact, socials, store, seo, company } = settings;
   return (
     <footer className="mt-16 border-t border-line bg-surface print:hidden">
@@ -64,7 +64,11 @@ export function SiteFooter({ categories, settings, year }: SiteFooterProps) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:gap-x-6 md:grid-cols-4">
             <LinkList
               title="Tienda"
-              links={[{ href: "/catalogo", label: "Ver todo" }, ...categories.slice(0, 5).map((c) => ({ href: catalogUrl({ categoria: c.slug }), label: c.name }))]}
+              links={[
+                { href: "/catalogo", label: "Ver todo" },
+                ...(showPromos ? [{ href: "/promos", label: "Promos" }] : []),
+                ...categories.slice(0, showPromos ? 4 : 5).map((c) => ({ href: catalogUrl({ categoria: c.slug }), label: c.name })),
+              ]}
             />
             <LinkList
               title="Ayuda"

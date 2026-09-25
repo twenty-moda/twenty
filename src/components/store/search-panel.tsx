@@ -22,9 +22,9 @@ function loadIndex() {
   return indexPromise;
 }
 
-type SearchPanelProps = { open: boolean; onClose: () => void; categories: CategoryLink[] };
+type SearchPanelProps = { open: boolean; onClose: () => void; categories: CategoryLink[]; showPromos: boolean };
 
-export function SearchPanel({ open, onClose, categories }: SearchPanelProps) {
+export function SearchPanel({ open, onClose, categories, showPromos }: SearchPanelProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -86,6 +86,13 @@ export function SearchPanel({ open, onClose, categories }: SearchPanelProps) {
           <section>
             <h3 className="mb-3 text-xs font-semibold tracking-widest text-muted uppercase">Explora</h3>
             <ul className="flex flex-wrap gap-2">
+              {showPromos ? (
+                <li>
+                  <Link href="/promos" onClick={close} className="inline-flex h-10 items-center rounded-full border border-line px-4 text-sm font-semibold text-danger">
+                    Promos
+                  </Link>
+                </li>
+              ) : null}
               {categories.map((c) => (
                 <li key={c.slug}>
                   <Link

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CatalogBrowser } from "@/components/catalog/catalog-browser";
+import { promoSections } from "@/lib/promos";
 import { getCategoryLinks, getProductCards } from "../_data";
 
 export const metadata: Metadata = {
@@ -10,5 +11,5 @@ export const metadata: Metadata = {
 
 export default async function CatalogPage() {
   const [products, categories] = await Promise.all([getProductCards(), getCategoryLinks()]);
-  return <CatalogBrowser products={products} categories={categories} />;
+  return <CatalogBrowser products={products} categories={categories} showPromos={promoSections(products).productCount > 0} />;
 }
