@@ -132,10 +132,21 @@ export function SiteFooter({ categories, showPromos, settings, year }: SiteFoote
               </li>
             ))}
           </ul>
-          <p className="text-xs text-subtle">
-            © {year} TWENTY{company.legalName ? ` · ${company.legalName}` : ""}
-            {company.ruc ? ` · RUC ${company.ruc}` : ""}
-          </p>
+          <div className="flex flex-col gap-1 text-xs text-subtle md:items-end">
+            <p>
+              © {year} TWENTY{company.legalName ? ` · ${company.legalName}` : ""}
+              {company.ruc ? ` · RUC ${company.ruc}` : ""}
+            </p>
+            {/* Sin noreferrer: así la visita llega a la analítica de Mathyu's Solutions como referida desde la tienda. */}
+            <a
+              href="https://mathyusolutions.com/es/"
+              target="_blank"
+              rel="noopener"
+              className="group inline-flex min-h-10 items-center self-start md:self-auto pointer-fine:min-h-0"
+            >
+              Web hecha por&nbsp;<span className="font-semibold text-muted underline underline-offset-4 group-hover:text-white">Mathyu&apos;s Solutions</span>
+            </a>
+          </div>
         </div>
       </div>
     </footer>
