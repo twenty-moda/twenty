@@ -7,8 +7,10 @@ import { buttonClass } from "@/components/admin/ui";
 import { inputClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { allowedTransitions, STATUS_INFO, type OrderStatus } from "@/lib/order-status";
+import type { RefundOptions } from "@/server/services/refunds";
 import { idle } from "../../../_lib/action-state";
 import { changeStatusAction, saveInternalNoteAction, saveTrackingAction } from "../actions";
+import { CancelRefundFields } from "./refund-fields";
 
 /** Lo que dice el botón para pasar a cada estado. */
 const VERB: Record<OrderStatus, string> = {
@@ -31,9 +33,11 @@ type StatusChangerProps = {
   emailEnabled: boolean;
   /** Pedido por Shalom: al marcarlo como enviado se puede anotar la guía. */
   shalom?: { number: string; code: string } | null | false;
+  /** Dinero pagado sin devolver: al anular se ofrece devolverlo. */
+  refund?: Pick<RefundOptions, "availableCents" | "culqi" | "items"> | null;
 };
 
-export function StatusChanger({ orderId, status, whatsappHref, emailEnabled, shalom = false }: StatusChangerProps) {
+export function StatusChanger({ orderId, status, whatsappHref, emailEnabled, shalom = false, refund = null }: StatusChangerProps) {
   const [state, action, pending] = useActionState(changeStatusAction.bind(null, orderId), idle);
   const [confirming, setConfirming] = useState<OrderStatus | null>(null);
   const next = allowedTransitions(status);
@@ -64,12 +68,15 @@ export function StatusChanger({ orderId, status, whatsappHref, emailEnabled, sha
       </label>
       {shalom !== false && next.includes("enviado") ? <TrackingFields tracking={shalom} hint="Si ya lo despachaste, anótala: va en el email de «enviado» y el cliente sigue su envío." /> : null}
       {emailEnabled ? <Toggle name="notifyCustomer" defaultChecked label="Avisar al cliente por email" hint="Le llega un email con el nuevo estado de su pedido." /> : null}
+      {confirming === "anulado" && refund && refund.availableCents > 0 ? <CancelRefundFields options={refund} /> : null}
       <div className="flex flex-wrap gap-2">
         {next.map((to) => {
           const danger = DANGER.includes(to);
           if (danger && confirming !== to) {
+            // Otra `key` que el botón de confirmar: si React reusara el mismo <button> y le cambiara el type a
+            // "submit" durante el clic, el navegador enviaría el formulario con ese mismo toque (sin confirmar).
             return (
-              <button key={to} type="button" onClick={() => setConfirming(to)} className={buttonClass("danger")}>
+              <button key={`${to}:preguntar`} type="button" onClick={() => setConfirming(to)} className={buttonClass("danger")}>
                 {VERB[to]}
               </button>
             );
@@ -90,7 +97,8 @@ export function StatusChanger({ orderId, status, whatsappHref, emailEnabled, sha
       </div>
       {confirming ? (
         <p className="text-sm text-warning">
-          {confirming === "anulado" ? "Al anular, las prendas vuelven al stock." : "Al rechazar, las prendas vuelven al stock."} Toca de nuevo para confirmar.
+          {confirming === "anulado" ? "Al anular, las prendas vuelven al stock (menos las agotadas)." : "Al rechazar, las prendas vuelven al stock."} Toca de
+          nuevo para confirmar.
         </p>
       ) : null}
       <FormAlert state={state} />

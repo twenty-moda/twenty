@@ -58,6 +58,11 @@ describe("planOrderEmails", () => {
   it("si el admin desmarca el aviso, el cliente no recibe email (el equipo sí)", () => {
     expect(status({ from: "pagado", to: "anulado" }, false)).toEqual({ customer: null, team: "anulado" });
   });
+
+  it("cada devolución de dinero le llega al cliente (si no se desmarca) y al equipo", () => {
+    expect(planOrderEmails({ type: "refund", orderId: "o1", refundId: "r1", userId: "admin-1" })).toEqual({ customer: "devolucion", team: "devolucion" });
+    expect(planOrderEmails({ type: "refund", orderId: "o1", refundId: "r1", userId: "admin-1", notifyCustomer: false })).toEqual({ customer: null, team: "devolucion" });
+  });
 });
 
 const settings = {
@@ -97,16 +102,34 @@ const order = {
   customerNote: null,
   items: [{ id: "i1", productName: "Baggy Jean", sku: "TMW-0001", colorName: "Negro", sizeLabel: "M", quantity: 2, totalCents: 20000, image: "item/TMW-0001.webp" }],
   history: [],
+  refunds: [],
 } as unknown as OrderDetail;
+
+/** Devolución de S/ 100 por Culqi: una de las dos Baggy Jean se agotó. */
+const refund = {
+  id: "r1",
+  paymentId: "pay1",
+  method: "culqi",
+  status: "hecha",
+  providerId: "ref_live_123",
+  amountCents: 10000,
+  reason: "agotado",
+  note: "Se manchó en el almacén",
+  customerMessage: "Te enviamos la otra esta semana.",
+  createdAt: new Date("2026-09-25T15:00:00Z"),
+  createdByName: "Tatiana",
+  items: [{ orderItemId: "i1", quantity: 1 }],
+} satisfies OrderDetail["refunds"][number];
+const refundedOrder = { ...order, status: "pagado", refunds: [refund] } as OrderDetail;
 
 const ctx = { settings, baseUrl: "https://tienda.example" };
 const brand = emailBrand(settings, ctx.baseUrl);
 
 describe("emails de pedidos", () => {
-  const kinds: CustomerEmailKind[] = ["recibido", "por_verificar", "pagado", "en_preparacion", "enviado", "entregado", "anulado", "expirado", "rechazado"];
+  const kinds: CustomerEmailKind[] = ["recibido", "por_verificar", "pagado", "en_preparacion", "enviado", "entregado", "anulado", "expirado", "rechazado", "devolucion"];
 
   it.each(kinds)("%s: asunto con el número, HTML escapado y enlace al pedido", (kind) => {
-    const email = customerOrderEmail(kind, order, ctx);
+    const email = customerOrderEmail(kind, order, ctx, undefined, refund);
     const { html, text } = renderBrandedEmail(email.content, brand);
     expect(email.subject).toContain("#1001");
     expect(html).not.toContain("<script>");
@@ -133,6 +156,44 @@ describe("emails de pedidos", () => {
     expect(text).toContain("Clave de recojo: 4321");
     expect(text).toContain("N° de orden: 66479331");
     expect(text).toContain("Código: 3KTH");
+  });
+
+  it("devolución por prenda agotada: cuánto, a dónde, qué prenda y que el resto sigue", () => {
+    const email = customerOrderEmail("devolucion", refundedOrder, ctx, undefined, refund);
+    const { text } = renderBrandedEmail(email.content, brand);
+    expect(email.subject).toBe("Te devolvimos S/ 100 · Pedido #1001");
+    expect(text).toContain("te devolvimos S/ 100 de tu pedido #1001 a la tarjeta o el Yape con que pagaste.");
+    expect(text).toContain("Baggy Jean (Negro, talla M) se agotó y no podremos enviártela. El resto de tu pedido sigue su curso.");
+    expect(text).toContain("Te enviamos la otra esta semana.");
+    expect(text).toContain("1 agotada (devuelta)");
+    expect(text).toContain("Devuelto: -S/ 100");
+    // La nota interna nunca va al cliente.
+    expect(text).not.toContain("almacén");
+
+    const courtesy = customerOrderEmail("devolucion", refundedOrder, ctx, undefined, { ...refund, reason: "cortesia", method: "manual", items: [] });
+    const courtesyText = renderBrandedEmail(courtesy.content, brand).text;
+    expect(courtesyText).toContain("te devolvimos S/ 100 de tu pedido #1001. Es una cortesía de TWENTY para ti.");
+    expect(courtesyText).not.toContain("tarjeta");
+  });
+
+  it("anulado con devolución: dice cuánto se devolvió en vez de «si ya pagaste, escríbenos»", () => {
+    const email = customerOrderEmail("anulado", { ...refundedOrder, status: "anulado", refunds: [{ ...refund, amountCents: 20000, items: [] }] } as OrderDetail, ctx);
+    const { text } = renderBrandedEmail(email.content, brand);
+    expect(email.subject).toBe("Tu pedido #1001 fue anulado: te devolvimos S/ 200");
+    expect(text).toContain("anulamos tu pedido #1001 y te devolvimos S/ 200 a la tarjeta o el Yape con que pagaste.");
+    expect(text).not.toContain("Si ya pagaste");
+  });
+
+  it("equipo: devolución con motivo, prendas agotadas, id de Culqi y quién la hizo", () => {
+    const email = teamOrderEmail("devolucion", refundedOrder, ctx, undefined, undefined, refund);
+    const { text } = renderBrandedEmail(email.content, brand);
+    expect(email.subject).toBe("Devolución de S/ 100 · Pedido #1001 · Ana <script>alert(1)</script> Pérez");
+    expect(text).toContain("Motivo: Prenda agotada");
+    expect(text).toContain("Agotadas: Baggy Jean (Negro, talla M)");
+    expect(text).toContain("Cómo: Culqi · ref_live_123");
+    expect(text).toContain("Lo hizo: Tatiana");
+    expect(text).toContain("Nota: Se manchó en el almacén");
+    expect(text).toContain("https://tienda.example/admin/pedidos/1001");
   });
 
   it("equipo: pedido nuevo con datos del cliente y enlace al panel, sin el pie para clientes", () => {

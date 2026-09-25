@@ -1,17 +1,30 @@
 /**
- * Contenido de los emails de pedidos: al cliente (confirmación y cada cambio de estado) y al equipo (pedido nuevo,
- * anulado o rechazado). Solo arma el contenido; quién recibe qué lo decide order-notifications.ts.
+ * Contenido de los emails de pedidos: al cliente (confirmación, cada cambio de estado y cada devolución de dinero) y al
+ * equipo (pedido nuevo, anulado o rechazado, devolución). Solo arma el contenido; quién recibe qué lo decide
+ * order-notifications.ts.
  */
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL, formatOrderNumber, ORDER_PROGRESS, PAYMENT_METHOD_LABEL, progressIndex, type OrderStatus } from "@/lib/order-status";
 import { groupOrderItems } from "@/lib/outfits";
+import { REFUND_REASON_INFO, soldOutUnits } from "@/lib/refunds";
 import type { SiteSettings } from "./content";
 import type { EmailBlock, EmailContent } from "./email-layout";
 import type { OrderDetail } from "./orders";
 
-export type CustomerEmailKind = "recibido" | "por_verificar" | "pagado" | "en_preparacion" | "enviado" | "entregado" | "anulado" | "expirado" | "rechazado";
-export type TeamEmailKind = "nuevo" | "comprobante" | "anulado" | "rechazado";
+export type CustomerEmailKind =
+  | "recibido"
+  | "por_verificar"
+  | "pagado"
+  | "en_preparacion"
+  | "enviado"
+  | "entregado"
+  | "anulado"
+  | "expirado"
+  | "rechazado"
+  | "devolucion";
+export type TeamEmailKind = "nuevo" | "comprobante" | "anulado" | "rechazado" | "devolucion";
+type OrderRefund = OrderDetail["refunds"][number];
 
 export type OrderEmail = { subject: string; content: EmailContent };
 type Ctx = { settings: SiteSettings; baseUrl: string };
@@ -20,8 +33,12 @@ const firstName = (order: OrderDetail) => order.customerName.trim().split(/\s+/)
 const units = (order: OrderDetail) => order.items.reduce((sum, i) => sum + i.quantity, 0);
 /** Los celulares se guardan con 9 dígitos (sin el 51). */
 const customerWhatsapp = (phone: string) => (phone.replace(/\D/g, "").length === 9 ? `51${phone}` : phone);
+const refundedCents = (order: OrderDetail) => order.refunds.filter((r) => r.status === "hecha").reduce((sum, r) => sum + r.amountCents, 0);
+/** " a la tarjeta o el Yape con que pagaste" (Culqi) o nada (el equipo lo devolvió por su cuenta: lo dice su mensaje). */
+const refundDestination = (refund: Pick<OrderRefund, "method">) => (refund.method === "culqi" ? " a la tarjeta o el Yape con que pagaste" : "");
 
 function totalsBlock(order: OrderDetail): EmailBlock {
+  const refunded = refundedCents(order);
   return {
     type: "totals",
     rows: [
@@ -29,9 +46,27 @@ function totalsBlock(order: OrderDetail): EmailBlock {
       ...order.promotions.map((p) => ({ label: `Promo ${p.name}`, value: `-${formatPrice(p.discountCents)}`, accent: true })),
       { label: "Envío", value: order.shippingCents ? formatPrice(order.shippingCents) : order.paymentOnDelivery ? "Pagas al recoger" : "Gratis" },
       { label: "Total", value: formatPrice(order.totalCents), strong: true },
+      ...(refunded ? [{ label: "Devuelto", value: `-${formatPrice(refunded)}`, accent: true }] : []),
     ],
   };
 }
+
+/** "agotada" o "1 agotada" junto a la prenda, si se devolvió por agotada. */
+function soldOutNote(order: OrderDetail, item: OrderDetail["items"][number]): string | null {
+  const units = soldOutUnits(order.refunds.filter((r) => r.status === "hecha")).get(item.id) ?? 0;
+  if (!units) return null;
+  return units >= item.quantity ? "agotada (devuelta)" : `${units} agotada${units > 1 ? "s" : ""} (devuelta${units > 1 ? "s" : ""})`;
+}
+
+/** "Polo Boxy (Negro, talla M)" de las prendas agotadas de una devolución. */
+function soldOutNames(order: OrderDetail, refund: OrderRefund): string[] {
+  return refund.items.flatMap((ri) => {
+    const item = order.items.find((i) => i.id === ri.orderItemId);
+    return item ? [`${ri.quantity > 1 ? `${ri.quantity} × ` : ""}${item.productName} (${item.colorName}, talla ${item.sizeLabel})`] : [];
+  });
+}
+
+const joinNames = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} y ${names.at(-1)}` : (names[0] ?? ""));
 
 /** Prendas del pedido. Un conjunto va en un solo renglón con cada pieza (y su SKU para el equipo) debajo. */
 function itemsBlock(order: OrderDetail, withSku = false): EmailBlock {
@@ -41,14 +76,16 @@ function itemsBlock(order: OrderDetail, withSku = false): EmailBlock {
       group.kind === "single"
         ? {
             name: group.item.productName,
-            detail: [withSku && group.item.sku, group.item.colorName, `Talla ${group.item.sizeLabel}`, `x${group.item.quantity}`].filter(Boolean).join(" · "),
+            detail: [withSku && group.item.sku, group.item.colorName, `Talla ${group.item.sizeLabel}`, `x${group.item.quantity}`, soldOutNote(order, group.item)]
+              .filter(Boolean)
+              .join(" · "),
             price: formatPrice(group.item.totalCents),
             image: group.item.image,
           }
         : {
             name: group.name,
             detail: [
-              ...group.items.map((i) => `${i.productName}: ${[withSku && i.sku, i.colorName, `talla ${i.sizeLabel}`].filter(Boolean).join(" · ")}`),
+              ...group.items.map((i) => `${i.productName}: ${[withSku && i.sku, i.colorName, `talla ${i.sizeLabel}`, soldOutNote(order, i)].filter(Boolean).join(" · ")}`),
               `Conjunto · x${group.quantity}`,
             ].join("\n"),
             price: formatPrice(group.totalCents),
@@ -94,8 +131,11 @@ const progressBlock = (status: OrderStatus): EmailBlock => ({ type: "progress", 
 
 // ─── Cliente ─────────────────────────────────────────────────────────────────
 
-/** `message`: lo que el equipo escribió para el cliente al cambiar el estado (p. ej. la clave de Shalom). */
-export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, { settings, baseUrl }: Ctx, message?: string | null): OrderEmail {
+/**
+ * `message`: lo que el equipo escribió para el cliente al cambiar el estado (p. ej. la clave de Shalom) o al devolver.
+ * `refund`: la devolución del email "devolucion".
+ */
+export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, { settings, baseUrl }: Ctx, message?: string | null, refund?: OrderRefund): OrderEmail {
   const number = formatOrderNumber(order.number);
   const total = formatPrice(order.totalCents);
   const name = firstName(order);
@@ -224,7 +264,30 @@ export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, 
         summaryBox(order),
       ]);
 
-    case "anulado":
+    case "anulado": {
+      // Si se devolvió el dinero (al anular o antes), el email lo dice en lugar de "si ya pagaste, escríbenos".
+      const done = order.refunds.filter((r) => r.status === "hecha");
+      const refunded = refundedCents(order);
+      if (done.length) {
+        const culqi = done.some((r) => r.method === "culqi");
+        const destination = done.every((r) => r.method === "culqi") ? refundDestination({ method: "culqi" }) : "";
+        return make(
+          `Tu pedido ${number} fue anulado: te devolvimos ${formatPrice(refunded)}`,
+          `Te devolvimos ${formatPrice(refunded)}${destination}.`,
+          "Pedido anulado",
+          [
+            {
+              type: "text",
+              text: `Hola ${name}, anulamos tu pedido ${number} y te devolvimos ${formatPrice(refunded)}${destination}.${refunded < order.totalCents ? " Si tienes dudas sobre tu pago, escríbenos." : ""}`,
+            },
+            ...(culqi ? [{ type: "text", text: "El tiempo en que lo veas en tu cuenta depende de tu banco.", muted: true, small: true } as const] : []),
+            ...messageBox,
+            ...whatsappButton(`Hola TWENTY, tengo una consulta sobre mi pedido ${number}, que fue anulado.`),
+            summaryBox(order),
+          ],
+          "danger",
+        );
+      }
       return make(
         `Tu pedido ${number} fue anulado`,
         "Si ya pagaste o crees que es un error, escríbenos.",
@@ -237,6 +300,7 @@ export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, 
         ],
         "danger",
       );
+    }
 
     case "expirado":
       return make(
@@ -266,6 +330,31 @@ export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, 
         ],
         "danger",
       );
+
+    case "devolucion": {
+      if (!refund) throw new Error("falta la devolución");
+      const amount = formatPrice(refund.amountCents);
+      const refundMessage: EmailBlock[] = refund.customerMessage ? [{ type: "box", title: "Mensaje de TWENTY", blocks: [{ type: "text", text: refund.customerMessage }] }] : [];
+      const names = soldOutNames(order, refund);
+      const plural = names.length > 1 || refund.items.some((i) => i.quantity > 1);
+      const open = order.status !== "anulado" && order.status !== "rechazado";
+      const reasonText =
+        refund.reason === "agotado" && names.length
+          ? `Lo sentimos: ${joinNames(names)} ${plural ? "se agotaron y no podremos enviártelas" : "se agotó y no podremos enviártela"}.${open ? " El resto de tu pedido sigue su curso." : ""}`
+          : refund.reason === "cortesia"
+            ? "Es una cortesía de TWENTY para ti."
+            : refund.reason === "cliente"
+              ? "Es la devolución que nos pediste."
+              : "";
+      return make(`Te devolvimos ${amount} · Pedido ${number}`, reasonText || `Devolución de tu pedido ${number}.`, `Te devolvimos ${amount}`, [
+        { type: "text", text: `Hola ${name}, te devolvimos ${amount} de tu pedido ${number}${refundDestination(refund)}. ${reasonText}`.trim() },
+        ...(refund.method === "culqi" ? [{ type: "text", text: "El tiempo en que lo veas en tu cuenta depende de tu banco.", muted: true, small: true } as const] : []),
+        ...refundMessage,
+        ...whatsappButton(`Hola TWENTY, tengo una consulta sobre la devolución de mi pedido ${number}.`, "Escribir por WhatsApp", true),
+        orderButton(),
+        summaryBox(order),
+      ]);
+    }
   }
 }
 
@@ -277,13 +366,17 @@ const NEXT_STEP: Record<OrderDetail["paymentMethod"], string> = {
   whatsapp: "Escríbele por WhatsApp para coordinar el pago.",
 };
 
-/** `proof`: la captura del pago ("comprobante"): `src` de la imagen (cid: del adjunto) y qué número de captura es. */
+/**
+ * `proof`: la captura del pago ("comprobante"): `src` de la imagen (cid: del adjunto) y qué número de captura es.
+ * `refund`: la devolución del email "devolucion".
+ */
 export function teamOrderEmail(
   kind: TeamEmailKind,
   order: OrderDetail,
   { settings, baseUrl }: Ctx,
   change?: { by: string | null; note: string | null; restocked: boolean },
   proof?: { src: string; nth: number },
+  refund?: OrderRefund,
 ): OrderEmail {
   const number = formatOrderNumber(order.number);
   const total = formatPrice(order.totalCents);
@@ -368,8 +461,47 @@ export function teamOrderEmail(
     };
   }
 
+  if (kind === "devolucion") {
+    if (!refund) throw new Error("falta la devolución");
+    const amount = formatPrice(refund.amountCents);
+    const names = soldOutNames(order, refund);
+    const total = refundedCents(order);
+    return {
+      subject: `Devolución de ${amount} · Pedido ${number} · ${order.customerName}`,
+      content: {
+        audience: "team",
+        preheader: `${REFUND_REASON_INFO[refund.reason].label} · ${refund.method === "culqi" ? "por Culqi" : "registrada a mano"}`,
+        eyebrow: `Pedido ${number}`,
+        title: `Devolución de ${amount}`,
+        blocks: [
+          {
+            type: "text",
+            text:
+              refund.method === "culqi"
+                ? `Se devolvieron ${amount} del pedido ${number} de ${order.customerName} por Culqi, a la tarjeta o el Yape con que pagó.`
+                : `Se registró una devolución de ${amount} del pedido ${number} de ${order.customerName}, hecha por fuera de la web (Yape, Plin o transferencia).`,
+          },
+          {
+            type: "rows",
+            rows: [
+              ["Motivo", REFUND_REASON_INFO[refund.reason].label],
+              ...(names.length ? ([["Agotadas", names.join("\n")]] as [string, string][]) : []),
+              ["Cómo", refund.method === "culqi" ? `Culqi${refund.providerId ? ` · ${refund.providerId}` : ""}` : "Por fuera de la web"],
+              ["Lo hizo", refund.createdByName ?? "El equipo"],
+              ...(refund.note ? ([["Nota", refund.note]] as [string, string][]) : []),
+              ...(total !== refund.amountCents ? ([["Devuelto en total", `${formatPrice(total)} de ${formatPrice(order.totalCents)}`]] as [string, string][]) : []),
+            ],
+          },
+          adminButton,
+          items,
+        ],
+      },
+    };
+  }
+
   const verb = kind === "anulado" ? "anuló" : "rechazó";
   const label = kind === "anulado" ? "anulado" : "rechazado";
+  const refunded = refundedCents(order);
   return {
     subject: `Pedido ${number} ${label} · ${order.customerName}`,
     content: {
@@ -385,7 +517,11 @@ export function teamOrderEmail(
         },
         {
           type: "rows",
-          rows: [["Lo hizo", change?.by ?? "La tienda (automático)"], ...(change?.note ? ([["Nota", change.note]] as [string, string][]) : [])],
+          rows: [
+            ["Lo hizo", change?.by ?? "La tienda (automático)"],
+            ...(change?.note ? ([["Nota", change.note]] as [string, string][]) : []),
+            ...(refunded ? ([["Devuelto al cliente", formatPrice(refunded)]] as [string, string][]) : []),
+          ],
         },
         adminButton,
         items,

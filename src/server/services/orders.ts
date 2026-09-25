@@ -5,7 +5,7 @@ import { allocateOutfitPrice, outfitLineKey } from "@/lib/outfits";
 import { priceLines } from "@/lib/pricing";
 import { shippingOptions, type ShippingKind } from "@/lib/shipping";
 import type { Db } from "../db/client";
-import { customers, orderItems, orders, orderStatusHistory, products, productVariants, users } from "../db/schema";
+import { customers, orderItems, orders, orderStatusHistory, products, productVariants, refundItems, refunds, users } from "../db/schema";
 import { getOutfitSnapshots, getVariantSnapshots } from "./cart";
 import { getDistrict, listShippingMethods, toShippingInfo } from "./shipping";
 
@@ -248,7 +248,7 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
 async function loadOrder(db: Db, where: ReturnType<typeof eq>) {
   const [order] = await db.select().from(orders).where(where).limit(1);
   if (!order) return null;
-  const [items, history] = await Promise.all([
+  const [items, history, refundRows, refundedItems] = await Promise.all([
     db.select().from(orderItems).where(eq(orderItems.orderId, order.id)).orderBy(asc(orderItems.productName)),
     db
       .select({
@@ -264,8 +264,32 @@ async function loadOrder(db: Db, where: ReturnType<typeof eq>) {
       .leftJoin(users, eq(users.id, orderStatusHistory.changedBy))
       .where(eq(orderStatusHistory.orderId, order.id))
       .orderBy(asc(orderStatusHistory.createdAt)),
+    db
+      .select({
+        id: refunds.id,
+        paymentId: refunds.paymentId,
+        method: refunds.method,
+        status: refunds.status,
+        providerId: refunds.providerId,
+        amountCents: refunds.amountCents,
+        reason: refunds.reason,
+        note: refunds.note,
+        customerMessage: refunds.customerMessage,
+        createdAt: refunds.createdAt,
+        createdByName: users.name,
+      })
+      .from(refunds)
+      .leftJoin(users, eq(users.id, refunds.createdBy))
+      .where(eq(refunds.orderId, order.id))
+      .orderBy(asc(refunds.createdAt)),
+    db
+      .select({ refundId: refundItems.refundId, orderItemId: refundItems.orderItemId, quantity: refundItems.quantity })
+      .from(refundItems)
+      .innerJoin(refunds, eq(refunds.id, refundItems.refundId))
+      .where(eq(refunds.orderId, order.id)),
   ]);
-  return { ...order, items, history };
+  const orderRefunds = refundRows.map((r) => ({ ...r, items: refundedItems.filter((i) => i.refundId === r.id).map(({ refundId: _, ...i }) => i) }));
+  return { ...order, items, history, refunds: orderRefunds };
 }
 
 export type OrderDetail = NonNullable<Awaited<ReturnType<typeof loadOrder>>>;
@@ -283,8 +307,15 @@ export function getOrderById(db: Db, id: string) {
 export async function getOrderForCustomer(db: Db, id: string) {
   const order = await loadOrder(db, eq(orders.id, id));
   if (!order) return null;
-  const { internalNote: _internal, history, ...rest } = order;
-  return { ...rest, history: history.map(({ changedByName: _by, note: _note, ...h }) => h) };
+  const { internalNote: _internal, history, refunds: orderRefunds, ...rest } = order;
+  return {
+    ...rest,
+    history: history.map(({ changedByName: _by, note: _note, ...h }) => h),
+    // Solo las devoluciones confirmadas, sin la nota interna ni quién la hizo.
+    refunds: orderRefunds
+      .filter((r) => r.status === "hecha")
+      .map(({ note: _note, createdByName: _by, providerId: _provider, paymentId: _payment, ...r }) => r),
+  };
 }
 
 /**
@@ -396,7 +427,7 @@ export type ChangeStatusResult =
   | { ok: true; restocked: boolean; productSlugs: string[]; change: StatusChange }
   | { ok: false; message: string };
 
-/** Cambia el estado con historial. Al anular o rechazar devuelve el stock (una sola vez). */
+/** Cambia el estado con historial. Al anular o rechazar devuelve el stock (una sola vez; las prendas agotadas no). */
 export async function changeOrderStatus(
   db: Db,
   input: { orderId: string; to: OrderStatus; note?: string | null; customerMessage?: string | null; userId: string | null },
@@ -406,28 +437,42 @@ export async function changeOrderStatus(
     if (!order) return { ok: false, message: "El pedido no existe." };
     if (!canTransition(order.status, input.to)) return { ok: false, message: "Ese cambio de estado no está permitido." };
 
+    // `restocked`: volvió al menos una prenda a la tienda. `stockReturned`: ya se hizo la cuenta (no se repite).
     let restocked = false;
+    let stockReturned = false;
     let productSlugs: string[] = [];
     const now = new Date();
     if (RESTOCK_STATUSES.includes(input.to) && !order.stockRestoredAt) {
       const items = await tx
-        .select({ variantId: orderItems.variantId, quantity: orderItems.quantity, productSlug: orderItems.productSlug })
+        .select({ id: orderItems.id, variantId: orderItems.variantId, quantity: orderItems.quantity, productSlug: orderItems.productSlug })
         .from(orderItems)
         .where(eq(orderItems.orderId, order.id));
+      // Las prendas que se devolvieron por agotadas no existen: no vuelven al stock.
+      const soldOut = await tx
+        .select({ orderItemId: refundItems.orderItemId, quantity: sql<number>`sum(${refundItems.quantity})::int` })
+        .from(refundItems)
+        .innerJoin(refunds, eq(refunds.id, refundItems.refundId))
+        .where(eq(refunds.orderId, order.id))
+        .groupBy(refundItems.orderItemId);
+      const returned = new Set<string>();
       for (const item of items) {
         if (!item.variantId) continue; // la variante se borró del catálogo
+        const quantity = item.quantity - (soldOut.find((s) => s.orderItemId === item.id)?.quantity ?? 0);
+        if (quantity <= 0) continue;
         await tx
           .update(productVariants)
-          .set({ stock: sql`${productVariants.stock} + ${item.quantity}` })
+          .set({ stock: sql`${productVariants.stock} + ${quantity}` })
           .where(eq(productVariants.id, item.variantId));
+        returned.add(item.productSlug);
       }
-      restocked = true;
-      productSlugs = [...new Set(items.map((i) => i.productSlug))];
+      stockReturned = true;
+      restocked = returned.size > 0;
+      productSlugs = [...returned];
     }
 
     await tx
       .update(orders)
-      .set({ status: input.to, updatedAt: now, ...(restocked ? { stockRestoredAt: now } : {}) })
+      .set({ status: input.to, updatedAt: now, ...(stockReturned ? { stockRestoredAt: now } : {}) })
       .where(eq(orders.id, order.id));
     const [history] = await tx
       .insert(orderStatusHistory)

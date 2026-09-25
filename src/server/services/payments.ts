@@ -3,6 +3,7 @@
  * cargo con la llave secreta. Contrato de la API de cargos (POST /v2/charges):
  *   201 → cargo exitoso · 200 + action_code "REVIEW" → pide 3-D Secure · otro → rechazado.
  * El webhook nunca confía en su cuerpo: vuelve a consultar el cargo en la API antes de marcar el pedido.
+ * Devoluciones (POST /v2/refunds, total o parcial de un cargo): ver refunds.ts.
  */
 import { eq } from "drizzle-orm";
 import { PAID_STATUSES, type OrderStatus } from "@/lib/order-status";
@@ -17,6 +18,7 @@ export type CulqiResponse = { status: number; body: Json };
 export type CulqiClient = {
   createCharge(body: Json): Promise<CulqiResponse>;
   getCharge(id: string): Promise<CulqiResponse>;
+  createRefund(body: Json): Promise<CulqiResponse>;
 };
 
 export function culqiClient(secretKey: string, fetchImpl: typeof fetch = fetch): CulqiClient {
@@ -32,6 +34,7 @@ export function culqiClient(secretKey: string, fetchImpl: typeof fetch = fetch):
   return {
     createCharge: (body) => call("/charges", { method: "POST", body: JSON.stringify(body) }),
     getCharge: (id) => call(`/charges/${encodeURIComponent(id)}`),
+    createRefund: (body) => call("/refunds", { method: "POST", body: JSON.stringify(body) }),
   };
 }
 

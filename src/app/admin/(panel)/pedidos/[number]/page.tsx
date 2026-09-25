@@ -3,11 +3,13 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminPage, Card, formatDateTime, StatusBadge } from "@/components/admin/ui";
+import { AdminPage, Badge, Card, formatDateTime, StatusBadge } from "@/components/admin/ui";
+import { cn } from "@/lib/cn";
 import { siteUrl, whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL, formatOrderNumber, PAYMENT_METHOD_LABEL, STATUS_INFO } from "@/lib/order-status";
 import { groupOrderItems } from "@/lib/outfits";
+import { REFUND_REASON_INFO, soldOutUnits } from "@/lib/refunds";
 import { isShalomOrder } from "@/lib/shalom";
 import { ShalomTrackingCard } from "@/components/store/shalom-tracking";
 import { getShalomTracking } from "@/app/(store)/_data";
@@ -17,7 +19,9 @@ import { emailConfigured } from "@/server/services/email";
 import { getOrderByNumber } from "@/server/services/orders";
 import { listPaymentProofs } from "@/server/services/payment-proofs";
 import { listOrderPayments } from "@/server/services/payments";
+import { getRefundOptions } from "@/server/services/refunds";
 import { requireAdmin } from "../../../_lib/auth";
+import { PendingRefundActions, RefundLauncher } from "./refund-panel";
 import { InternalNoteForm, StatusChanger, TrackingForm } from "./status-changer";
 
 export async function generateMetadata({ params }: PageProps<"/admin/pedidos/[number]">): Promise<Metadata> {
@@ -37,6 +41,10 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
   const order = await getOrderByNumber(db, n);
   if (!order) notFound();
   const [paymentRows, proofs] = await Promise.all([listOrderPayments(db, order.id), listPaymentProofs(db, order.id)]);
+  const refundOptions = await getRefundOptions(db, order, paymentRows, Boolean(process.env.CULQI_SECRET_KEY));
+  // Prendas devueltas por agotadas (también las de devoluciones sin confirmar).
+  const soldOut = soldOutUnits(order.refunds);
+  const itemById = new Map(order.items.map((i) => [i.id, i]));
 
   const orderLabel = formatOrderNumber(order.number);
   const firstName = order.customerName.split(" ")[0];
@@ -101,8 +109,68 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
               whatsappHref={whatsappUrl(order.phone.startsWith("51") ? order.phone : `51${order.phone}`, message)}
               emailEnabled={emailConfigured()}
               shalom={shalom && tracking}
+              refund={refundOptions}
             />
           </Card>
+
+          {refundOptions.paidCents > 0 || order.refunds.length ? (
+            <Card title="Devoluciones">
+              <div className="space-y-4">
+                {order.refunds.length ? (
+                  <ul className="space-y-3">
+                    {order.refunds.map((r) => (
+                      <li key={r.id} className={cn("rounded-xl border p-4 text-sm", r.status === "pendiente" ? "border-warning/50" : "border-line")}>
+                        <p className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-base font-semibold">{formatPrice(r.amountCents)}</span>
+                          <Badge tone={r.status === "pendiente" ? "warning" : "success"}>
+                            {r.status === "pendiente" ? "Sin confirmar" : r.method === "culqi" ? "Devuelta por Culqi" : "Devuelta por fuera"}
+                          </Badge>
+                        </p>
+                        <p className="mt-1 text-muted">
+                          {REFUND_REASON_INFO[r.reason].label} · {formatDateTime(r.createdAt)} · {r.createdByName ?? "Equipo"}
+                        </p>
+                        {r.items.length ? (
+                          <ul className="mt-1 text-muted">
+                            {r.items.map((ri) => {
+                              const item = itemById.get(ri.orderItemId);
+                              return item ? (
+                                <li key={ri.orderItemId}>
+                                  Agotada: {ri.quantity} × {item.productName} ({item.colorName}, talla {item.sizeLabel})
+                                </li>
+                              ) : null;
+                            })}
+                          </ul>
+                        ) : null}
+                        {r.note ? <p className="mt-1 text-muted">“{r.note}”</p> : null}
+                        {r.customerMessage ? <p className="mt-1 text-muted">Al cliente: “{r.customerMessage}”</p> : null}
+                        {r.providerId ? <p className="mt-1 font-mono text-xs break-all text-subtle">{r.providerId}</p> : null}
+                        {r.status === "pendiente" ? (
+                          <>
+                            <p className="mt-2 text-warning">
+                              Culqi no respondió. Busca el cargo en CulqiPanel: si ves la devolución, confírmala; si no, descártala y vuelve a intentarlo.
+                            </p>
+                            <PendingRefundActions orderId={order.id} refundId={r.id} />
+                          </>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {refundOptions.availableCents > 0 ? (
+                  <>
+                    <p className="text-sm text-muted">
+                      {order.refunds.length
+                        ? `Todavía puedes devolver ${formatPrice(refundOptions.availableCents)}.`
+                        : `Si falta una prenda o quieres dar una cortesía, devuelve todo o una parte de los ${formatPrice(refundOptions.paidCents)} sin anular el pedido.`}
+                    </p>
+                    <RefundLauncher orderId={order.id} options={refundOptions} customerFirstName={firstName} emailEnabled={emailConfigured()} />
+                  </>
+                ) : (
+                  <p className="text-sm text-muted">Ya se devolvió todo lo que pagó el cliente.</p>
+                )}
+              </div>
+            </Card>
+          ) : null}
 
           <Card title={`Prendas (${order.items.reduce((s, i) => s + i.quantity, 0)})`}>
             <ul className="divide-y divide-line">
@@ -119,6 +187,7 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
                         {group.item.quantity} × {formatPrice(group.item.unitPriceCents)}
                         {group.item.discountCents ? <span className="text-success"> · promo -{formatPrice(group.item.discountCents)}</span> : null}
                       </span>
+                      <SoldOutBadge units={soldOut.get(group.item.id)} quantity={group.item.quantity} />
                     </span>
                     <span className="text-sm font-semibold">{formatPrice(group.item.totalCents)}</span>
                   </li>
@@ -143,6 +212,7 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
                             <span className="block text-muted">
                               {item.colorName} · Talla {item.sizeLabel} · <span className="font-mono">{item.sku}</span> · x{item.quantity}
                             </span>
+                            <SoldOutBadge units={soldOut.get(item.id)} quantity={item.quantity} />
                           </span>
                         </li>
                       ))}
@@ -170,6 +240,12 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
                 <dt>Total a cobrar</dt>
                 <dd>{formatPrice(order.totalCents)}</dd>
               </div>
+              {refundOptions.refundedCents ? (
+                <div className="flex justify-between text-warning">
+                  <dt>Devuelto</dt>
+                  <dd>-{formatPrice(refundOptions.refundedCents)}</dd>
+                </div>
+              ) : null}
             </dl>
           </Card>
 
@@ -310,6 +386,15 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
         </div>
       </div>
     </AdminPage>
+  );
+}
+
+function SoldOutBadge({ units, quantity }: { units: number | undefined; quantity: number }) {
+  if (!units) return null;
+  return (
+    <span className="mt-1 block">
+      <Badge tone="warning">{units >= quantity ? "Agotada · no se envía" : `${units} agotada${units > 1 ? "s" : ""} · no se envía${units > 1 ? "n" : ""}`}</Badge>
+    </span>
   );
 }
 

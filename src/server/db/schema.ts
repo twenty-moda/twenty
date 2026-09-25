@@ -469,6 +469,56 @@ export const payments = pgTable(
   (t) => [index("payments_order_idx").on(t.orderId)],
 );
 
+export const refundReason = pgEnum("refund_reason", ["agotado", "cortesia", "cliente", "otro"]);
+export const refundMethod = pgEnum("refund_method", ["culqi", "manual"]);
+export const refundStatus = pgEnum("refund_status", ["pendiente", "hecha"]);
+
+/**
+ * Dinero devuelto al cliente, con o sin anular el pedido. `culqi`: se le pidió a Culqi sobre un cargo (`paymentId`);
+ * `manual`: el equipo lo devolvió por su cuenta (Yape, Plin, transferencia) y aquí solo se registra.
+ * `pendiente`: se le pidió a Culqi y no respondió (se confirma a mano en el panel). Cuenta como devuelta para que
+ * nunca se devuelva dos veces. Si Culqi la rechaza, la fila se borra.
+ */
+export const refunds = pgTable(
+  "refunds",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    orderId: uuid()
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    paymentId: uuid().references(() => payments.id, { onDelete: "set null" }),
+    method: refundMethod().notNull(),
+    status: refundStatus().notNull(),
+    /** Id de la devolución en Culqi (ref_…). */
+    providerId: text().unique(),
+    amountCents: integer().notNull(),
+    reason: refundReason().notNull(),
+    /** Nota interna del equipo. */
+    note: text(),
+    /** Mensaje para el cliente (va en el email y en la página del pedido). */
+    customerMessage: text(),
+    raw: jsonb(),
+    createdBy: uuid().references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [index("refunds_order_idx").on(t.orderId, t.createdAt), check("refunds_amount_positive", sql`${t.amountCents} > 0`)],
+);
+
+/** Prendas que no se envían porque se agotaron (motivo "agotado"). Si luego se anula el pedido, no vuelven al stock. */
+export const refundItems = pgTable(
+  "refund_items",
+  {
+    refundId: uuid()
+      .notNull()
+      .references(() => refunds.id, { onDelete: "cascade" }),
+    orderItemId: uuid()
+      .notNull()
+      .references(() => orderItems.id, { onDelete: "cascade" }),
+    quantity: integer().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.refundId, t.orderItemId] }), check("refund_items_quantity_positive", sql`${t.quantity} > 0`)],
+);
+
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
 /**

@@ -7,6 +7,8 @@
  * Equipo (admins del panel + el email de avisos de Contenido → Empresa): cada pedido nuevo, cada captura de Yape/Plin
  * que sube un cliente y cada anulación o rechazo. No se avisa al admin que hizo el cambio, ni de los pedidos con
  * tarjeta que nunca se pagaron.
+ * Devoluciones de dinero sin anular: al cliente (si el admin no lo desmarca) y al equipo. Si se devuelve al anular,
+ * el email de "anulado" ya lo dice.
  */
 import { and, eq } from "drizzle-orm";
 import type { OrderStatus } from "@/lib/order-status";
@@ -26,12 +28,15 @@ export type OrderEvent =
   /** `notifyCustomer: false`: el admin desmarcó "Avisar al cliente por email". */
   | { type: "status"; change: StatusChange; notifyCustomer?: boolean }
   /** El cliente subió una captura del pago con Yape/Plin: le llega al equipo con la imagen. */
-  | { type: "proof"; orderId: string; proofId: string };
+  | { type: "proof"; orderId: string; proofId: string }
+  /** Devolución de dinero confirmada. `userId`: el admin que la hizo (no recibe el aviso del equipo). */
+  | { type: "refund"; orderId: string; refundId: string; userId: string | null; notifyCustomer?: boolean };
 
 const FORWARD: Partial<Record<OrderStatus, number>> = { pendiente: 0, por_verificar: 1, pagado: 2, en_preparacion: 3, enviado: 4, entregado: 5 };
 
 export function planOrderEmails(event: OrderEvent): { customer: CustomerEmailKind | null; team: TeamEmailKind | null } {
   if (event.type === "proof") return { customer: null, team: "comprobante" };
+  if (event.type === "refund") return { customer: event.notifyCustomer === false ? null : "devolucion", team: "devolucion" };
   if (event.type === "placed") {
     // Con tarjeta todavía no hay nada que confirmar: los emails salen cuando Culqi confirma el pago.
     const card = event.paymentMethod === "tarjeta";
@@ -87,13 +92,22 @@ export async function notifyOrderEvent(db: Db, event: OrderEvent, baseUrl: strin
   const brand = emailBrand(settings, baseUrl);
   const ctx = { settings, baseUrl };
   const history = event.type === "status" ? order.history.find((h) => h.id === event.change.historyId) : undefined;
+  const refund = event.type === "refund" ? order.refunds.find((r) => r.id === event.refundId && r.status === "hecha") : undefined;
+  if (event.type === "refund" && !refund) return;
   // Si la acción se reintenta, Resend no repite el email (misma clave durante 24 h).
   const key =
-    event.type === "placed" ? `pedido-${order.id}-creado` : event.type === "proof" ? `pedido-${order.id}-captura-${event.proofId}` : `pedido-${order.id}-${event.change.historyId}`;
+    event.type === "placed"
+      ? `pedido-${order.id}-creado`
+      : event.type === "proof"
+        ? `pedido-${order.id}-captura-${event.proofId}`
+        : event.type === "refund"
+          ? `pedido-${order.id}-devolucion-${event.refundId}`
+          : `pedido-${order.id}-${event.change.historyId}`;
+  const actor = event.type === "status" ? event.change.changedBy : event.type === "refund" ? event.userId : null;
   const tasks: Promise<unknown>[] = [];
 
   if (plan.customer) {
-    const email = customerOrderEmail(plan.customer, order, ctx, history?.customerMessage);
+    const email = customerOrderEmail(plan.customer, order, ctx, history?.customerMessage, refund);
     tasks.push(
       sendEmail({
         tag: `pedido-${plan.customer}`,
@@ -106,12 +120,12 @@ export async function notifyOrderEvent(db: Db, event: OrderEvent, baseUrl: strin
     );
   }
   if (plan.team) {
-    const to = await teamRecipients(db, settings, event.type === "status" ? event.change.changedBy : null);
+    const to = await teamRecipients(db, settings, actor);
     if (to.length) {
       const change = event.type === "status" ? { by: history?.changedByName ?? null, note: history?.note ?? null, restocked: event.change.restocked } : undefined;
       // La captura va dentro del email (cid) y adjunta, para verla sin entrar al panel y poder guardarla.
       const filename = `captura-pedido-${order.number}${proof && proof.nth > 1 ? `-${proof.nth}` : ""}.jpg`;
-      const email = teamOrderEmail(plan.team, order, ctx, change, proof ? { src: `cid:${PROOF_CID}`, nth: proof.nth } : undefined);
+      const email = teamOrderEmail(plan.team, order, ctx, change, proof ? { src: `cid:${PROOF_CID}`, nth: proof.nth } : undefined, refund);
       tasks.push(
         sendEmail({
           tag: `equipo-${plan.team}`,

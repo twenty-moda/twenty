@@ -27,6 +27,9 @@ function fakeCulqi(responses: CulqiResponse[], charges: Record<string, CulqiResp
     async getCharge(id) {
       return charges[id] ?? { status: 404, body: { object: "error" } };
     },
+    async createRefund() {
+      return { status: 500, body: {} };
+    },
   };
   return { client, calls };
 }

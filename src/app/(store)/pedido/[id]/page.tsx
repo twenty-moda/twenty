@@ -13,6 +13,7 @@ import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { formatOrderNumber, STATUS_INFO } from "@/lib/order-status";
 import { groupOrderItems } from "@/lib/outfits";
+import { REFUND_REASON_INFO, soldOutUnits } from "@/lib/refunds";
 import { getDb } from "@/server/db/client";
 import { getOrderForCustomer } from "@/server/services/orders";
 import { listPaymentProofs, MAX_PROOFS_PER_ORDER } from "@/server/services/payment-proofs";
@@ -45,8 +46,14 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
   const whatsapp = settings.contact.whatsapp;
   const culqi = culqiConfig();
   const DeliveryIcon = order.shippingKind === "lima_delivery" ? Truck : order.shippingKind === "agency" ? Package : Store;
-  // Lo que el equipo le escribió al cambiar el estado (p. ej. la clave de recojo de Shalom), lo último primero.
-  const messages = order.history.filter((h) => h.customerMessage).reverse();
+  // Lo que el equipo le escribió al cambiar el estado (p. ej. la clave de recojo de Shalom) o al devolverle dinero,
+  // lo último primero.
+  const messages = [
+    ...order.history.flatMap((h) => (h.customerMessage ? [{ id: h.id, text: h.customerMessage, label: STATUS_INFO[h.toStatus].customerLabel, at: h.createdAt }] : [])),
+    ...order.refunds.flatMap((r) => (r.customerMessage ? [{ id: r.id, text: r.customerMessage, label: `Devolución de ${formatPrice(r.amountCents)}`, at: r.createdAt }] : [])),
+  ].sort((a, b) => b.at.getTime() - a.at.getTime());
+  const soldOut = soldOutUnits(order.refunds);
+  const refunded = order.refunds.reduce((sum, r) => sum + r.amountCents, 0);
   const wallet = order.paymentMethod === "yape_plin";
   const proofWhatsapp = whatsapp ? whatsappUrl(whatsapp, `Hola TWENTY, pagué mi pedido ${number} por ${formatPrice(order.totalCents)}. Les envío la captura.`) : null;
 
@@ -70,11 +77,11 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
             <MessageCircle className="size-5" aria-hidden /> Mensajes de TWENTY
           </h2>
           <ul className="mt-3 space-y-3 text-sm">
-            {messages.map((h) => (
-              <li key={h.id}>
-                <p className="whitespace-pre-line">{h.customerMessage}</p>
+            {messages.map((m) => (
+              <li key={m.id}>
+                <p className="whitespace-pre-line">{m.text}</p>
                 <p className="mt-0.5 text-xs text-subtle">
-                  {STATUS_INFO[h.toStatus].customerLabel} · {messageDate.format(h.createdAt)}
+                  {m.label} · {messageDate.format(m.at)}
                 </p>
               </li>
             ))}
@@ -226,6 +233,7 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
                   <span className="block text-xs text-muted">
                     {group.item.colorName} · Talla {group.item.sizeLabel} · x{group.item.quantity}
                   </span>
+                  <SoldOutNote units={soldOut.get(group.item.id)} quantity={group.item.quantity} />
                 </span>
                 <span>{formatPrice(group.item.totalCents)}</span>
               </li>
@@ -241,6 +249,7 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
                   {group.items.map((item) => (
                     <span key={item.id} className="block text-xs text-muted">
                       {item.productName}: {item.colorName}, talla {item.sizeLabel}
+                      <SoldOutNote units={soldOut.get(item.id)} quantity={item.quantity} />
                     </span>
                   ))}
                 </span>
@@ -268,7 +277,23 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
             <dt>Total</dt>
             <dd>{formatPrice(order.totalCents)}</dd>
           </div>
+          {refunded ? (
+            <div className="flex justify-between text-success">
+              <dt>Te devolvimos</dt>
+              <dd>-{formatPrice(refunded)}</dd>
+            </div>
+          ) : null}
         </dl>
+        {order.refunds.length ? (
+          <ul className="mt-3 space-y-1 text-xs text-muted">
+            {order.refunds.map((r) => (
+              <li key={r.id}>
+                {formatPrice(r.amountCents)} · {REFUND_REASON_INFO[r.reason].customerLabel} · {messageDate.format(r.createdAt)}
+                {r.method === "culqi" ? " · a la tarjeta o el Yape con que pagaste (según tu banco, puede tardar unos días en verse)" : ""}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <div className="mt-6 rounded-2xl bg-raised p-5 text-center text-sm">
@@ -276,6 +301,16 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
         <CopyLinkButton />
       </div>
     </div>
+  );
+}
+
+/** Prenda (o unidades) que se agotó y cuyo dinero se devolvió. */
+function SoldOutNote({ units, quantity }: { units: number | undefined; quantity: number }) {
+  if (!units) return null;
+  return (
+    <span className="block text-xs text-warning">
+      {units >= quantity ? "Se agotó: te devolvimos el dinero" : `${units} se ${units > 1 ? "agotaron" : "agotó"}: te devolvimos el dinero`}
+    </span>
   );
 }
 
