@@ -44,17 +44,18 @@ function itemsBlock(order: OrderDetail, withSku = false): EmailBlock {
   };
 }
 
-function deliveryRows(order: OrderDetail, settings: SiteSettings): [string, string][] {
+function deliveryRows(order: OrderDetail, settings: SiteSettings, forTeam = false): [string, string][] {
   const rows: [string, string][] = [["Forma de entrega", order.shippingMethodName]];
   if (order.shippingKind === "lima_delivery") {
     rows.push(["Dirección", `${order.address}, ${order.district}${order.addressReference ? ` (${order.addressReference})` : ""}`]);
   } else if (order.shippingKind === "agency") {
-    rows.push(["Recoges en", `${order.agencyName} · ${order.district}, ${order.department}`]);
+    rows.push([forTeam ? "Agencia de destino" : "Recoges en", `${order.agencyName} · ${order.district}, ${order.department}`]);
   } else if (settings.store) {
     rows.push(["Tienda", settings.store.address]);
     if (settings.contact.openingHours) rows.push(["Horario", settings.contact.openingHours]);
   }
-  rows.push(["A nombre de", `${order.customerName} · ${order.phone}`]);
+  rows.push([forTeam ? "Recibe" : "A nombre de", `${order.customerName} · ${order.phone}`]);
+  if (forTeam && order.shippingKind === "agency") rows.push(["Documento para recoger", `${DOCUMENT_LABEL[order.documentType]} ${order.documentNumber}`]);
   return rows;
 }
 
@@ -267,7 +268,7 @@ export function teamOrderEmail(kind: TeamEmailKind, order: OrderDetail, { settin
   const total = formatPrice(order.totalCents);
   const adminButton: EmailBlock = { type: "button", label: "Abrir en el panel", url: `${baseUrl}/admin/pedidos/${order.number}` };
   const n = units(order);
-  const items: EmailBlock = { type: "box", title: `Prendas (${n})`, blocks: [itemsBlock(order, true), totalsBlock(order)] };
+  const items: EmailBlock = { type: "box", title: `Prendas para empacar (${n})`, blocks: [itemsBlock(order, true), totalsBlock(order)] };
 
   if (kind === "nuevo") {
     const paid = order.paymentMethod === "tarjeta";
@@ -293,6 +294,8 @@ export function teamOrderEmail(kind: TeamEmailKind, order: OrderDetail, { settin
                 } as const,
               ]
             : []),
+          items,
+          { type: "box", title: "Entrega", blocks: [{ type: "rows", rows: deliveryRows(order, settings, true) }] },
           {
             type: "box",
             title: "Cliente",
@@ -310,8 +313,6 @@ export function teamOrderEmail(kind: TeamEmailKind, order: OrderDetail, { settin
               },
             ],
           },
-          { type: "box", title: "Entrega", blocks: [{ type: "rows", rows: deliveryRows(order, settings) }] },
-          items,
         ],
       },
     };

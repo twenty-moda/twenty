@@ -112,6 +112,8 @@ describe("emails de pedidos", () => {
   it("Yape/Plin: QR con URL absoluta y los pasos para pagar", () => {
     const { html, text } = renderBrandedEmail(customerOrderEmail("recibido", order, ctx).content, brand);
     expect(html).toContain('src="https://tienda.example/pagos/qr.jpeg"');
+    // Fotos del bucket en JPEG (el WebP no se ve en Outlook de escritorio), al doble del tamaño que se muestra.
+    expect(html).toContain('src="https://tienda.example/api/email-image/item/TMW-0001.webp?w=144"');
     expect(text).toContain("2. Paga exactamente S/ 200.");
     expect(text).toContain("Promo 2 X 100: -S/ 40");
   });

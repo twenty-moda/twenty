@@ -4,7 +4,8 @@
  * respetan Gmail, Outlook y Apple Mail: franja negra con el logo, contenido en blanco, ancho máximo 600 px y
  * botones de ancho completo (cómodos en el teléfono, donde se lee la mayoría).
  */
-import { absoluteMediaUrl, appUrl, whatsappUrl } from "@/lib/links";
+import { emailImageSrc } from "@/lib/email-images";
+import { appUrl, whatsappUrl } from "@/lib/links";
 import type { SiteSettings } from "./content";
 import { escapeHtml } from "./email";
 
@@ -55,8 +56,8 @@ export function emailBrand(settings: Pick<SiteSettings, "company" | "contact" | 
   };
 }
 
-/** Imagen del bucket o de /public con URL absoluta (los emails no resuelven rutas relativas). */
-export const emailImageUrl = (path: string, brand: EmailBrand) => absoluteMediaUrl(path, brand.baseUrl);
+/** Imagen con URL absoluta (los emails no resuelven rutas relativas) y en JPEG si viene del bucket. */
+export const emailImageUrl = (path: string, brand: EmailBrand, width: number) => emailImageSrc(path, brand.baseUrl, width * 2);
 
 // ─── HTML ────────────────────────────────────────────────────────────────────
 
@@ -111,7 +112,7 @@ function blockHtml(block: EmailBlock, brand: EmailBrand): string {
             (item, i) =>
               `<tr><td width="72" style="padding:${i ? 14 : 0}px 14px 0 0;vertical-align:top">` +
               (item.image
-                ? `<img src="${escapeHtml(emailImageUrl(item.image, brand))}" width="72" height="96" alt="" style="display:block;width:72px;height:96px;border-radius:8px;background:${SOFT};border:0">`
+                ? `<img src="${escapeHtml(emailImageUrl(item.image, brand, 72))}" width="72" height="96" alt="" style="display:block;width:72px;height:96px;border-radius:8px;background:${SOFT};border:0">`
                 : `<div style="width:72px;height:96px;border-radius:8px;background:${SOFT}"></div>`) +
               `</td><td style="padding:${i ? 14 : 0}px 0 0;vertical-align:top;font:600 15px/1.35 ${FONT};color:${INK}">${esc(item.name)}` +
               `<div style="margin-top:4px;font:400 13px/1.4 ${FONT};color:${MUTED}">${esc(item.detail)}</div></td>` +
@@ -158,7 +159,7 @@ function blockHtml(block: EmailBlock, brand: EmailBrand): string {
         "margin:4px 0 8px",
       );
     case "image":
-      return `<div style="margin:4px 0 16px;text-align:center"><img src="${escapeHtml(emailImageUrl(block.src, brand))}" width="${block.width}" alt="${escapeHtml(block.alt)}" style="display:inline-block;width:${block.width}px;max-width:100%;height:auto;border:0;border-radius:12px"></div>`;
+      return `<div style="margin:4px 0 16px;text-align:center"><img src="${escapeHtml(emailImageUrl(block.src, brand, block.width))}" width="${block.width}" alt="${escapeHtml(block.alt)}" style="display:inline-block;width:${block.width}px;max-width:100%;height:auto;border:0;border-radius:12px"></div>`;
     case "box":
       return table(
         `<tr><td style="padding:20px 20px 8px;background:${SOFT};border-radius:14px">${block.title ? heading(block.title) : ""}${block.blocks.map((b) => blockHtml(b, brand)).join("")}</td></tr>`,
