@@ -87,6 +87,10 @@ export function SiteHeader({ categories, promoCount, contact, socials, store }: 
         </nav>
 
         <div className="flex items-center justify-self-end">
+          {/* Escritorio: a la derecha, con lo que no es comprar. En el teléfono no entra: está en el menú. */}
+          <Link href="/tracking" className="mr-3 hidden h-12 items-center gap-2 text-xs font-semibold tracking-widest uppercase hover:text-muted lg:flex">
+            <PackageSearch className="size-[18px]" aria-hidden /> Rastrear pedido
+          </Link>
           <button type="button" onClick={() => setSearchOpen(true)} aria-label="Buscar" className={iconButton}>
             <Search className="size-[22px]" aria-hidden />
           </button>

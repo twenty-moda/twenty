@@ -7,6 +7,7 @@ Este kit tiene todo lo que se sacó de la plataforma anterior (Laravel + React, 
 2. `db/*.sql` tiene **datos personales de clientes** (nombres, emails, teléfonos, DNI, direcciones, hashes de contraseña). No lo subas a git, no lo pegues en issues ni en logs y no lo uses en fixtures. Para seeds de desarrollo usa `db/catalog_json/` + `db/config_json/`. Del dump completo solo salen usuarios y pedidos, y únicamente en la migración final a producción.
 3. No hay secretos en este kit. En el código original había una clave privada RSA escrita directamente en `Controller.php` y una API key de Google Maps en `.env.example`: están redactadas y **no deben reutilizarse**. Todas las claves (Culqi, Google OAuth, Google Maps, TinyMCE) **se rotan** y van en variables de entorno nuevas.
 4. El frontend compilado viejo (`reference/frontend-compilado/`) solo sirve para inspeccionar pantallas o textos si hace falta. No lo reutilices.
+5. **Subir sin consultar (pedido de Mathyu, 24/09/2026):** al terminar cada cambio, hacer commit y `git push origin main` sin preguntar, siempre que pasen typecheck, lint, tests y build. Cada push a `main` despliega a producción. Si el cambio trae una migración, aplicarla antes en las dos ramas de Neon (production y preview).
 
 ## Mapa del kit
 | Ruta | Qué hay |
