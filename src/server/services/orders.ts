@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { normalizePhone, type CheckoutInput } from "@/lib/checkout-schema";
+import { orderCourier, type Courier } from "@/lib/couriers";
 import { canTransition, OPEN_STATUSES, PAID_STATUSES, RESTOCK_STATUSES, type OrderStatus } from "@/lib/order-status";
 import { allocateOutfitPrice, outfitLineKey } from "@/lib/outfits";
 import { priceLines } from "@/lib/pricing";
@@ -324,8 +325,8 @@ export async function getOrderForCustomer(db: Db, id: string) {
  * el estado, sus fechas y la forma de entrega. El detalle completo está en /pedido/[id] (enlace del email) o con
  * findOrderIdForTracking.
  *
- * `shalomGuide` es solo para consultar a Shalom los pasos del envío: no se manda al navegador, porque con el N° de
- * orden y el código se retira el paquete.
+ * `courierGuide` es solo para consultar a Shalom u Olva los pasos del envío: no se manda al navegador, porque con el
+ * N° de orden y el código de Shalom se retira el paquete (y en la web de Olva la guía muestra los nombres).
  */
 export async function getOrderTracking(db: Db, number: number) {
   const [row] = await db
@@ -349,9 +350,10 @@ export async function getOrderTracking(db: Db, number: number) {
     .where(eq(orderStatusHistory.orderId, row.id))
     .orderBy(asc(orderStatusHistory.createdAt));
   const { id: _id, trackingNumber, trackingCode, ...rest } = row;
+  const courier = orderCourier(row);
   return {
     order: { ...rest, history },
-    shalomGuide: trackingNumber && trackingCode ? { number: trackingNumber, code: trackingCode } : null,
+    courierGuide: courier && trackingNumber && trackingCode ? { courier, number: trackingNumber, code: trackingCode } : null,
   };
 }
 
@@ -517,7 +519,17 @@ export async function changeOrderStatus(
   });
 }
 
-/** Guía del courier para el seguimiento (Shalom: N° de orden y código). `null` la borra. */
+/** Courier con seguimiento del pedido (Shalom u Olva, por su forma de entrega), o null. */
+export async function getOrderCourier(db: Db, orderId: string): Promise<Courier | null> {
+  const [row] = await db
+    .select({ shippingKind: orders.shippingKind, shippingMethodName: orders.shippingMethodName })
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+  return row ? orderCourier(row) : null;
+}
+
+/** Guía del courier para el seguimiento (Shalom: N° de orden y código; Olva: N° de tracking y año). `null` la borra. */
 export async function setOrderTracking(db: Db, orderId: string, tracking: { number: string; code: string } | null) {
   await db
     .update(orders)

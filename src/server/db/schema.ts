@@ -14,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { Courier } from "../../lib/couriers";
 
 // Columnas en camelCase en TS y snake_case en Postgres (casing: "snake_case" en el cliente y en drizzle-kit).
 
@@ -392,9 +393,9 @@ export const orders = pgTable(
     addressReference: text(),
     /** Agencia de destino (Shalom, Olva) donde el cliente recoge. */
     agencyName: text(),
-    /** Id de la agencia en el sistema del courier (Shalom: `ter_id`), si se eligió de la lista. */
+    /** Id de la agencia en el sistema del courier (Shalom: `ter_id`; Olva: `code`), si se eligió de la lista. */
     agencyId: text(),
-    /** Guía del courier para el seguimiento (Shalom: número de orden de 8 dígitos y código de 4). */
+    /** Guía del courier para el seguimiento (Shalom: número de orden de 8 dígitos y código de 4; Olva: N° de tracking y año de emisión con 2 dígitos). */
     trackingNumber: text(),
     trackingCode: text(),
 
@@ -711,8 +712,10 @@ export const addresses = pgTable(
     address: text(),
     reference: text(),
     agencyName: text(),
-    /** Agencia de Shalom elegida de la lista (`ter_id`). */
+    /** Agencia elegida de la lista del courier (Shalom: `ter_id`; Olva: `code`). */
     agencyId: text(),
+    /** De qué courier es `agencyId` (los ids de Shalom y Olva se pueden repetir). */
+    agencyCourier: text().$type<Courier>(),
     isDefault: boolean().notNull().default(false),
     ...timestamps,
   },

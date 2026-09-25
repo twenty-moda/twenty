@@ -10,8 +10,8 @@ import { getDb } from "@/server/db/client";
 import { notifyAfterResponse } from "@/server/order-events";
 import { emailConfigured } from "@/server/services/email";
 import { planOrderEmails } from "@/server/services/order-notifications";
-import { parseTrackingInput } from "@/lib/shalom";
-import { changeOrderStatus, getOrderById, setOrderTracking, updateInternalNote } from "@/server/services/orders";
+import { parseTrackingInput } from "@/lib/couriers";
+import { changeOrderStatus, getOrderById, getOrderCourier, setOrderTracking, updateInternalNote } from "@/server/services/orders";
 import { culqiFromEnv } from "@/server/services/payments";
 import { refundOrder, resolvePendingRefund, type RefundResult } from "@/server/services/refunds";
 import { requireAdmin } from "../../_lib/auth";
@@ -41,9 +41,10 @@ export async function changeStatusAction(orderId: string, _: ActionState, formDa
   const note = String(formData.get("note") ?? "").slice(0, 500);
   const customerMessage = String(formData.get("customerMessage") ?? "").slice(0, 1000);
   const notifyCustomer = formData.get("notifyCustomer") === "on";
-  // Shalom: la guía se guarda antes del cambio de estado, así el email de "enviado" ya la lleva.
-  if (formData.has("trackingNumber")) {
-    const tracking = parseTrackingInput(formData.get("trackingNumber"), formData.get("trackingCode"));
+  // Shalom u Olva: la guía se guarda antes del cambio de estado, así el email de "enviado" ya la lleva.
+  const courier = formData.has("trackingNumber") ? await getOrderCourier(getDb(), orderId) : null;
+  if (courier) {
+    const tracking = parseTrackingInput(courier, formData.get("trackingNumber"), formData.get("trackingCode"));
     if (!tracking.ok) return failure(tracking.message);
     if (tracking.tracking) await setOrderTracking(getDb(), orderId, tracking.tracking);
   }
@@ -144,7 +145,9 @@ export async function resolveRefundAction(orderId: string, refundId: string, don
 
 export async function saveTrackingAction(orderId: string, _: ActionState, formData: FormData): Promise<ActionState> {
   await requireAdmin();
-  const tracking = parseTrackingInput(formData.get("trackingNumber"), formData.get("trackingCode"));
+  const courier = await getOrderCourier(getDb(), orderId);
+  if (!courier) return failure("Este pedido no va por Shalom ni por Olva.");
+  const tracking = parseTrackingInput(courier, formData.get("trackingNumber"), formData.get("trackingCode"));
   if (!tracking.ok) return failure(tracking.message);
   await setOrderTracking(getDb(), orderId, tracking.tracking);
   refresh();

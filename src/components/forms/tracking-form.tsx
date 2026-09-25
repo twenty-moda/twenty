@@ -4,11 +4,10 @@ import { CheckCircle2, Clock, MessageCircle, Package, Plus, Search, Store, Truck
 import { useActionState } from "react";
 import { openOrderDetailAction, trackOrderAction, type TrackingState } from "@/app/(store)/tracking/actions";
 import { OrderProgress } from "@/components/store/order-progress";
-import { ShalomTrackingCard } from "@/components/store/shalom-tracking";
+import { CourierTrackingCard } from "@/components/store/courier-tracking";
 import { idle } from "@/lib/action-state";
 import { whatsappUrl } from "@/lib/links";
 import { formatOrderNumber, STATUS_INFO, type OrderStatus } from "@/lib/order-status";
-import type { ShalomTracking } from "@/lib/shalom";
 import type { OrderTracking } from "@/server/services/orders";
 import { FormMessage, SubmitButton, TextField } from "../ui/form-feedback";
 
@@ -48,12 +47,12 @@ export function TrackingForm({ whatsapp }: { whatsapp: string }) {
           </SubmitButton>
         </form>
       </div>
-      {state.order ? <TrackingResult key={state.at} order={state.order} shalom={state.shalom ?? null} whatsapp={whatsapp} /> : null}
+      {state.order ? <TrackingResult key={state.at} order={state.order} courier={state.courier ?? null} whatsapp={whatsapp} /> : null}
     </>
   );
 }
 
-function TrackingResult({ order, shalom, whatsapp }: { order: OrderTracking; shalom: ShalomTracking | null; whatsapp: string }) {
+function TrackingResult({ order, courier, whatsapp }: { order: OrderTracking; courier: TrackingState["courier"] | null; whatsapp: string }) {
   const number = formatOrderNumber(order.number);
   const Icon = STATUS_ICON[order.status];
   const cancelled = order.status === "anulado" || order.status === "rechazado";
@@ -85,12 +84,12 @@ function TrackingResult({ order, shalom, whatsapp }: { order: OrderTracking; sha
         <DeliveryIcon className="size-4 shrink-0" aria-hidden /> {order.shippingMethodName}
       </p>
 
-      {/* Sin el N° de orden ni el código de Shalom: están en el detalle completo. */}
-      {shalom ? <ShalomTrackingCard tracking={shalom} className="mt-4" /> : null}
+      {/* Sin la guía de Shalom u Olva: está en el detalle completo. */}
+      {courier ? <CourierTrackingCard courier={courier.courier} tracking={courier.tracking} className="mt-4" /> : null}
 
       <details className="group smooth-details mt-6 rounded-xl bg-raised">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-semibold">
-          {shalom ? "Ver prendas, dirección, pago y guía" : "Ver prendas, dirección y pago"}
+          {courier ? "Ver prendas, dirección, pago y guía" : "Ver prendas, dirección y pago"}
           <Plus className="size-4 shrink-0 transition duration-300 group-open:rotate-45" aria-hidden />
         </summary>
         <div className="px-4 pb-4">

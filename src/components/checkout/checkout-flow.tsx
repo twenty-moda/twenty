@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNod
 import { placeOrderAction } from "@/app/(store)/checkout/actions";
 import { getCheckoutAccountAction, type CheckoutAccount } from "@/app/(store)/cuenta/actions";
 import { addressSummary } from "@/lib/account-forms";
-import { agencyLabel } from "@/lib/shalom";
+import { agencyLabel, COURIER_NAME, methodCourier, type Courier } from "@/lib/couriers";
 import { cartTotals, lineItem, type CartLine } from "@/lib/cart";
 import { checkoutSchema, fieldErrors, normalizePhone, type CheckoutFieldErrors, type CheckoutInput } from "@/lib/checkout-schema";
 import { cn } from "@/lib/cn";
@@ -20,7 +20,7 @@ import { cartStore, useCartLines, useHydrated } from "../cart/cart-store";
 import { promotionLabel } from "../store/price";
 import { Field, inputClass, Segmented, SelectWrap, selectClass } from "../ui/form";
 import { DistrictSearch, type PickedDistrict } from "./district-search";
-import { ShalomAgencyPicker } from "./shalom-agency-picker";
+import { AgencyPicker } from "./agency-picker";
 
 export type CheckoutFlowProps = {
   methods: ShippingMethodInfo[];
@@ -45,7 +45,7 @@ type FormState = {
   address: string;
   addressReference: string;
   agencyName: string;
-  /** Agencia de Shalom elegida de la lista (`ter_id`). */
+  /** Agencia elegida de la lista de Shalom u Olva (su id en el courier). */
   agencyId: string;
   invoiceType: "boleta" | "factura";
   ruc: string;
@@ -94,9 +94,9 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
   const [account, setAccount] = useState<CheckoutAccount>(null);
   const [accountChecked, setAccountChecked] = useState(false);
   const [saveAddress, setSaveAddress] = useState(true);
-  // Shalom: la agencia se elige de la lista real. Si la lista no carga, se vuelve a escribirla como texto.
-  const [shalomListOk, setShalomListOk] = useState(true);
-  const markShalomUnavailable = useCallback(() => setShalomListOk(false), []);
+  // Shalom y Olva: la agencia se elige de la lista real. Si la lista de un courier no carga, se escribe como texto.
+  const [listDown, setListDown] = useState<Partial<Record<Courier, boolean>>>({});
+  const markListDown = useCallback((c: Courier) => setListDown((d) => ({ ...d, [c]: true })), []);
 
   useEffect(() => {
     let active = true;
@@ -139,7 +139,9 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
   const totalCents = pricing.totalCents + shippingCents;
   const { units } = cartTotals(lines);
 
-  const shalomPicker = method?.slug === "shalom" && shalomListOk;
+  const courier = method ? methodCourier(method) : null;
+  /** Courier cuya lista de agencias se muestra (null = la agencia se escribe). */
+  const agencyPicker = courier && !listDown[courier] ? courier : null;
   type Saved = NonNullable<CheckoutAccount>["addresses"][number];
   const savedFor = (kind: ShippingKind | undefined): Saved[] =>
     !account
@@ -147,15 +149,15 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
       : kind === "lima_delivery"
         ? account.addresses.filter((a) => a.kind === "delivery" && limaDistricts.some((d) => d.ubigeo === a.ubigeo))
         : kind === "agency"
-          ? // Con la lista de Shalom solo sirven las agencias guardadas desde esa lista.
-            account.addresses.filter((a) => a.kind === "agency" && (!shalomPicker || !!a.agencyId))
+          ? // Con la lista del courier solo sirven las agencias guardadas desde esa misma lista.
+            account.addresses.filter((a) => a.kind === "agency" && (!agencyPicker || (!!a.agencyId && a.agencyCourier === agencyPicker)))
           : [];
   const same = (a: string | null, b: string) => (a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
   const savedForMethod = savedFor(method?.kind);
   const selectedSaved = savedForMethod.find((a) =>
     a.kind === "delivery"
       ? a.ubigeo === limaUbigeo && same(a.address, form.address)
-      : shalomPicker
+      : agencyPicker
         ? a.agencyId === form.agencyId
         : a.ubigeo === agencyDistrict?.ubigeo && same(a.agencyName, form.agencyName),
   );
@@ -185,7 +187,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     address: method?.kind === "lima_delivery" ? form.address : undefined,
     addressReference: method?.kind === "lima_delivery" ? form.addressReference : undefined,
     agencyName: method?.kind === "agency" ? form.agencyName : undefined,
-    agencyId: shalomPicker ? form.agencyId || undefined : undefined,
+    agencyId: agencyPicker ? form.agencyId || undefined : undefined,
     paymentMethod: form.paymentMethod || undefined,
     note: form.note,
     saveAddress: canSaveAddress && saveAddress,
@@ -201,7 +203,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
       if (!form.address.trim()) all.address = "Escribe la dirección de entrega";
     }
     if (method?.kind === "agency") {
-      if (shalomPicker) {
+      if (agencyPicker) {
         if (!form.agencyId) all.agencyName = "Elige la agencia donde recogerás";
       } else {
         if (!agencyDistrict) all.ubigeo = "Elige la ciudad donde recogerás";
@@ -356,6 +358,11 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                       role="radio"
                       aria-checked={selected}
                       onClick={() => {
+                        // Cada courier tiene sus agencias (y sus ids): al cambiar de uno a otro se vuelve a elegir.
+                        if (m.slug !== methodSlug && (m.kind === "agency" || method?.kind === "agency")) {
+                          setAgencyDistrict(null);
+                          setForm((f) => ({ ...f, agencyId: "", agencyName: "" }));
+                        }
                         setMethodSlug(m.slug);
                         setErrors({});
                       }}
@@ -488,31 +495,34 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                 ) : null}
 
 
-                {method.kind === "agency" && shalomPicker ? (
+                {method.kind === "agency" && agencyPicker ? (
                   <>
-                    <Field label="Agencia Shalom donde recoges" error={errors.agencyName ?? errors.ubigeo}>
+                    <Field label={`Agencia ${COURIER_NAME[agencyPicker]} donde recoges`} error={errors.agencyName ?? errors.ubigeo}>
                       {(p) => (
-                        <ShalomAgencyPicker
+                        <AgencyPicker
+                          key={agencyPicker}
+                          courier={agencyPicker}
                           id={p.id}
                           invalid={p["aria-invalid"]}
                           describedBy={p["aria-describedby"]}
                           value={form.agencyId}
-                          onUnavailable={markShalomUnavailable}
+                          onUnavailable={markListDown}
                           onChange={(agency) => {
                             setAgencyDistrict({ ubigeo: agency.ubigeo, label: `${agency.district}, ${agency.province} - ${agency.department}`, department: agency.department });
-                            setForm((f) => ({ ...f, agencyId: String(agency.id), agencyName: agencyLabel(agency) }));
+                            setForm((f) => ({ ...f, agencyId: agency.id, agencyName: agencyLabel(agency) }));
                             setErrors((x) => ({ ...x, ubigeo: undefined, agencyName: undefined }));
                           }}
                         />
                       )}
                     </Field>
                     <p className="rounded-xl bg-raised px-4 py-3 text-sm text-muted">
-                      El envío se paga al recoger en la agencia. Recoge la persona titular del documento que escribas abajo (mayor de 20 años).
+                      El envío se paga al recoger en la agencia. Recoge la persona titular del documento que escribas abajo
+                      {agencyPicker === "shalom" ? " (mayor de 20 años)" : ""}.
                     </p>
                   </>
                 ) : null}
 
-                {method.kind === "agency" && !shalomPicker ? (
+                {method.kind === "agency" && !agencyPicker ? (
                   <>
                     <Field label="Ciudad o distrito de destino" error={errors.ubigeo}>
                       {(p) => (

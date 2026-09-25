@@ -1,6 +1,7 @@
 /** Validaciones de la cuenta de cliente (mis datos y direcciones). Las usan el navegador y el servidor. */
 import { z } from "zod";
 import { documentError, normalizePhone } from "./checkout-schema";
+import { COURIERS } from "./couriers";
 
 const optional = (max: number) =>
   z
@@ -40,15 +41,20 @@ export const addressSchema = z
     address: optional(200),
     reference: optional(200),
     agencyName: optional(160),
-    /** Agencia de Shalom elegida de la lista (`ter_id`). */
+    /** Agencia elegida de la lista de Shalom u Olva (su id en el courier). */
     agencyId: z
       .string()
       .regex(/^\d{1,9}$/)
       .nullish()
       .transform((v) => v ?? null),
+    agencyCourier: z
+      .enum(COURIERS)
+      .nullish()
+      .transform((v) => v ?? null),
     isDefault: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
+    if (data.agencyId && !data.agencyCourier) ctx.addIssue({ code: "custom", path: ["agencyName"], message: "Elige la agencia de la lista" });
     if (data.kind === "delivery" && !data.address) ctx.addIssue({ code: "custom", path: ["address"], message: "Escribe la dirección" });
     if (data.kind === "agency" && !data.agencyName) ctx.addIssue({ code: "custom", path: ["agencyName"], message: "Escribe la agencia donde recoges" });
   });

@@ -3,6 +3,7 @@
  * equipo (pedido nuevo, anulado o rechazado, devolución). Solo arma el contenido; quién recibe qué lo decide
  * order-notifications.ts.
  */
+import { GUIDE_FIELDS, guideCodeText, orderCourier } from "@/lib/couriers";
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL, formatOrderNumber, ORDER_PROGRESS, PAYMENT_METHOD_LABEL, progressIndex, type OrderStatus } from "@/lib/order-status";
@@ -110,15 +111,23 @@ function deliveryRows(order: OrderDetail, settings: SiteSettings, forTeam = fals
   return rows;
 }
 
-/** Guía del courier (Shalom), si el equipo ya la anotó. */
+/** Guía del courier (Shalom u Olva), si el equipo ya la anotó. */
 function trackingBox(order: OrderDetail): EmailBlock[] {
-  if (!order.trackingNumber || !order.trackingCode) return [];
+  const courier = orderCourier(order);
+  if (!courier || !order.trackingNumber || !order.trackingCode) return [];
+  const fields = GUIDE_FIELDS[courier];
   return [
     {
       type: "box",
       title: "Seguimiento",
       blocks: [
-        { type: "rows", rows: [["N° de orden", order.trackingNumber], ["Código", order.trackingCode]] },
+        {
+          type: "rows",
+          rows: [
+            [fields.number, order.trackingNumber],
+            [fields.code, guideCodeText(courier, order.trackingCode)],
+          ],
+        },
         { type: "text", text: "Mira en qué va tu envío en la página de tu pedido.", small: true, muted: true },
       ],
     },

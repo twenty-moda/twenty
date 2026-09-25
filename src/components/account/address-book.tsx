@@ -6,9 +6,9 @@ import { deleteAddressAction, saveAddressAction, setDefaultAddressAction } from 
 import { ADDRESS_KINDS, addressSummary, type AddressKind } from "@/lib/account-forms";
 import type { ActionState } from "@/lib/action-state";
 import type { SavedAddress } from "@/server/services/accounts";
-import { agencyLabel } from "@/lib/shalom";
+import { agencyLabel, COURIER_NAME, COURIERS, type Courier } from "@/lib/couriers";
+import { AgencyPicker } from "../checkout/agency-picker";
 import { DistrictSearch, type PickedDistrict } from "../checkout/district-search";
-import { ShalomAgencyPicker } from "../checkout/shalom-agency-picker";
 import { Field, inputClass, Segmented, SelectWrap, selectClass } from "../ui/form";
 import { FormMessage, SubmitButton, TextField } from "../ui/form-feedback";
 import { Sheet } from "../ui/sheet";
@@ -125,12 +125,13 @@ function AddressForm({ address, limaDistricts, onSaved }: { address: SavedAddres
     address?.kind === "agency" ? { ubigeo: address.ubigeo, label: `${address.district}, ${address.province} - ${address.department}`, department: address.department } : null,
   );
   const errors = state.fieldErrors ?? {};
-  // Agencia de Shalom: de la lista (con su id). "Otra agencia" (Olva u otra) o sin lista: se escribe.
-  const [shalom, setShalom] = useState({ id: address?.agencyId ?? "", name: address?.agencyName ?? "" });
+  // Agencia de Shalom u Olva: de la lista del courier (con su id). Sin lista, o una guardada antes a mano: se escribe.
+  const [courier, setCourier] = useState<Courier>(address?.agencyCourier ?? "shalom");
+  const [picked, setPicked] = useState({ id: address?.agencyId ?? "", name: address?.agencyName ?? "" });
   const [manualAgency, setManualAgency] = useState(address?.kind === "agency" && !address.agencyId);
-  const [shalomListOk, setShalomListOk] = useState(true);
-  const markShalomUnavailable = useCallback(() => setShalomListOk(false), []);
-  const useShalomList = shalomListOk && !manualAgency;
+  const [listDown, setListDown] = useState<Partial<Record<Courier, boolean>>>({});
+  const markUnavailable = useCallback((c: Courier) => setListDown((d) => ({ ...d, [c]: true })), []);
+  const useList = !listDown[courier] && !manualAgency;
 
   return (
     <form action={action} className="space-y-4 p-4" noValidate>
@@ -175,43 +176,64 @@ function AddressForm({ address, limaDistricts, onSaved }: { address: SavedAddres
           <TextField label="Dirección" name="address" state={state} autoComplete="street-address" placeholder="Av. Larco 123, dpto 402" required />
           <TextField label="Referencia" name="reference" state={state} placeholder="Frente al parque" optional />
         </>
-      ) : useShalomList ? (
-        <>
-          <Field label="Agencia Shalom" error={errors.agencyName ?? errors.ubigeo}>
-            {(a11y) => (
-              <ShalomAgencyPicker
-                id={a11y.id}
-                invalid={a11y["aria-invalid"]}
-                describedBy={a11y["aria-describedby"]}
-                value={shalom.id}
-                onUnavailable={markShalomUnavailable}
-                onChange={(agency) => {
-                  setShalom({ id: String(agency.id), name: agencyLabel(agency) });
-                  setAgencyDistrict({ ubigeo: agency.ubigeo, label: `${agency.district}, ${agency.province} - ${agency.department}`, department: agency.department });
-                  if (!label) setLabel(`Shalom ${agency.name}`.slice(0, 40));
-                }}
-              />
-            )}
-          </Field>
-          <input type="hidden" name="ubigeo" value={agencyDistrict?.ubigeo ?? ""} />
-          <input type="hidden" name="agencyName" value={shalom.name} />
-          <input type="hidden" name="agencyId" value={shalom.id} />
-          <button type="button" onClick={() => setManualAgency(true)} className="min-h-10 text-sm font-semibold text-muted underline underline-offset-4">
-            ¿Es Olva u otra agencia? Escríbela
-          </button>
-        </>
       ) : (
         <>
-          <Field label="Ciudad o distrito" error={errors.ubigeo}>
-            {(a11y) => <DistrictSearch id={a11y.id} value={agencyDistrict} onChange={setAgencyDistrict} invalid={a11y["aria-invalid"]} describedBy={a11y["aria-describedby"]} />}
-          </Field>
-          <input type="hidden" name="ubigeo" value={agencyDistrict?.ubigeo ?? ""} />
-          <TextField label="Agencia donde recoges" name="agencyName" state={state} placeholder="Olva Av. Ejército" hint="La agencia y su sede." required />
-          {shalomListOk ? (
-            <button type="button" onClick={() => setManualAgency(false)} className="min-h-10 text-sm font-semibold text-muted underline underline-offset-4">
-              Elegir una agencia de Shalom de la lista
-            </button>
-          ) : null}
+          <Segmented
+            label="Courier"
+            value={courier}
+            options={COURIERS.map((c) => ({ value: c, label: COURIER_NAME[c] }))}
+            onChange={(c) => {
+              if (c === courier) return;
+              setCourier(c);
+              setPicked({ id: "", name: "" });
+            }}
+          />
+          {useList ? (
+            <>
+              <Field label={`Agencia ${COURIER_NAME[courier]}`} error={errors.agencyName ?? errors.ubigeo}>
+                {(a11y) => (
+                  <AgencyPicker
+                    key={courier}
+                    courier={courier}
+                    id={a11y.id}
+                    invalid={a11y["aria-invalid"]}
+                    describedBy={a11y["aria-describedby"]}
+                    value={picked.id}
+                    onUnavailable={markUnavailable}
+                    onChange={(agency) => {
+                      setPicked({ id: agency.id, name: agencyLabel(agency) });
+                      setAgencyDistrict({ ubigeo: agency.ubigeo, label: `${agency.district}, ${agency.province} - ${agency.department}`, department: agency.department });
+                      if (!label) setLabel(`${COURIER_NAME[courier]} ${agency.name}`.slice(0, 40));
+                    }}
+                  />
+                )}
+              </Field>
+              <input type="hidden" name="ubigeo" value={picked.id ? (agencyDistrict?.ubigeo ?? "") : ""} />
+              <input type="hidden" name="agencyName" value={picked.name} />
+              <input type="hidden" name="agencyId" value={picked.id} />
+              <input type="hidden" name="agencyCourier" value={picked.id ? courier : ""} />
+            </>
+          ) : (
+            <>
+              <Field label="Ciudad o distrito" error={errors.ubigeo}>
+                {(a11y) => <DistrictSearch id={a11y.id} value={agencyDistrict} onChange={setAgencyDistrict} invalid={a11y["aria-invalid"]} describedBy={a11y["aria-describedby"]} />}
+              </Field>
+              <input type="hidden" name="ubigeo" value={agencyDistrict?.ubigeo ?? ""} />
+              <TextField
+                label={`Agencia ${COURIER_NAME[courier]} donde recoges`}
+                name="agencyName"
+                state={state}
+                placeholder={`${COURIER_NAME[courier]} Av. Ejército`}
+                hint="La agencia y su sede."
+                required
+              />
+              {!listDown[courier] ? (
+                <button type="button" onClick={() => setManualAgency(false)} className="min-h-10 text-sm font-semibold text-muted underline underline-offset-4">
+                  Elegir la agencia de la lista de {COURIER_NAME[courier]}
+                </button>
+              ) : null}
+            </>
+          )}
         </>
       )}
 

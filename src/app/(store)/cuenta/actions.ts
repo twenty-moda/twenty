@@ -51,7 +51,12 @@ export async function saveAddressAction(id: string | null, _: ActionState, fd: F
   const user = await getAccount();
   if (!user) redirect("/ingresar?volver=/cuenta/direcciones");
   const values = formValues(fd);
-  const parsed = addressSchema.safeParse({ ...values, agencyId: values.agencyId || null, isDefault: values.isDefault === "on" });
+  const parsed = addressSchema.safeParse({
+    ...values,
+    agencyId: values.agencyId || null,
+    agencyCourier: values.agencyCourier || null,
+    isDefault: values.isDefault === "on",
+  });
   if (!parsed.success) return failure("Revisa los campos marcados.", formErrors(parsed.error), values);
   const result = await saveAddress(getDb(), user.id, parsed.data, id ?? undefined);
   if (!result.ok) return failure(result.message, result.field ? { [result.field]: result.message } : undefined, values);

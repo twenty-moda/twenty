@@ -28,6 +28,7 @@ const delivery = (over: Partial<Parameters<typeof accounts.saveAddress>[2]> = {}
   reference: null,
   agencyName: null,
   agencyId: null,
+  agencyCourier: null,
   isDefault: false,
   ...over,
 });
@@ -209,6 +210,22 @@ describe("direcciones", () => {
     expect(list).toHaveLength(2);
     expect(list.find((a) => a.kind === "delivery")).toMatchObject({ label: "Santiago De Surco", reference: "Portón verde", isDefault: true });
     expect(list.find((a) => a.kind === "agency")).toMatchObject({ label: "Shalom Av. Ejército", isDefault: false });
+  });
+
+  it("una agencia de la lista se reconoce por su id y su courier (Shalom y Olva pueden repetir ids)", async () => {
+    const id = await signIn();
+    const agency = { kind: "agency" as const, ubigeo: AREQUIPA, agencyId: "347" };
+    await accounts.rememberCheckoutAddress(db, id, { ...agency, agencyName: "Shalom Av. Parra", agencyCourier: "shalom" });
+    await accounts.rememberCheckoutAddress(db, id, { ...agency, agencyName: "Olva Arequipa Centro", agencyCourier: "olva" });
+    await accounts.rememberCheckoutAddress(db, id, { ...agency, agencyName: "Olva Arequipa Centro", agencyCourier: "olva" });
+    const list = await accounts.listAddresses(db, id);
+    expect(list.map((a) => [a.agencyCourier, a.agencyId, a.label]).sort()).toEqual([
+      ["olva", "347", "Olva Arequipa Centro"],
+      ["shalom", "347", "Shalom Av. Parra"],
+    ]);
+    // Escrita a mano (sin id) no lleva courier.
+    await accounts.saveAddress(db, id, delivery({ kind: "agency", label: "A mano", ubigeo: AREQUIPA, address: null, agencyName: "Olva Cayma", agencyCourier: "olva" }));
+    expect((await accounts.listAddresses(db, id)).find((a) => a.label === "A mano")?.agencyCourier).toBeNull();
   });
 });
 

@@ -8,7 +8,7 @@ import type { Db } from "../db/client";
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
-const { placeOrder, changeOrderStatus, getOrderByNumber, getOrderTracking, listOrders, setOrderTracking } = await import("./orders");
+const { placeOrder, changeOrderStatus, getOrderByNumber, getOrderCourier, getOrderTracking, listOrders, setOrderTracking } = await import("./orders");
 
 let db: Db;
 const ids = {
@@ -67,6 +67,7 @@ beforeAll(async () => {
     { id: ids.pickup, slug: "recojo-en-tienda", name: "Recojo en tienda", kind: "store_pickup" },
     { id: ids.delivery, slug: "delivery-lima", name: "Delivery Lima", kind: "lima_delivery", position: 1 },
     { id: randomUUID(), slug: "shalom", name: "Envío Shalom", kind: "agency", paymentOnDelivery: true, position: 2 },
+    { id: randomUUID(), slug: "olva", name: "Envío Olva", kind: "agency", paymentOnDelivery: true, position: 3 },
   ]);
   await db.insert(schema.districts).values([
     { ubigeo: "140130", name: "Santiago De Surco", province: "Lima", department: "Lima", deliveryPriceCents: 1200 },
@@ -175,18 +176,27 @@ describe("getOrderTracking", () => {
     expect(Object.keys(tracking?.order ?? {}).sort()).toEqual(["createdAt", "history", "number", "shippingKind", "shippingMethodName", "status"]);
     expect(tracking?.order.history.map((h) => Object.keys(h).sort())).toEqual([["at", "status"], ["at", "status"]]);
     expect(tracking?.order).toMatchObject({ number: placed.number, status: "pagado", history: [{ status: "pendiente" }, { status: "pagado" }] });
-    expect(tracking?.shalomGuide).toBeNull();
+    expect(tracking?.courierGuide).toBeNull();
     expect(await getOrderTracking(db, 999_999)).toBeNull();
   });
 
-  it("aparta la guía de Shalom para consultar el envío, fuera de lo que se muestra", async () => {
-    const placed = await placeOrder(db, checkout({}));
-    if (!placed.ok) throw new Error("no se creó el pedido");
-    await setOrderTracking(db, placed.orderId, { number: "66479331", code: "3KTH" });
+  it("aparta la guía de Shalom u Olva para consultar el envío, fuera de lo que se muestra", async () => {
+    await setStock(3);
+    const shalom = await placeOrder(db, checkout({ shippingMethod: "shalom", ubigeo: "040101", agencyName: "Shalom Arequipa Centro" }));
+    const olva = await placeOrder(db, checkout({ shippingMethod: "olva", ubigeo: "040101", agencyName: "Olva Arequipa", agencyId: "347" }));
+    const delivery = await placeOrder(db, checkout({}));
+    if (!shalom.ok || !olva.ok || !delivery.ok) throw new Error("no se crearon los pedidos");
+    await setOrderTracking(db, shalom.orderId, { number: "66479331", code: "3KTH" });
+    await setOrderTracking(db, olva.orderId, { number: "12345678", code: "26" });
+    await setOrderTracking(db, delivery.orderId, { number: "11112222", code: "26" });
 
-    const tracking = await getOrderTracking(db, placed.number);
-    expect(tracking?.shalomGuide).toEqual({ number: "66479331", code: "3KTH" });
+    const tracking = await getOrderTracking(db, shalom.number);
+    expect(tracking?.courierGuide).toEqual({ courier: "shalom", number: "66479331", code: "3KTH" });
     expect(JSON.stringify(tracking?.order)).not.toMatch(/66479331|3KTH/);
+    expect((await getOrderTracking(db, olva.number))?.courierGuide).toEqual({ courier: "olva", number: "12345678", code: "26" });
+    expect((await getOrderTracking(db, delivery.number))?.courierGuide).toBeNull();
+    expect(await getOrderCourier(db, olva.orderId)).toBe("olva");
+    expect(await getOrderCourier(db, delivery.orderId)).toBeNull();
   });
 });
 

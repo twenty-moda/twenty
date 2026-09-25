@@ -7,7 +7,8 @@ import { CopyLinkButton } from "@/components/checkout/copy-link-button";
 import { CulqiPay } from "@/components/checkout/culqi-pay";
 import { PaymentProofUpload } from "@/components/checkout/payment-proof-upload";
 import { OrderProgress } from "@/components/store/order-progress";
-import { ShalomTrackingCard } from "@/components/store/shalom-tracking";
+import { CourierTrackingCard } from "@/components/store/courier-tracking";
+import { orderCourier, type Courier } from "@/lib/couriers";
 import { culqiConfig } from "@/lib/culqi-config";
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
@@ -17,7 +18,7 @@ import { REFUND_REASON_INFO, soldOutUnits } from "@/lib/refunds";
 import { getDb } from "@/server/db/client";
 import { getOrderForCustomer } from "@/server/services/orders";
 import { listPaymentProofs, MAX_PROOFS_PER_ORDER } from "@/server/services/payment-proofs";
-import { getShalomTracking, getSiteSettings } from "../../_data";
+import { getCourierTracking, getSiteSettings } from "../../_data";
 
 export const metadata: Metadata = { title: "Tu pedido", robots: { index: false } };
 
@@ -46,6 +47,7 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
   const whatsapp = settings.contact.whatsapp;
   const culqi = culqiConfig();
   const DeliveryIcon = order.shippingKind === "lima_delivery" ? Truck : order.shippingKind === "agency" ? Package : Store;
+  const courier = orderCourier(order);
   // Lo que el equipo le escribió al cambiar el estado (p. ej. la clave de recojo de Shalom) o al devolverle dinero,
   // lo último primero.
   const messages = [
@@ -213,9 +215,9 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
         </div>
       </section>
 
-      {order.trackingNumber && order.trackingCode ? (
+      {courier && order.trackingNumber && order.trackingCode ? (
         <Suspense fallback={<div className="mt-4 h-40 animate-pulse rounded-2xl bg-raised" aria-busy="true" />}>
-          <ShalomTracking number={order.trackingNumber} code={order.trackingCode} />
+          <GuideTracking courier={courier} number={order.trackingNumber} code={order.trackingCode} />
         </Suspense>
       ) : null}
 
@@ -314,7 +316,7 @@ function SoldOutNote({ units, quantity }: { units: number | undefined; quantity:
   );
 }
 
-/** Estado de la guía de Shalom (aparte: si la API tarda, el resto del pedido ya se ve). */
-async function ShalomTracking({ number, code }: { number: string; code: string }) {
-  return <ShalomTrackingCard guide={{ number, code }} tracking={await getShalomTracking(number, code)} className="mt-4" />;
+/** Estado de la guía de Shalom u Olva (aparte: si la API tarda, el resto del pedido ya se ve). */
+async function GuideTracking({ courier, number, code }: { courier: Courier; number: string; code: string }) {
+  return <CourierTrackingCard courier={courier} guide={{ number, code }} tracking={await getCourierTracking(courier, number, code)} className="mt-4" />;
 }

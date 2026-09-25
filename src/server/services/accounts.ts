@@ -6,6 +6,7 @@
  */
 import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import type { AddressInput, ProfileInput } from "@/lib/account-forms";
+import type { Courier } from "@/lib/couriers";
 import type { Db } from "../db/client";
 import { addresses, customers, districts, orderItems, orders, sessions, users } from "../db/schema";
 import type { FirebaseIdentity } from "./firebase-auth";
@@ -154,6 +155,7 @@ export async function listAddresses(db: Db, userId: string) {
       reference: addresses.reference,
       agencyName: addresses.agencyName,
       agencyId: addresses.agencyId,
+      agencyCourier: addresses.agencyCourier,
       isDefault: addresses.isDefault,
       district: districts.name,
       province: districts.province,
@@ -182,6 +184,7 @@ export async function saveAddress(db: Db, userId: string, input: AddressInput, i
     reference: input.kind === "delivery" ? input.reference : null,
     agencyName: input.kind === "agency" ? input.agencyName : null,
     agencyId: input.kind === "agency" ? (input.agencyId ?? null) : null,
+    agencyCourier: input.kind === "agency" && input.agencyId ? input.agencyCourier : null,
   };
 
   return db.transaction(async (tx) => {
@@ -236,7 +239,15 @@ export async function deleteAddress(db: Db, userId: string, id: string) {
 export async function rememberCheckoutAddress(
   db: Db,
   userId: string,
-  input: { kind: "delivery" | "agency"; ubigeo: string; address?: string | null; reference?: string | null; agencyName?: string | null; agencyId?: string | null },
+  input: {
+    kind: "delivery" | "agency";
+    ubigeo: string;
+    address?: string | null;
+    reference?: string | null;
+    agencyName?: string | null;
+    agencyId?: string | null;
+    agencyCourier?: Courier | null;
+  },
 ) {
   const saved = await listAddresses(db, userId);
   const same = (value: string | null | undefined, other: string | null) => (value ?? "").trim().toLowerCase() === (other ?? "").trim().toLowerCase();
@@ -246,7 +257,7 @@ export async function rememberCheckoutAddress(
       (input.kind === "delivery"
         ? a.ubigeo === input.ubigeo && same(input.address, a.address)
         : input.agencyId
-          ? a.agencyId === input.agencyId
+          ? a.agencyId === input.agencyId && a.agencyCourier === (input.agencyCourier ?? null)
           : a.ubigeo === input.ubigeo && same(input.agencyName, a.agencyName)),
   );
   if (match) {
@@ -264,6 +275,7 @@ export async function rememberCheckoutAddress(
     reference: input.reference ?? null,
     agencyName: input.agencyName ?? null,
     agencyId: input.agencyId ?? null,
+    agencyCourier: input.agencyId ? (input.agencyCourier ?? null) : null,
     isDefault: false,
   });
 }

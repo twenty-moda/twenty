@@ -4,19 +4,24 @@ import { Check, Clock, LocateFixed, MapPin, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { matchesAllWords, normalizeText } from "@/lib/slug";
-import type { ShalomAgency } from "@/lib/shalom";
+import { COURIER_NAME, type Courier, type CourierAgency } from "@/lib/couriers";
 import { inputClass } from "../ui/form";
 
-let agenciesPromise: Promise<ShalomAgency[]> | null = null;
-/** La lista (≈500 agencias) se pide una vez, cuando alguien elige Shalom. Viene del CDN (se renueva cada día). */
-export function loadShalomAgencies() {
-  agenciesPromise ??= fetch("/api/shalom/agencies")
-    .then((r) => (r.ok ? (r.json() as Promise<ShalomAgency[]>) : []))
+const agenciesPromise: Partial<Record<Courier, Promise<CourierAgency[]>>> = {};
+/**
+ * La lista (≈500 agencias de Shalom, ≈430 de Olva) se pide una vez, cuando alguien elige ese courier. Viene del CDN
+ * (se renueva cada día).
+ */
+export function loadAgencies(courier: Courier) {
+  agenciesPromise[courier] ??= fetch(`/api/${courier}/agencies`)
+    .then((r) => (r.ok ? (r.json() as Promise<CourierAgency[]>) : []))
+    // Las listas guardadas antes en el CDN traían el id de Shalom como número.
+    .then((list) => list.map((a) => ({ ...a, id: String(a.id) })))
     .catch(() => {
-      agenciesPromise = null;
+      delete agenciesPromise[courier];
       return [];
     });
-  return agenciesPromise;
+  return agenciesPromise[courier];
 }
 
 const MAX_RESULTS = 12;
@@ -25,22 +30,27 @@ const haversineKm = (a: { lat: number; lng: number }, b: { lat: number; lng: num
   const h = Math.sin(rad(b.lat - a.lat) / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
   return 12_742 * Math.asin(Math.sqrt(h));
 };
-const searchText = (a: ShalomAgency) => `${a.name} ${a.address} ${a.district} ${a.province} ${a.department}`;
+const searchText = (a: CourierAgency) => `${a.name} ${a.address} ${a.district} ${a.province} ${a.department}`;
 
 type Props = {
+  courier: Courier;
   id: string;
-  /** `ter_id` de la agencia elegida. */
+  /** Id de la agencia elegida en el courier. */
   value: string;
-  onChange: (agency: ShalomAgency) => void;
-  /** Sin lista (Shalom no respondió): el checkout vuelve a pedir la agencia como texto. */
-  onUnavailable: () => void;
+  onChange: (agency: CourierAgency) => void;
+  /** Sin lista (el courier no respondió): el checkout vuelve a pedir la agencia como texto. */
+  onUnavailable: (courier: Courier) => void;
   invalid?: boolean;
   describedBy?: string;
 };
 
-/** Buscar la agencia de Shalom por ciudad, distrito o dirección, o las más cercanas con la ubicación del teléfono. */
-export function ShalomAgencyPicker({ id, value, onChange, onUnavailable, invalid, describedBy }: Props) {
-  const [agencies, setAgencies] = useState<ShalomAgency[] | null>(null);
+/**
+ * Buscar la agencia de Shalom u Olva por ciudad, distrito o dirección, o las más cercanas con la ubicación del
+ * teléfono. Al cambiar de courier va con otra `key` (cada uno tiene sus ids).
+ */
+export function AgencyPicker({ courier, id, value, onChange, onUnavailable, invalid, describedBy }: Props) {
+  const courierName = COURIER_NAME[courier];
+  const [agencies, setAgencies] = useState<CourierAgency[] | null>(null);
   const [query, setQuery] = useState("");
   const [near, setNear] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
@@ -49,26 +59,28 @@ export function ShalomAgencyPicker({ id, value, onChange, onUnavailable, invalid
 
   useEffect(() => {
     let active = true;
-    loadShalomAgencies().then((list) => {
+    loadAgencies(courier).then((list) => {
       if (!active) return;
-      if (!list.length) onUnavailable();
+      if (!list.length) onUnavailable(courier);
       setAgencies(list);
     });
     return () => {
       active = false;
     };
-  }, [onUnavailable]);
+  }, [courier, onUnavailable]);
 
-  if (!agencies) return <div className="h-12 animate-pulse rounded-xl bg-raised" aria-busy="true" aria-label="Cargando agencias de Shalom" />;
+  if (!agencies) return <div className="h-12 animate-pulse rounded-xl bg-raised" aria-busy="true" aria-label={`Cargando agencias de ${courierName}`} />;
 
-  const selected = agencies.find((a) => String(a.id) === value);
+  const selected = agencies.find((a) => a.id === value);
   if (selected && !changing) {
     return (
       <div className="rounded-xl border border-white bg-raised p-4">
         <div className="flex items-start gap-3">
           <Check className="mt-0.5 size-5 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="font-semibold">Shalom {selected.name}</p>
+            <p className="font-semibold">
+              {courierName} {selected.name}
+            </p>
             <p className="text-sm text-muted">{selected.address}</p>
             <p className="text-xs text-subtle">
               {selected.district}, {selected.province} - {selected.department}
@@ -88,12 +100,12 @@ export function ShalomAgencyPicker({ id, value, onChange, onUnavailable, invalid
   }
 
   const q = query.trim();
-  // Por texto: primero las del distrito o la ciudad que se escribió. Con ubicación: las más cercanas.
-  const rank = (a: ShalomAgency) => {
+  // Por texto: primero las del distrito o la ciudad que se escribió (o la agencia con ese nombre). Con ubicación: las más cercanas.
+  const rank = (a: CourierAgency) => {
     const n = normalizeText(q);
     const district = normalizeText(a.district);
     const province = normalizeText(a.province);
-    return district === n || province === n ? 0 : district.startsWith(n) || province.startsWith(n) ? 1 : 2;
+    return district === n || province === n ? 0 : normalizeText(a.name).startsWith(n) || district.startsWith(n) || province.startsWith(n) ? 1 : 2;
   };
   const results = near
     ? agencies
@@ -154,19 +166,19 @@ export function ShalomAgencyPicker({ id, value, onChange, onUnavailable, invalid
       {locateError ? <p className="text-sm text-warning">{locateError}</p> : null}
 
       {results.length ? (
-        <ul className="overflow-hidden rounded-xl border border-line" role="listbox" aria-label="Agencias de Shalom">
+        <ul className="overflow-hidden rounded-xl border border-line" role="listbox" aria-label={`Agencias de ${courierName}`}>
           {results.map(({ a, km }) => (
             <li key={a.id}>
               <button
                 type="button"
                 role="option"
-                aria-selected={String(a.id) === value}
+                aria-selected={a.id === value}
                 onClick={() => {
                   onChange(a);
                   setChanging(false);
                   setQuery("");
                 }}
-                className={cn("flex w-full items-start gap-3 border-b border-line px-4 py-3 text-left last:border-0 hover:bg-raised", String(a.id) === value && "bg-raised")}
+                className={cn("flex w-full items-start gap-3 border-b border-line px-4 py-3 text-left last:border-0 hover:bg-raised", a.id === value && "bg-raised")}
               >
                 <MapPin className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
                 <span className="min-w-0 flex-1">

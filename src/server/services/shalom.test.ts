@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { agencyLabel, isShalomOrder, parseTrackingInput } from "@/lib/shalom";
-import { hoursText, parseTracking, resolveShalomAgency, titleCase, toAgencies } from "./shalom";
+import { agencyLabel, orderCourier, parseTrackingInput } from "@/lib/couriers";
+import { resolveAgency, titleCase } from "./couriers";
+import { hoursText, parseTracking, toAgencies } from "./shalom";
 
 const districts: [string, string, string, string][] = [
   ["040101", "Arequipa", "Arequipa", "Arequipa"],
@@ -36,7 +37,7 @@ describe("toAgencies", () => {
       districts,
     );
     expect(Object.fromEntries(list.map((a) => [a.id, a.ubigeo]))).toEqual({ 7: "040101", 8: "140103", 9: "140401", 10: "230201", 11: "190115", 12: "040101" });
-    expect(list.find((a) => a.id === 7)).toMatchObject({ name: "Av Parra 379", address: "Av. Parra 379 - Arequipa", district: "Arequipa", lat: -16.41 });
+    expect(list.find((a) => a.id === "7")).toMatchObject({ name: "Av Parra 379", address: "Av. Parra 379 - Arequipa", district: "Arequipa", lat: -16.41 });
   });
 
   it("deja fuera las agencias que no reciben envíos o de un departamento desconocido", () => {
@@ -70,7 +71,7 @@ describe("parseTracking", () => {
 
   it("devuelve los pasos con fecha y el destino, sin nombres ni documentos", () => {
     const tracking = parseTracking(body);
-    expect(tracking).toMatchObject({ delivered: true, destination: "Trujillo, La Libertad", eta: "24 horas" });
+    expect(tracking).toMatchObject({ delivered: true, destination: "Trujillo, La Libertad", eta: null });
     expect(tracking?.steps.map((s) => s.key)).toEqual(["registrado", "origen", "transito", "destino", "entregado"]);
     expect(JSON.stringify(tracking)).not.toMatch(/PEREZ|12345678|20123456789|EMPRESA/i);
   });
@@ -78,6 +79,7 @@ describe("parseTracking", () => {
   it("sin entregar no muestra el paso de entrega; guía no encontrada = null", () => {
     const pending = parseTracking({ ...body, search: { ...body.search, data: { ...body.search.data, entregado: false } } });
     expect(pending?.steps.at(-1)?.key).toBe("destino");
+    expect(pending?.eta).toBe("Tiempo estimado: 24 horas");
     expect(parseTracking({ search: { success: false } })).toBeNull();
   });
 });
@@ -97,23 +99,24 @@ describe("checkout y seguimiento", () => {
   const [agency] = toAgencies([raw("AREQUIPA / AREQUIPA / CAYMA / CAYMA", { ter_id: 44 })], districts);
 
   it("la agencia sale de la lista oficial; sin lista vale el texto del cliente", () => {
-    expect(resolveShalomAgency([agency], "44")).toEqual({ agency });
-    expect(resolveShalomAgency([agency], undefined)).toEqual({ error: "Elige la agencia donde recogerás." });
-    expect(resolveShalomAgency([agency], "999")).toMatchObject({ error: expect.stringContaining("ya no está disponible") });
-    expect(resolveShalomAgency([], undefined)).toEqual({ agency: null });
+    expect(resolveAgency([agency], "44")).toEqual({ agency });
+    expect(resolveAgency([agency], undefined)).toEqual({ error: "Elige la agencia donde recogerás." });
+    expect(resolveAgency([agency], "999")).toMatchObject({ error: expect.stringContaining("ya no está disponible") });
+    expect(resolveAgency([], undefined)).toEqual({ agency: null });
     expect(agency).toMatchObject({ ubigeo: "040103", district: "Cayma" });
   });
 
   it("valida la guía que anota el equipo", () => {
-    expect(parseTrackingInput(" 6647 9331 ", "3kth")).toEqual({ ok: true, tracking: { number: "66479331", code: "3KTH" } });
-    expect(parseTrackingInput("", "")).toEqual({ ok: true, tracking: null });
-    expect(parseTrackingInput("123", "3KTH")).toMatchObject({ ok: false });
-    expect(parseTrackingInput("66479331", "3K")).toMatchObject({ ok: false });
+    expect(parseTrackingInput("shalom", " 6647 9331 ", "3kth")).toEqual({ ok: true, tracking: { number: "66479331", code: "3KTH" } });
+    expect(parseTrackingInput("shalom", "", "")).toEqual({ ok: true, tracking: null });
+    expect(parseTrackingInput("shalom", "123", "3KTH")).toMatchObject({ ok: false });
+    expect(parseTrackingInput("shalom", "66479331", "3K")).toMatchObject({ ok: false });
   });
 
-  it("reconoce los pedidos que van por Shalom", () => {
-    expect(isShalomOrder({ shippingKind: "agency", shippingMethodName: "Envío Shalom" })).toBe(true);
-    expect(isShalomOrder({ shippingKind: "agency", shippingMethodName: "Envío Olva" })).toBe(false);
-    expect(isShalomOrder({ shippingKind: "lima_delivery", shippingMethodName: "Delivery Lima" })).toBe(false);
+  it("reconoce los pedidos que van por Shalom u Olva", () => {
+    expect(orderCourier({ shippingKind: "agency", shippingMethodName: "Envío Shalom" })).toBe("shalom");
+    expect(orderCourier({ shippingKind: "agency", shippingMethodName: "Envío Olva" })).toBe("olva");
+    expect(orderCourier({ shippingKind: "agency", shippingMethodName: "Otra agencia" })).toBeNull();
+    expect(orderCourier({ shippingKind: "lima_delivery", shippingMethodName: "Delivery Lima" })).toBeNull();
   });
 });

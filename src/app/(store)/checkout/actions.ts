@@ -10,9 +10,9 @@ import { notifyAfterResponse } from "@/server/order-events";
 import { linkCustomerToAccount, rememberCheckoutAddress } from "@/server/services/accounts";
 import { getSiteSettings } from "@/server/services/content";
 import { expireUnpaidCardOrders, placeOrder } from "@/server/services/orders";
-import { resolveShalomAgency } from "@/server/services/shalom";
-import { agencyLabel } from "@/lib/shalom";
-import { getShalomAgencies } from "../_data";
+import { resolveAgency } from "@/server/services/couriers";
+import { agencyLabel, methodCourier } from "@/lib/couriers";
+import { getCourierAgencies } from "../_data";
 import { getAccount } from "../_lib/account";
 
 export type PlaceOrderState =
@@ -38,12 +38,13 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   if (expired.productSlugs.length) revalidateTag(cacheTags.catalog, "max");
   notifyAfterResponse(...expired.changes.map((change) => ({ type: "status" as const, change })));
 
-  // Shalom: la agencia elegida de la lista manda (nombre y distrito oficiales). Otros envíos no llevan id de agencia.
+  // Shalom u Olva: la agencia elegida de la lista manda (nombre y distrito oficiales). Otros envíos no llevan id de agencia.
   let input = { ...parsed.data, agencyId: undefined as string | undefined };
-  if (parsed.data.shippingMethod === "shalom") {
-    const resolved = resolveShalomAgency(await getShalomAgencies(), parsed.data.agencyId);
+  const courier = methodCourier({ kind: "agency", slug: parsed.data.shippingMethod, name: "" });
+  if (courier) {
+    const resolved = resolveAgency(await getCourierAgencies(courier), parsed.data.agencyId);
     if ("error" in resolved) return { ok: false, errors: { agencyName: resolved.error } };
-    if (resolved.agency) input = { ...input, agencyId: String(resolved.agency.id), agencyName: agencyLabel(resolved.agency), ubigeo: resolved.agency.ubigeo };
+    if (resolved.agency) input = { ...input, agencyId: resolved.agency.id, agencyName: agencyLabel(resolved.agency), ubigeo: resolved.agency.ubigeo };
   }
 
   const result = await placeOrder(db, input);
@@ -85,6 +86,7 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
             reference: input.addressReference,
             agencyName: input.agencyName,
             agencyId: input.agencyId,
+            agencyCourier: input.agencyId ? courier : null,
           });
         }
       } catch (error) {

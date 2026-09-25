@@ -5,13 +5,10 @@
  * - El seguimiento de la guía (número de orden + código) en la página del pedido.
  * Crear la guía en Shalom Pro también se puede con esta API, pero pide las credenciales de Shalom Pro de TWENTY.
  */
-import type { ShalomAgency, ShalomStepKey, ShalomTracking } from "@/lib/shalom";
-import { normalizeText } from "@/lib/slug";
-
-export type { ShalomAgency, ShalomTracking } from "@/lib/shalom";
+import type { CourierAgency, CourierTracking } from "@/lib/couriers";
+import { districtIndex, sortAgencies, titleCase, toCoordinate, type DistrictRow } from "./couriers";
 
 const API = "https://api.shalom-api.lat";
-
 
 type RawAgency = {
   ter_id: number;
@@ -29,7 +26,7 @@ type RawAgency = {
 
 export type ShalomClient = {
   listAgencies(): Promise<RawAgency[]>;
-  track(orderNumber: string, orderCode: string): Promise<ShalomTracking | null>;
+  track(orderNumber: string, orderCode: string): Promise<CourierTracking | null>;
 };
 
 export class ShalomApiError extends Error {}
@@ -66,71 +63,6 @@ export function shalomFromEnv(): ShalomClient | null {
 
 // ─── Agencias ────────────────────────────────────────────────────────────────
 
-const norm = (value: unknown) =>
-  normalizeText(String(value ?? ""))
-    .toUpperCase()
-    .replace(/[^A-Z0-9 ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-/** Nombres de distrito que Shalom escribe distinto. */
-const DISTRICT_ALIASES: Record<string, string> = {
-  "ATE VITARTE": "ATE",
-  "CERCADO LIMA": "LIMA",
-  "CERCADO DE LIMA": "LIMA",
-  "26 DE OCTUBRE": "VEINTISEIS DE OCTUBRE",
-};
-
-const SMALL_WORDS = new Set(["de", "del", "la", "las", "los", "y", "el", "en", "a"]);
-/** "AV. PARRA 379 - AREQUIPA" → "Av. Parra 379 - Arequipa". */
-export function titleCase(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim()
-    .split(" ")
-    .map((word, i) => (i > 0 && SMALL_WORDS.has(word) ? word : word.replace(/^(\p{L})/u, (c) => c.toUpperCase())))
-    .join(" ");
-}
-
-type DistrictRow = [ubigeo: string, name: string, province: string, department: string];
-
-/**
- * Nuestro distrito para una agencia, por nombre (los códigos no sirven: RENIEC vs. INEI). Shalom corta los nombres
- * a 20 letras y usa algunos nombres propios: se prueba exacto, luego por prefijo y, si no, la capital de la provincia.
- */
-export function districtIndex(rows: DistrictRow[]) {
-  const byDepartment = new Map<string, { ubigeo: string; name: string; province: string }[]>();
-  for (const [ubigeo, name, province, department] of rows) {
-    const list = byDepartment.get(norm(department)) ?? [];
-    list.push({ ubigeo, name: norm(name), province: norm(province) });
-    byDepartment.set(norm(department), list);
-  }
-  const samePrefix = (a: string, b: string) => a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a));
-
-  return (department: string, province: string, district: string): string | null => {
-    const candidates = byDepartment.get(norm(department)) ?? [];
-    const prov = norm(province);
-    const inProvince = candidates.filter((d) => d.province === prov);
-    const provinceRows = inProvince.length ? inProvince : candidates.filter((d) => samePrefix(d.province, prov));
-    if (!provinceRows.length) return null;
-    let dist = norm(district);
-    dist = DISTRICT_ALIASES[dist] ?? dist.replace(/^(PUCALLPA|BAJO) /, "");
-    const match =
-      provinceRows.find((d) => d.name === dist) ??
-      provinceRows.find((d) => samePrefix(d.name, dist)) ??
-      provinceRows.find((d) => d.name === provinceRows[0].province) ??
-      provinceRows[0];
-    return match.ubigeo;
-  };
-}
-
-/** Coordenadas con 5 decimales (≈1 m): la lista pesa menos. */
-const toCoordinate = (value: unknown) => {
-  const n = Number(value);
-  return Number.isFinite(n) && n !== 0 ? Math.round(n * 1e5) / 1e5 : null;
-};
-
 /** "LUNES A VIERNES - 7:00 AM A 8:00 PM" → "Lunes a viernes - 7:00 AM a 8:00 PM". */
 export function hoursText(value: string): string {
   const lower = value.trim().replace(/\s+/g, " ").toLowerCase().replace(/(?<=[\d\s])(a|p)\.?\s?m\b\.?/g, (_, x: string) => `${x.toUpperCase()}M`);
@@ -138,10 +70,10 @@ export function hoursText(value: string): string {
 }
 
 /** Agencias que reciben envíos, con nuestro distrito y los textos listos para mostrar. */
-export function toAgencies(raw: RawAgency[], districts: DistrictRow[]): ShalomAgency[] {
+export function toAgencies(raw: RawAgency[], districts: DistrictRow[]): CourierAgency[] {
   const findUbigeo = districtIndex(districts);
   const ours = new Map(districts.map(([ubigeo, name, province, department]) => [ubigeo, { name, province, department }]));
-  const out: ShalomAgency[] = [];
+  const out: CourierAgency[] = [];
   for (const a of raw) {
     if (Number(a.destino) !== 1 || !a.ter_id) continue;
     // "DEPARTAMENTO / PROVINCIA / DISTRITO / LUGAR"
@@ -150,7 +82,7 @@ export function toAgencies(raw: RawAgency[], districts: DistrictRow[]): ShalomAg
     const place = ubigeo ? ours.get(ubigeo) : undefined;
     if (!ubigeo || !place) continue;
     out.push({
-      id: Number(a.ter_id),
+      id: String(a.ter_id),
       name: titleCase(a.lugar_over || district),
       address: titleCase(a.direccion ?? ""),
       hours: a.hora_atencion?.trim() ? hoursText(a.hora_atencion) : null,
@@ -163,25 +95,12 @@ export function toAgencies(raw: RawAgency[], districts: DistrictRow[]): ShalomAg
       lng: toCoordinate(a.longitud),
     });
   }
-  return out.sort((x, y) => x.department.localeCompare(y.department, "es") || x.province.localeCompare(y.province, "es") || x.name.localeCompare(y.name, "es"));
-}
-
-
-/**
- * La agencia de un pedido con Shalom: la elegida de la lista (su nombre y distrito oficiales, no lo que mande el
- * navegador). Sin lista (Shalom no respondió) vale lo que el cliente escribió.
- */
-export function resolveShalomAgency(list: ShalomAgency[], agencyId: string | undefined): { agency: ShalomAgency | null } | { error: string } {
-  if (!list.length) return { agency: null };
-  if (!agencyId) return { error: "Elige la agencia donde recogerás." };
-  const agency = list.find((a) => String(a.id) === agencyId);
-  return agency ? { agency } : { error: "Esa agencia ya no está disponible. Elige otra." };
+  return sortAgencies(out);
 }
 
 // ─── Seguimiento ─────────────────────────────────────────────────────────────
 
-
-const STEP_LABELS: [ShalomStepKey, string][] = [
+const STEP_LABELS: [string, string][] = [
   ["registrado", "Registrado en Shalom"],
   ["origen", "En la agencia de origen"],
   ["transito", "En camino"],
@@ -194,7 +113,7 @@ const STEP_LABELS: [ShalomStepKey, string][] = [
  * Solo el estado del envío. La respuesta de Shalom trae nombres y documentos del remitente y del destinatario:
  * no se copian (esto se muestra en la página del pedido).
  */
-export function parseTracking(body: unknown): ShalomTracking | null {
+export function parseTracking(body: unknown): CourierTracking | null {
   const root = (body ?? {}) as { search?: { success?: boolean; data?: Record<string, unknown> }; statuses?: { data?: Record<string, unknown> } };
   const search = root.search?.data;
   if (!root.search?.success || !search) return null;
@@ -210,7 +129,7 @@ export function parseTracking(body: unknown): ShalomTracking | null {
   return {
     delivered,
     destination: destination?.distrito ? [destination.distrito, destination.departamento].filter(Boolean).map((s) => titleCase(String(s))).join(", ") : null,
-    eta: typeof search.tiempo_llegada === "string" ? search.tiempo_llegada : null,
+    eta: typeof search.tiempo_llegada === "string" && search.tiempo_llegada.trim() && !delivered ? `Tiempo estimado: ${search.tiempo_llegada.trim()}` : null,
     steps,
   };
 }

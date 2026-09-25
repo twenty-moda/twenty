@@ -6,6 +6,7 @@ import { FormAlert, Toggle } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
 import { inputClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
+import { COURIER_NAME, GUIDE_FIELDS, guideCodeText, type Courier, type CourierGuide } from "@/lib/couriers";
 import { allowedTransitions, STATUS_INFO, type OrderStatus } from "@/lib/order-status";
 import type { RefundOptions } from "@/server/services/refunds";
 import { idle } from "../../../_lib/action-state";
@@ -31,13 +32,13 @@ type StatusChangerProps = {
   whatsappHref: string | null;
   /** Resend configurado: se puede avisar al cliente por email. */
   emailEnabled: boolean;
-  /** Pedido por Shalom: al marcarlo como enviado se puede anotar la guía. */
-  shalom?: { number: string; code: string } | null | false;
+  /** Pedido por Shalom u Olva: al marcarlo como enviado se puede anotar la guía (la que ya tenga, si hay). */
+  guide?: { courier: Courier; tracking: CourierGuide | null } | null;
   /** Dinero pagado sin devolver: al anular se ofrece devolverlo. */
   refund?: Pick<RefundOptions, "availableCents" | "culqi" | "items"> | null;
 };
 
-export function StatusChanger({ orderId, status, whatsappHref, emailEnabled, shalom = false, refund = null }: StatusChangerProps) {
+export function StatusChanger({ orderId, status, whatsappHref, emailEnabled, guide = null, refund = null }: StatusChangerProps) {
   const [state, action, pending] = useActionState(changeStatusAction.bind(null, orderId), idle);
   const [confirming, setConfirming] = useState<OrderStatus | null>(null);
   const next = allowedTransitions(status);
@@ -64,9 +65,16 @@ export function StatusChanger({ orderId, status, whatsappHref, emailEnabled, sha
           Mensaje para el cliente{" "}
           <span className="font-normal text-subtle">(opcional, lo ve en {emailEnabled ? "el email y en " : ""}la página de su pedido)</span>
         </span>
-        <input name="customerMessage" maxLength={1000} placeholder="Ej. Tu clave de recojo en Shalom es 1234" className={inputClass} />
+        <input
+          name="customerMessage"
+          maxLength={1000}
+          placeholder={`Ej. ${guide?.courier === "olva" ? "Tu paquete ya está en la agencia Olva" : "Tu clave de recojo en Shalom es 1234"}`}
+          className={inputClass}
+        />
       </label>
-      {shalom !== false && next.includes("enviado") ? <TrackingFields tracking={shalom} hint="Si ya lo despachaste, anótala: va en el email de «enviado» y el cliente sigue su envío." /> : null}
+      {guide && next.includes("enviado") ? (
+        <TrackingFields courier={guide.courier} tracking={guide.tracking} hint="Si ya lo despachaste, anótala: va en el email de «enviado» y el cliente sigue su envío." />
+      ) : null}
       {emailEnabled ? <Toggle name="notifyCustomer" defaultChecked label="Avisar al cliente por email" hint="Le llega un email con el nuevo estado de su pedido." /> : null}
       {confirming === "anulado" && refund && refund.availableCents > 0 ? <CancelRefundFields options={refund} /> : null}
       <div className="flex flex-wrap gap-2">
@@ -132,27 +140,45 @@ export function InternalNoteForm({ orderId, note }: { orderId: string; note: str
   );
 }
 
-function TrackingFields({ tracking, hint }: { tracking: { number: string; code: string } | null; hint?: string }) {
+function TrackingFields({ courier, tracking, hint }: { courier: Courier; tracking: CourierGuide | null; hint?: string }) {
+  const name = COURIER_NAME[courier];
+  const fields = GUIDE_FIELDS[courier];
   return (
     <fieldset className="min-w-0 space-y-2">
       <legend className="mb-1.5 text-sm font-medium">
-        Guía de Shalom <span className="font-normal text-subtle">(opcional)</span>
+        Guía de {name} <span className="font-normal text-subtle">(opcional)</span>
       </legend>
       <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
-        <input name="trackingNumber" defaultValue={tracking?.number ?? ""} inputMode="numeric" placeholder="N° de orden (8 dígitos)" aria-label="N° de orden de Shalom" className={inputClass} />
-        <input name="trackingCode" defaultValue={tracking?.code ?? ""} placeholder="Código" aria-label="Código de Shalom" maxLength={4} className={cn(inputClass, "uppercase")} />
+        <input
+          name="trackingNumber"
+          defaultValue={tracking?.number ?? ""}
+          inputMode="numeric"
+          placeholder={`${fields.number} (${fields.numberHint})`}
+          aria-label={`${fields.number} de ${name}`}
+          className={inputClass}
+        />
+        <input
+          name="trackingCode"
+          defaultValue={tracking ? guideCodeText(courier, tracking.code) : ""}
+          inputMode={courier === "olva" ? "numeric" : undefined}
+          placeholder={fields.codeHint}
+          aria-label={`${fields.code} de ${name}`}
+          maxLength={fields.codeMaxLength}
+          className={cn(inputClass, "uppercase")}
+        />
       </div>
+      {courier === "olva" ? <p className="text-xs text-muted">El año de la guía; si lo dejas vacío, se usa el de este año.</p> : null}
       {hint ? <p className="text-xs text-muted">{hint}</p> : null}
     </fieldset>
   );
 }
 
-/** Anotar o corregir la guía de Shalom en cualquier momento. */
-export function TrackingForm({ orderId, tracking }: { orderId: string; tracking: { number: string; code: string } | null }) {
+/** Anotar o corregir la guía de Shalom u Olva en cualquier momento. */
+export function TrackingForm({ orderId, courier, tracking }: { orderId: string; courier: Courier; tracking: CourierGuide | null }) {
   const [state, action, pending] = useActionState(saveTrackingAction.bind(null, orderId), idle);
   return (
     <form action={action} className="space-y-3">
-      <TrackingFields tracking={tracking} />
+      <TrackingFields courier={courier} tracking={tracking} />
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className={buttonClass("secondary", "sm")}>
           {pending ? "Guardando…" : "Guardar guía"}
