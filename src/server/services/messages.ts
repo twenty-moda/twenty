@@ -1,8 +1,8 @@
 /** Mensajes del formulario de contacto y suscriptores del boletín. */
-import { and, count, desc, eq, ilike, isNotNull, isNull, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, or, type SQL } from "drizzle-orm";
 import type { ContactInput } from "@/lib/public-forms";
 import type { Db } from "../db/client";
-import { contactMessages, subscribers } from "../db/schema";
+import { contactMessages, contactReplies, subscribers, users } from "../db/schema";
 
 export async function createContactMessage(db: Db, input: ContactInput) {
   const [row] = await db.insert(contactMessages).values(input).returning({ id: contactMessages.id, createdAt: contactMessages.createdAt });
@@ -20,7 +20,7 @@ export async function listContactMessages(db: Db, { filter = "nuevos", q, page =
     conditions.push(or(ilike(contactMessages.name, like), ilike(contactMessages.email, like), ilike(contactMessages.phone, like), ilike(contactMessages.message, like))!);
   }
   const where = conditions.length ? and(...conditions) : undefined;
-  const [rows, [{ total }]] = await Promise.all([
+  const [messages, [{ total }]] = await Promise.all([
     db
       .select()
       .from(contactMessages)
@@ -30,7 +30,43 @@ export async function listContactMessages(db: Db, { filter = "nuevos", q, page =
       .offset((page - 1) * pageSize),
     db.select({ total: count() }).from(contactMessages).where(where),
   ]);
+  const replies = messages.length
+    ? await db
+        .select({
+          id: contactReplies.id,
+          messageId: contactReplies.messageId,
+          channel: contactReplies.channel,
+          body: contactReplies.body,
+          createdAt: contactReplies.createdAt,
+          sentByName: users.name,
+        })
+        .from(contactReplies)
+        .leftJoin(users, eq(users.id, contactReplies.sentBy))
+        .where(inArray(contactReplies.messageId, messages.map((m) => m.id)))
+        .orderBy(asc(contactReplies.createdAt))
+    : [];
+  const rows = messages.map((m) => ({ ...m, replies: replies.filter((r) => r.messageId === m.id) }));
   return { rows, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+export async function getContactMessage(db: Db, id: string) {
+  const [row] = await db.select().from(contactMessages).where(eq(contactMessages.id, id)).limit(1);
+  return row ?? null;
+}
+
+/** Guarda la respuesta del equipo y deja el mensaje como atendido (si no lo estaba). */
+export async function recordContactReply(
+  db: Db,
+  input: { messageId: string; channel: (typeof contactReplies.$inferInsert)["channel"]; body: string; userId: string | null },
+  now = new Date(),
+) {
+  await db.transaction(async (tx) => {
+    await tx.insert(contactReplies).values({ messageId: input.messageId, channel: input.channel, body: input.body, sentBy: input.userId, createdAt: now });
+    await tx
+      .update(contactMessages)
+      .set({ handledAt: now })
+      .where(and(eq(contactMessages.id, input.messageId), isNull(contactMessages.handledAt)));
+  });
 }
 
 export async function countNewMessages(db: Db): Promise<number> {

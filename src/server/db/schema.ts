@@ -496,6 +496,24 @@ export const contactMessages = pgTable(
   (t) => [index("contact_messages_created_idx").on(t.createdAt)],
 );
 
+export const contactReplyChannel = pgEnum("contact_reply_channel", ["email", "whatsapp"]);
+
+/** Respuestas del equipo a un mensaje de contacto: por email (sale desde la tienda) o por WhatsApp (se abre con el texto). */
+export const contactReplies = pgTable(
+  "contact_replies",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    messageId: uuid()
+      .notNull()
+      .references(() => contactMessages.id, { onDelete: "cascade" }),
+    channel: contactReplyChannel().notNull(),
+    body: text().notNull(),
+    sentBy: uuid().references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [index("contact_replies_message_idx").on(t.messageId, t.createdAt)],
+);
+
 /** Suscriptores del boletín (pie de página). */
 export const subscribers = pgTable("subscribers", {
   id: uuid().primaryKey().defaultRandom(),

@@ -36,6 +36,8 @@ export function complaintRows(c: Complaint, company: SiteSettings["company"]): [
 }
 
 const teamInbox = (settings: Settings) => settings.company.notificationEmail || settings.contact.email;
+/** Adonde llega lo que el cliente conteste a una respuesta del equipo (como en los emails de pedidos). */
+export const contactReplyTo = (settings: Settings) => settings.contact.email || settings.company.notificationEmail;
 
 export async function sendComplaintEmails(c: Complaint, settings: Settings, links: { constancia: string; admin: string }) {
   const code = complaintCode(c);
@@ -132,4 +134,28 @@ export async function sendContactNotification(message: { name: string; email: st
     emailBrand(settings, appUrl()),
   );
   return sendEmail({ tag: "contacto-aviso-equipo", to: team, subject: `Contacto web: ${message.name}`, ...email, replyTo: message.email });
+}
+
+/** Respuesta del equipo a un mensaje de contacto. Si el cliente contesta, le llega al buzón del equipo (replyTo). */
+export async function sendContactReply(message: { name: string; email: string; message: string }, body: string, settings: Settings) {
+  const email = renderBrandedEmail(
+    {
+      preheader: body.slice(0, 120),
+      eyebrow: "Tu mensaje a TWENTY",
+      title: `Hola, ${message.name.trim().split(/\s+/)[0]}`,
+      blocks: [
+        { type: "text", text: body },
+        { type: "text", text: "Si tienes más dudas, responde este correo.", muted: true, small: true },
+        { type: "box", title: "Tu mensaje", blocks: [{ type: "text", text: message.message, muted: true, small: true }] },
+      ],
+    },
+    emailBrand(settings, appUrl()),
+  );
+  return sendEmail({
+    tag: "contacto-respuesta",
+    to: message.email,
+    subject: "Respuesta a tu mensaje · TWENTY",
+    ...email,
+    replyTo: contactReplyTo(settings) || undefined,
+  });
 }

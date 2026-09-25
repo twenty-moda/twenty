@@ -10,7 +10,7 @@ const schema = await import("../db/schema");
 const { createComplaint, getComplaintByNumber, listComplaints, respondComplaint, countPendingComplaints } = await import("./complaints");
 const { consumeRateLimit } = await import("./rate-limit");
 const { placeOrder, findOrderIdForTracking } = await import("./orders");
-const { subscribe, listSubscribers, createContactMessage, countNewMessages, setMessageHandled } = await import("./messages");
+const { subscribe, listSubscribers, createContactMessage, countNewMessages, setMessageHandled, recordContactReply, listContactMessages } = await import("./messages");
 const { savePost, listPublishedPosts, getPublishedPost } = await import("./posts");
 
 let db: Db;
@@ -132,6 +132,16 @@ describe("mensajes y boletín", () => {
     expect(await countNewMessages(db)).toBe(before + 1);
     await setMessageHandled(db, msg.id, true);
     expect(await countNewMessages(db)).toBe(before);
+  });
+
+  it("responder guarda la respuesta y lo pasa a atendidos", async () => {
+    const msg = await createContactMessage(db, { name: "Ana", email: "ana@example.com", phone: "987654321", message: "¿Hacen envíos a Arequipa?" });
+    await recordContactReply(db, { messageId: msg.id, channel: "email", body: "Hola Ana, sí: por Shalom.", userId: null });
+    await recordContactReply(db, { messageId: msg.id, channel: "whatsapp", body: "Te escribimos por WhatsApp.", userId: null });
+    const { rows } = await listContactMessages(db, { filter: "atendidos", q: "Arequipa" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].handledAt).not.toBeNull();
+    expect(rows[0].replies.map((r) => r.channel)).toEqual(["email", "whatsapp"]);
   });
 });
 

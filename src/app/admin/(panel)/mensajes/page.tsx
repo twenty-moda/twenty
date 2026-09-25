@@ -1,11 +1,13 @@
 import { Download, Mail, MessageCircle } from "lucide-react";
 import type { Metadata } from "next";
 import { AdminPage, buttonClass, EmptyState, FilterTabs, formatDateTime, formatDay, Pagination, SearchBox } from "@/components/admin/ui";
-import { whatsappUrl } from "@/lib/links";
 import { getDb } from "@/server/db/client";
+import { getSiteSettings } from "@/server/services/content";
+import { emailConfigured } from "@/server/services/email";
 import { countNewMessages, listContactMessages, listSubscribers, type MessageFilter } from "@/server/services/messages";
+import { contactReplyTo } from "@/server/services/notifications";
 import { requireAdmin } from "../../_lib/auth";
-import { DeleteSubscriberButton, HandledButton } from "./message-actions";
+import { DeleteSubscriberButton, MessageActions } from "./message-actions";
 
 export const instant = false;
 export const metadata: Metadata = { title: "Mensajes" };
@@ -64,9 +66,11 @@ export default async function MessagesPage({ searchParams }: PageProps<"/admin/m
     );
   }
 
-  const result = await listContactMessages(db, { filter, q, page });
+  const [result, settings] = await Promise.all([listContactMessages(db, { filter, q, page }), getSiteSettings(db)]);
+  const emailEnabled = emailConfigured();
+  const replyTo = contactReplyTo(settings);
   return (
-    <AdminPage title="Mensajes" description="Lo que escriben en el formulario de Contacto. Respóndeles por WhatsApp o email y márcalos como atendidos.">
+    <AdminPage title="Mensajes" description="Lo que escriben en el formulario de Contacto. Respóndeles por email o WhatsApp desde aquí: al responder pasan solos a Atendidos.">
       <FilterTabs items={tabs} />
       <div className="mt-4">
         <SearchBox placeholder="Buscar por nombre, email, celular o texto" defaultValue={q} hidden={{ estado: filter }} />
@@ -90,17 +94,29 @@ export default async function MessagesPage({ searchParams }: PageProps<"/admin/m
                 {m.phone ? ` · ${m.phone}` : ""}
               </p>
               <p className="mt-3 text-sm leading-relaxed whitespace-pre-line">{m.message}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {m.phone ? (
-                  <a href={whatsappUrl(m.phone.length === 9 ? `51${m.phone}` : m.phone, `Hola ${m.name.split(" ")[0]}, te escribimos de TWENTY por tu mensaje en la web.`)} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm")}>
-                    <MessageCircle className="size-4" aria-hidden /> WhatsApp
-                  </a>
-                ) : null}
-                <a href={`mailto:${m.email}?subject=${encodeURIComponent("Tu mensaje a TWENTY")}`} className={buttonClass("secondary", "sm")}>
-                  <Mail className="size-4" aria-hidden /> Email
-                </a>
-                <HandledButton id={m.id} handled={!!m.handledAt} />
-              </div>
+              {m.replies.length ? (
+                <ul className="mt-4 space-y-3">
+                  {m.replies.map((r) => (
+                    <li key={r.id} className="border-l-2 border-line pl-3 text-sm">
+                      <p className="flex items-center gap-1.5 text-xs text-muted">
+                        {r.channel === "email" ? <Mail className="size-3.5" aria-hidden /> : <MessageCircle className="size-3.5" aria-hidden />}
+                        {r.channel === "email" ? "Respondido por email" : "Respondido por WhatsApp"}
+                        {r.sentByName ? ` · ${r.sentByName}` : ""} · {formatDateTime(r.createdAt)}
+                      </p>
+                      <p className="mt-1 leading-relaxed whitespace-pre-line text-muted">{r.body}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <MessageActions
+                id={m.id}
+                name={m.name}
+                email={m.email}
+                whatsapp={m.phone ? (m.phone.length === 9 ? `51${m.phone}` : m.phone) : null}
+                handled={!!m.handledAt}
+                emailEnabled={emailEnabled}
+                replyTo={replyTo}
+              />
             </article>
           ))
         )}
