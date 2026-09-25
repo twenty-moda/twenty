@@ -9,17 +9,22 @@ function shalomDate(value: string) {
   return Number.isNaN(date.getTime()) ? value : format.format(date);
 }
 
-/** Seguimiento de la guía de Shalom (página del pedido y panel). Sin datos personales: solo los pasos del envío. */
-export function ShalomTrackingCard({ number, code, tracking, className }: { number: string; code: string; tracking: ShalomTracking | null; className?: string }) {
+/**
+ * Seguimiento de la guía de Shalom (página del pedido, panel y /tracking). Sin datos personales: solo los pasos del
+ * envío. En /tracking va sin `guide` (N° de orden y código), porque con ellos se retira el paquete.
+ */
+export function ShalomTrackingCard({ guide, tracking, className }: { guide?: { number: string; code: string }; tracking: ShalomTracking | null; className?: string }) {
   const steps = tracking?.steps ?? [];
   return (
     <section aria-labelledby="seguimiento-shalom" className={cn("rounded-2xl border border-line p-5", className)}>
       <h2 id="seguimiento-shalom" className="flex items-center gap-2 font-semibold">
         <Package className="size-5" aria-hidden /> Seguimiento Shalom
       </h2>
-      <p className="mt-1 text-sm text-muted">
-        N° de orden <strong className="text-white tabular-nums">{number}</strong> · Código <strong className="text-white">{code}</strong>
-      </p>
+      {guide ? (
+        <p className="mt-1 text-sm text-muted">
+          N° de orden <strong className="text-white tabular-nums">{guide.number}</strong> · Código <strong className="text-white">{guide.code}</strong>
+        </p>
+      ) : null}
       {steps.length ? (
         <>
           <ol className="mt-4 space-y-3 border-l border-line pl-4">

@@ -8,7 +8,7 @@ import type { Db } from "../db/client";
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
-const { placeOrder, changeOrderStatus, getOrderByNumber, getOrderTracking, listOrders } = await import("./orders");
+const { placeOrder, changeOrderStatus, getOrderByNumber, getOrderTracking, listOrders, setOrderTracking } = await import("./orders");
 
 let db: Db;
 const ids = {
@@ -172,10 +172,21 @@ describe("getOrderTracking", () => {
     await changeOrderStatus(db, { orderId: placed.orderId, to: "pagado", note: "Yape op. 123", customerMessage: "Clave de recojo 4321", userId: null });
 
     const tracking = await getOrderTracking(db, placed.number);
-    expect(Object.keys(tracking ?? {}).sort()).toEqual(["createdAt", "history", "number", "shippingKind", "shippingMethodName", "status"]);
-    expect(tracking?.history.map((h) => Object.keys(h).sort())).toEqual([["at", "status"], ["at", "status"]]);
-    expect(tracking).toMatchObject({ number: placed.number, status: "pagado", history: [{ status: "pendiente" }, { status: "pagado" }] });
+    expect(Object.keys(tracking?.order ?? {}).sort()).toEqual(["createdAt", "history", "number", "shippingKind", "shippingMethodName", "status"]);
+    expect(tracking?.order.history.map((h) => Object.keys(h).sort())).toEqual([["at", "status"], ["at", "status"]]);
+    expect(tracking?.order).toMatchObject({ number: placed.number, status: "pagado", history: [{ status: "pendiente" }, { status: "pagado" }] });
+    expect(tracking?.shalomGuide).toBeNull();
     expect(await getOrderTracking(db, 999_999)).toBeNull();
+  });
+
+  it("aparta la guía de Shalom para consultar el envío, fuera de lo que se muestra", async () => {
+    const placed = await placeOrder(db, checkout({}));
+    if (!placed.ok) throw new Error("no se creó el pedido");
+    await setOrderTracking(db, placed.orderId, { number: "66479331", code: "3KTH" });
+
+    const tracking = await getOrderTracking(db, placed.number);
+    expect(tracking?.shalomGuide).toEqual({ number: "66479331", code: "3KTH" });
+    expect(JSON.stringify(tracking?.order)).not.toMatch(/66479331|3KTH/);
   });
 });
 

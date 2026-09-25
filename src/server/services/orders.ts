@@ -323,24 +323,39 @@ export async function getOrderForCustomer(db: Db, id: string) {
  * devuelve datos personales ni lo que sirva para retirar el pedido (dirección, agencia, mensajes con claves): solo
  * el estado, sus fechas y la forma de entrega. El detalle completo está en /pedido/[id] (enlace del email) o con
  * findOrderIdForTracking.
+ *
+ * `shalomGuide` es solo para consultar a Shalom los pasos del envío: no se manda al navegador, porque con el N° de
+ * orden y el código se retira el paquete.
  */
 export async function getOrderTracking(db: Db, number: number) {
-  const [order] = await db
-    .select({ id: orders.id, number: orders.number, status: orders.status, createdAt: orders.createdAt, shippingKind: orders.shippingKind, shippingMethodName: orders.shippingMethodName })
+  const [row] = await db
+    .select({
+      id: orders.id,
+      number: orders.number,
+      status: orders.status,
+      createdAt: orders.createdAt,
+      shippingKind: orders.shippingKind,
+      shippingMethodName: orders.shippingMethodName,
+      trackingNumber: orders.trackingNumber,
+      trackingCode: orders.trackingCode,
+    })
     .from(orders)
     .where(eq(orders.number, number))
     .limit(1);
-  if (!order) return null;
+  if (!row) return null;
   const history = await db
     .select({ status: orderStatusHistory.toStatus, at: orderStatusHistory.createdAt })
     .from(orderStatusHistory)
-    .where(eq(orderStatusHistory.orderId, order.id))
+    .where(eq(orderStatusHistory.orderId, row.id))
     .orderBy(asc(orderStatusHistory.createdAt));
-  const { id: _id, ...rest } = order;
-  return { ...rest, history };
+  const { id: _id, trackingNumber, trackingCode, ...rest } = row;
+  return {
+    order: { ...rest, history },
+    shalomGuide: trackingNumber && trackingCode ? { number: trackingNumber, code: trackingCode } : null,
+  };
 }
 
-export type OrderTracking = NonNullable<Awaited<ReturnType<typeof getOrderTracking>>>;
+export type OrderTracking = NonNullable<Awaited<ReturnType<typeof getOrderTracking>>>["order"];
 
 /**
  * Detalle completo desde /tracking: además del número se pide el celular o el email de la compra.

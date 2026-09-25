@@ -316,5 +316,5 @@ function SoldOutNote({ units, quantity }: { units: number | undefined; quantity:
 
 /** Estado de la guía de Shalom (aparte: si la API tarda, el resto del pedido ya se ve). */
 async function ShalomTracking({ number, code }: { number: string; code: string }) {
-  return <ShalomTrackingCard number={number} code={code} tracking={await getShalomTracking(number, code)} className="mt-4" />;
+  return <ShalomTrackingCard guide={{ number, code }} tracking={await getShalomTracking(number, code)} className="mt-4" />;
 }

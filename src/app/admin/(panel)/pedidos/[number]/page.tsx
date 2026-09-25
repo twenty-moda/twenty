@@ -407,5 +407,5 @@ function ItemPhoto({ image }: { image: string | null }) {
 }
 
 async function AdminShalomTracking({ number, code }: { number: string; code: string }) {
-  return <ShalomTrackingCard number={number} code={code} tracking={await getShalomTracking(number, code)} />;
+  return <ShalomTrackingCard guide={{ number, code }} tracking={await getShalomTracking(number, code)} />;
 }
