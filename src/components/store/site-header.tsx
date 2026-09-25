@@ -11,6 +11,7 @@ import type { SiteSettings } from "@/server/services/content";
 import { useCartUI } from "../cart/cart-provider";
 import { useCartLines, useHydrated } from "../cart/cart-store";
 import { Sheet } from "../ui/sheet";
+import { CatalogMenu } from "./catalog-menu";
 import { Logo } from "./logo";
 import { SearchPanel } from "./search-panel";
 
@@ -71,28 +72,17 @@ export function SiteHeader({ categories, promoCount, contact, socials, store }: 
           <Logo priority className="w-24 min-[340px]:w-28 lg:w-32" />
         </Link>
 
-        <nav aria-label="Categorías" className="hidden min-w-0 flex-1 lg:block">
-          <ul className="flex items-center gap-6 text-xs font-semibold tracking-widest uppercase">
-            <li>
-              <Link href="/catalogo" className="py-4 hover:text-muted">
-                Todo
-              </Link>
-            </li>
+        {/* Escritorio: solo "Catálogo" (despliega las categorías) y "Promos"; en /catalogo las categorías están como filtro. */}
+        <nav aria-label="Tienda" className="hidden min-w-0 flex-1 lg:block">
+          <ul className="flex items-center gap-8 text-xs font-semibold tracking-widest uppercase">
+            <CatalogMenu categories={categories} />
             {promoCount ? (
               <li>
-                <Link href="/promos" className="py-4 text-danger hover:opacity-75">
+                <Link href="/promos" className="flex h-14 items-center text-danger hover:opacity-75">
                   Promos
                 </Link>
               </li>
             ) : null}
-            {/* Escritorio: 7 categorías (6 si está "Promos"); en pantallas más anchas entran todas. */}
-            {categories.map((c, i) => (
-              <li key={c.slug} className={i >= (promoCount ? 6 : 7) ? "hidden xl:list-item" : undefined}>
-                <Link href={catalogUrl({ categoria: c.slug })} className="py-4 hover:text-muted">
-                  {c.name}
-                </Link>
-              </li>
-            ))}
           </ul>
         </nav>
 
