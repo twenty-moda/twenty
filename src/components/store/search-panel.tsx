@@ -32,7 +32,9 @@ export function SearchPanel({ open, onClose, categories, showPromos }: SearchPan
 
   useEffect(() => {
     if (!open) return;
-    inputRef.current?.focus();
+    // preventScroll: el panel todavía está entrando; si el navegador desplaza la página para mostrar el
+    // campo, en el iPhone el panel queda fuera de la vista.
+    inputRef.current?.focus({ preventScroll: true });
     let active = true;
     loadIndex().then((data) => {
       if (active) setEntries(data);
@@ -49,7 +51,7 @@ export function SearchPanel({ open, onClose, categories, showPromos }: SearchPan
   };
 
   return (
-    <Sheet open={open} onClose={close} side="bottom" title="Buscar" className="md:max-w-lg">
+    <Sheet open={open} onClose={close} side="top" title="Buscar" className="md:max-w-lg">
       <form
         role="search"
         className="sticky top-0 z-10 bg-surface px-4 pt-4 pb-3"

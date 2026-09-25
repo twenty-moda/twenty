@@ -8,8 +8,11 @@ type SheetProps = {
   open: boolean;
   onClose: () => void;
   title: ReactNode;
-  /** En móvil "bottom" sube desde abajo; en escritorio todos los paneles salen de un costado. */
-  side?: "left" | "right" | "bottom";
+  /**
+   * En móvil "bottom" sube desde abajo y "top" baja desde arriba (para paneles que abren el teclado:
+   * desde abajo el teclado los taparía). En escritorio todos los paneles salen de un costado.
+   */
+  side?: "left" | "right" | "bottom" | "top";
   footer?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -20,6 +23,8 @@ const sides = {
   left: "mr-auto h-dvh w-[88vw] max-w-sm",
   right: "ml-auto h-dvh w-full max-w-md",
   bottom: "mt-auto w-full max-h-[88dvh] rounded-t-2xl md:mt-0 md:ml-auto md:h-dvh md:max-h-none md:max-w-md md:rounded-none",
+  // --sheet-visible-h = alto que deja el teclado (ver el efecto de abajo): el panel no se mete debajo.
+  top: "mb-auto w-full max-h-[min(88dvh,var(--sheet-visible-h,88dvh))] rounded-b-2xl md:mb-0 md:ml-auto md:h-dvh md:max-h-none md:max-w-md md:rounded-none",
 };
 
 /**
@@ -36,6 +41,20 @@ export function Sheet({ open, onClose, title, side = "right", footer, children, 
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
   }, [open]);
+
+  // En el teléfono el teclado no achica la página (ni dvh): solo el visualViewport sabe cuánto queda a la vista.
+  useEffect(() => {
+    const dialog = ref.current;
+    const viewport = window.visualViewport;
+    if (side !== "top" || !open || !dialog || !viewport) return;
+    const update = () => dialog.style.setProperty("--sheet-visible-h", `${viewport.height}px`);
+    update();
+    viewport.addEventListener("resize", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      dialog.style.removeProperty("--sheet-visible-h");
+    };
+  }, [open, side]);
 
   return (
     <dialog

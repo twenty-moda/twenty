@@ -257,6 +257,12 @@ dialog.sheet[data-side="bottom"] {
     translate: 100% 0;
   }
 }
+dialog.sheet[data-side="top"] {
+  translate: 0 -100%;
+  @media (width >= 48rem) {
+    translate: 100% 0;
+  }
+}
 dialog.sheet[open] {
   translate: 0 0;
   @starting-style {
@@ -271,6 +277,12 @@ dialog.sheet[data-side="right"] {
 }
 dialog.sheet[data-side="bottom"] {
   --sheet-from: 0 100%;
+  @media (width >= 48rem) {
+    --sheet-from: 100% 0;
+  }
+}
+dialog.sheet[data-side="top"] {
+  --sheet-from: 0 -100%;
   @media (width >= 48rem) {
     --sheet-from: 100% 0;
   }
