@@ -10,7 +10,7 @@ import type { EmailBlock, EmailContent } from "./email-layout";
 import type { OrderDetail } from "./orders";
 
 export type CustomerEmailKind = "recibido" | "por_verificar" | "pagado" | "en_preparacion" | "enviado" | "entregado" | "anulado" | "expirado" | "rechazado";
-export type TeamEmailKind = "nuevo" | "anulado" | "rechazado";
+export type TeamEmailKind = "nuevo" | "comprobante" | "anulado" | "rechazado";
 
 export type OrderEmail = { subject: string; content: EmailContent };
 type Ctx = { settings: SiteSettings; baseUrl: string };
@@ -102,8 +102,8 @@ export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, 
     case "recibido":
       if (order.paymentMethod === "yape_plin") {
         const { walletQr, walletName, walletDescription } = settings.payments;
-        return make(`Recibimos tu pedido ${number}: falta tu pago`, `Paga ${total} con Yape o Plin y envíanos la captura por WhatsApp.`, `¡Gracias, ${name}!`, [
-          { type: "text", text: `Recibimos tu pedido ${number}. Para confirmarlo, paga ${total} con Yape o Plin y envíanos la captura por WhatsApp. Te guardamos las prendas mientras tanto.` },
+        return make(`Recibimos tu pedido ${number}: falta tu pago`, `Paga ${total} con Yape o Plin y sube la captura en la página de tu pedido.`, `¡Gracias, ${name}!`, [
+          { type: "text", text: `Recibimos tu pedido ${number}. Para confirmarlo, paga ${total} con Yape o Plin y sube la captura del pago en la página de tu pedido. Te guardamos las prendas mientras tanto.` },
           progressBlock(order.status),
           {
             type: "box",
@@ -112,11 +112,11 @@ export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, 
               ...(walletQr ? [{ type: "image", src: walletQr, alt: "Código QR para pagar con Yape o Plin", width: 200 } as const] : []),
               ...(walletName ? [{ type: "text", text: walletName, strong: true, small: true } as const] : []),
               ...(walletDescription ? [{ type: "text", text: walletDescription, muted: true, small: true } as const] : []),
-              { type: "steps", items: ["Escanea el QR desde tu app de Yape o Plin.", `Paga exactamente ${total}.`, `Envíanos la captura por WhatsApp con tu número de pedido (${number}).`] },
-              ...whatsappButton(`Hola TWENTY, pagué mi pedido ${number} por ${total}. Les envío la captura.`, "Enviar captura por WhatsApp"),
+              { type: "steps", items: ["Escanea el QR desde tu app de Yape o Plin.", `Paga exactamente ${total}.`, "Sube la captura del pago en la página de tu pedido."] },
+              { type: "button", label: "Subir captura del pago", url: `${baseUrl}/pedido/${order.id}` },
+              ...whatsappButton(`Hola TWENTY, pagué mi pedido ${number} por ${total}. Les envío la captura.`, "O envíala por WhatsApp", true),
             ],
           },
-          orderButton(true),
           summaryBox(order),
           deliveryBox(order, settings),
         ]);
@@ -259,7 +259,7 @@ export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, 
 
 const NEXT_STEP: Record<OrderDetail["paymentMethod"], string> = {
   tarjeta: "Ya está pagado: toca prepararlo.",
-  yape_plin: "Cuando llegue la captura por WhatsApp, verifica el pago y márcalo como pagado en el panel.",
+  yape_plin: "Cuando el cliente suba la captura del pago (te llega un aviso) o la mande por WhatsApp, verifica el pago y márcalo como pagado en el panel.",
   whatsapp: "Escríbele por WhatsApp para coordinar el pago.",
 };
 
@@ -313,6 +313,26 @@ export function teamOrderEmail(kind: TeamEmailKind, order: OrderDetail, { settin
               },
             ],
           },
+        ],
+      },
+    };
+  }
+
+  if (kind === "comprobante") {
+    return {
+      subject: `Captura de pago · Pedido ${number} · ${total} · ${order.customerName}`,
+      content: {
+        audience: "team",
+        preheader: `${order.customerName} subió la captura de ${total}. Verifica el pago.`,
+        eyebrow: `Pedido ${number} · ${PAYMENT_METHOD_LABEL[order.paymentMethod]}`,
+        title: "Captura de pago recibida",
+        blocks: [
+          {
+            type: "text",
+            text: `${order.customerName} subió la captura del pago de ${total} por Yape o Plin. Revisa que el monto haya llegado y márcalo como pagado (o rechazado) en el panel.`,
+          },
+          { type: "button", label: "Ver la captura en el panel", url: `${baseUrl}/admin/pedidos/${order.number}` },
+          items,
         ],
       },
     };

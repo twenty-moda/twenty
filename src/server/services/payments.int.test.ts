@@ -10,6 +10,8 @@ const schema = await import("../db/schema");
 const { placeOrder, getOrderByNumber } = await import("./orders");
 const { payOrderWithCulqi, handleCulqiEvent, interpretChargeResponse } = await import("./payments");
 const { planOrderEmails } = await import("./order-notifications");
+const { processProofImage, submitPaymentProof, listPaymentProofs, getPaymentProofImage, MAX_PROOFS_PER_ORDER } = await import("./payment-proofs");
+const sharp = (await import("sharp")).default;
 
 let db: Db;
 const variantId = randomUUID();
@@ -59,7 +61,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.execute(sql`TRUNCATE payments, order_status_history, order_items, orders, customers CASCADE`);
+  await db.execute(sql`TRUNCATE payments, payment_proofs, order_status_history, order_items, orders, customers CASCADE`);
 });
 
 afterAll(async () => {
@@ -175,5 +177,43 @@ describe("handleCulqiEvent (webhook)", () => {
       reason: "el monto no coincide con el pedido",
     });
     expect((await getOrderByNumber(db, order.number))?.status).toBe("pendiente");
+  });
+});
+
+describe("captura del pago con Yape/Plin", () => {
+  const screenshot = () => sharp({ create: { width: 1170, height: 2532, channels: 3, background: "#7b2cbf" } }).png().toBuffer();
+
+  it("la guarda achicada en WebP, pasa el pedido a por verificar y avisa al equipo", async () => {
+    const order = await newOrder();
+    const proof = await processProofImage(await screenshot());
+    expect(proof.height).toBe(1400);
+    const result = await submitPaymentProof(db, order.orderId, proof);
+    expect(result).toMatchObject({ ok: true });
+    expect(result.ok && result.change && planOrderEmails({ type: "status", change: result.change })).toEqual({ customer: "por_verificar", team: "comprobante" });
+    expect((await getOrderByNumber(db, order.number))?.status).toBe("por_verificar");
+
+    // Una segunda captura (se equivocó de imagen) se suma sin volver a cambiar el estado.
+    const again = await submitPaymentProof(db, order.orderId, proof);
+    expect(again).toEqual({ ok: true, change: null });
+    const proofs = await listPaymentProofs(db, order.orderId);
+    expect(proofs).toHaveLength(2);
+    const image = await getPaymentProofImage(db, proofs[0].id, order.orderId);
+    expect(image?.contentType).toBe("image/webp");
+    expect((await sharp(image!.image).metadata()).format).toBe("webp");
+    // Con el id de otro pedido no se ve.
+    expect(await getPaymentProofImage(db, proofs[0].id, randomUUID())).toBeNull();
+  });
+
+  it("no acepta capturas en pedidos ya pagados, ni más del máximo, ni archivos que no son imagen", async () => {
+    const order = await newOrder();
+    const proof = await processProofImage(await screenshot());
+    for (let i = 0; i < MAX_PROOFS_PER_ORDER; i++) await submitPaymentProof(db, order.orderId, proof);
+    expect(await submitPaymentProof(db, order.orderId, proof)).toMatchObject({ ok: false });
+
+    const paid = await newOrder();
+    await db.update(schema.orders).set({ status: "pagado" }).where(eq(schema.orders.id, paid.orderId));
+    expect(await submitPaymentProof(db, paid.orderId, proof)).toMatchObject({ ok: false });
+
+    await expect(processProofImage(Buffer.from("no soy una imagen"))).rejects.toThrow("no es una imagen");
   });
 });

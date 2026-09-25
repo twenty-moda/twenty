@@ -14,6 +14,7 @@ import { Suspense } from "react";
 import { getDb } from "@/server/db/client";
 import { emailConfigured } from "@/server/services/email";
 import { getOrderByNumber } from "@/server/services/orders";
+import { listPaymentProofs } from "@/server/services/payment-proofs";
 import { listOrderPayments } from "@/server/services/payments";
 import { requireAdmin } from "../../../_lib/auth";
 import { InternalNoteForm, StatusChanger, TrackingForm } from "./status-changer";
@@ -34,7 +35,7 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
   const db = getDb();
   const order = await getOrderByNumber(db, n);
   if (!order) notFound();
-  const paymentRows = await listOrderPayments(db, order.id);
+  const [paymentRows, proofs] = await Promise.all([listOrderPayments(db, order.id), listPaymentProofs(db, order.id)]);
 
   const orderLabel = formatOrderNumber(order.number);
   const firstName = order.customerName.split(" ")[0];
@@ -56,6 +57,42 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
     >
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="space-y-4">
+          {order.paymentMethod === "yape_plin" ? (
+            <Card title="Captura del pago (Yape / Plin)">
+              {proofs.length ? (
+                <>
+                  <ul className="flex flex-wrap gap-3">
+                    {proofs.map((p) => (
+                      <li key={p.id}>
+                        <a href={`/admin/comprobantes/${p.id}`} target="_blank" rel="noopener noreferrer" className="block" title="Ver en grande">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- imagen privada, se sirve solo al equipo */}
+                          <img
+                            src={`/admin/comprobantes/${p.id}`}
+                            alt={`Captura subida el ${formatDateTime(p.createdAt)}`}
+                            width={p.width}
+                            height={p.height}
+                            className="h-56 w-auto rounded-lg border border-line bg-raised object-contain"
+                          />
+                          <span className="mt-1 block text-xs text-muted">{formatDateTime(p.createdAt)}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-sm text-muted">
+                    Revisa en tu app de Yape o Plin que llegaron {formatPrice(order.totalCents)} y toca “Confirmar pago” (o “Rechazar pago” si no llegó). Toca la
+                    captura para verla en grande.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted">
+                  {order.status === "pendiente"
+                    ? "El cliente todavía no sube la captura en la página de su pedido. Si te la mandó por WhatsApp, verifica el pago y confírmalo aquí abajo."
+                    : "El cliente no subió una captura en la web."}
+                </p>
+              )}
+            </Card>
+          ) : null}
+
           <Card title="Cambiar estado">
             <StatusChanger
               orderId={order.id}

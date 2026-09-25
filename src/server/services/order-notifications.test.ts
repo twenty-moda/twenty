@@ -29,6 +29,12 @@ describe("planOrderEmails", () => {
     expect(status({ from: "por_verificar" })).toEqual({ customer: "pagado", team: null });
   });
 
+  it("la captura de Yape/Plin que sube el cliente avisa al equipo para verificarla", () => {
+    expect(status({ from: "pendiente", to: "por_verificar", changedBy: null })).toEqual({ customer: "por_verificar", team: "comprobante" });
+    // Si la marca un admin, ya la vio: solo se avisa al cliente.
+    expect(status({ from: "pendiente", to: "por_verificar" })).toEqual({ customer: "por_verificar", team: null });
+  });
+
   it("cada avance le llega al cliente", () => {
     expect(status({ from: "pendiente", to: "por_verificar" }).customer).toBe("por_verificar");
     expect(status({ from: "pagado", to: "en_preparacion" }).customer).toBe("en_preparacion");
@@ -115,6 +121,7 @@ describe("emails de pedidos", () => {
     // Fotos del bucket en JPEG (el WebP no se ve en Outlook de escritorio), al doble del tamaño que se muestra.
     expect(html).toContain('src="https://tienda.example/api/email-image/item/TMW-0001.webp?w=144"');
     expect(text).toContain("2. Paga exactamente S/ 200.");
+    expect(text).toContain("3. Sube la captura del pago en la página de tu pedido.");
     expect(text).toContain("Promo 2 X 100: -S/ 40");
   });
 
@@ -136,5 +143,12 @@ describe("emails de pedidos", () => {
     expect(text).toContain("TMW-0001 · Negro · Talla M · x2");
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("libro-de-reclamaciones");
+  });
+
+  it("equipo: captura de pago recibida, con enlace al pedido en el panel", () => {
+    const email = teamOrderEmail("comprobante", order, ctx);
+    const { text } = renderBrandedEmail(email.content, brand);
+    expect(email.subject).toContain("Captura de pago · Pedido #1001 · S/ 200");
+    expect(text).toContain("https://tienda.example/admin/pedidos/1001");
   });
 });

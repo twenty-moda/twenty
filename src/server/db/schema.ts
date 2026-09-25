@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   index,
   integer,
   jsonb,
@@ -434,6 +435,29 @@ export const payments = pgTable(
     createdAt: timestamps.createdAt,
   },
   (t) => [index("payments_order_idx").on(t.orderId)],
+);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/**
+ * Captura del pago con Yape/Plin que sube el cliente en la página de su pedido. Va en la BD y no en el bucket de
+ * fotos (que es público) porque trae el nombre y el celular de quien pagó: solo se ve desde el panel.
+ * La imagen se guarda en WebP y achicada (unos 50–150 KB).
+ */
+export const paymentProofs = pgTable(
+  "payment_proofs",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    orderId: uuid()
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    image: bytea().notNull(),
+    contentType: text().notNull(),
+    width: integer().notNull(),
+    height: integer().notNull(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [index("payment_proofs_order_idx").on(t.orderId, t.createdAt)],
 );
 
 export const orderStatusHistory = pgTable(

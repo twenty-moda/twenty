@@ -4,8 +4,9 @@
  * Cliente: confirmación al comprar con Yape/Plin o WhatsApp (con tarjeta, cuando se confirma el pago) y un email
  * por cada avance del pedido (pago confirmado, en preparación, enviado/listo para recoger, entregado, anulado).
  * Los retrocesos (corregir un estado marcado por error) no se avisan.
- * Equipo (admins del panel + el email de avisos de Contenido → Empresa): cada pedido nuevo y cada anulación o
- * rechazo. No se avisa al admin que hizo el cambio, ni de los pedidos con tarjeta que nunca se pagaron.
+ * Equipo (admins del panel + el email de avisos de Contenido → Empresa): cada pedido nuevo, cada captura de Yape/Plin
+ * que sube un cliente y cada anulación o rechazo. No se avisa al admin que hizo el cambio, ni de los pedidos con
+ * tarjeta que nunca se pagaron.
  */
 import { and, eq } from "drizzle-orm";
 import type { OrderStatus } from "@/lib/order-status";
@@ -45,7 +46,9 @@ export function planOrderEmails(event: OrderEvent): { customer: CustomerEmailKin
       default: {
         const forward = (FORWARD[to] ?? 0) > (FORWARD[from] ?? 0);
         // Pago con Culqi (sin admin de por medio): para el equipo es el pedido nuevo.
-        const team = to === "pagado" && automatic && paymentMethod === "tarjeta" ? "nuevo" : null;
+        // Captura de Yape/Plin subida por el cliente: el equipo tiene que verificarla.
+        const team =
+          to === "pagado" && automatic && paymentMethod === "tarjeta" ? "nuevo" : to === "por_verificar" && automatic && paymentMethod === "yape_plin" ? "comprobante" : null;
         return { customer: forward ? to : null, team };
       }
     }

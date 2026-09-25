@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { CopyLinkButton } from "@/components/checkout/copy-link-button";
 import { CulqiPay } from "@/components/checkout/culqi-pay";
+import { PaymentProofUpload } from "@/components/checkout/payment-proof-upload";
 import { OrderProgress } from "@/components/store/order-progress";
 import { ShalomTrackingCard } from "@/components/store/shalom-tracking";
 import { culqiConfig } from "@/lib/culqi-config";
@@ -13,6 +14,7 @@ import { formatPrice } from "@/lib/money";
 import { formatOrderNumber, STATUS_INFO } from "@/lib/order-status";
 import { getDb } from "@/server/db/client";
 import { getOrderForCustomer } from "@/server/services/orders";
+import { listPaymentProofs, MAX_PROOFS_PER_ORDER } from "@/server/services/payment-proofs";
 import { getShalomTracking, getSiteSettings } from "../../_data";
 
 export const metadata: Metadata = { title: "Tu pedido", robots: { index: false } };
@@ -32,7 +34,7 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
   const { id } = await params;
   const autoPay = (await searchParams).pagar === "1";
   if (!UUID.test(id)) notFound();
-  const [order, settings] = await Promise.all([getOrderForCustomer(getDb(), id), getSiteSettings()]);
+  const [order, settings, proofs] = await Promise.all([getOrderForCustomer(getDb(), id), getSiteSettings(), listPaymentProofs(getDb(), id)]);
   if (!order) notFound();
 
   const number = formatOrderNumber(order.number);
@@ -44,6 +46,8 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
   const DeliveryIcon = order.shippingKind === "lima_delivery" ? Truck : order.shippingKind === "agency" ? Package : Store;
   // Lo que el equipo le escribió al cambiar el estado (p. ej. la clave de recojo de Shalom), lo último primero.
   const messages = order.history.filter((h) => h.customerMessage).reverse();
+  const wallet = order.paymentMethod === "yape_plin";
+  const proofWhatsapp = whatsapp ? whatsappUrl(whatsapp, `Hola TWENTY, pagué mi pedido ${number} por ${formatPrice(order.totalCents)}. Les envío la captura.`) : null;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -89,8 +93,8 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
         </div>
       ) : null}
 
-      {order.status === "pendiente" && order.paymentMethod === "yape_plin" ? (
-        <section className="mt-8 rounded-2xl bg-white p-6 text-center text-black">
+      {order.status === "pendiente" && wallet ? (
+        <section id="pago" className="mt-8 scroll-mt-20 rounded-2xl bg-white p-6 text-center text-black">
           <h2 className="text-lg font-bold">Paga {formatPrice(order.totalCents)} con Yape o Plin</h2>
           {settings.payments.walletQr ? (
             <Image
@@ -106,17 +110,47 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
           <ol className="mx-auto mt-4 max-w-sm space-y-1 text-left text-sm">
             <li>1. Escanea el QR desde tu app de Yape o Plin.</li>
             <li>2. Paga exactamente {formatPrice(order.totalCents)}.</li>
-            <li>3. Envíanos la captura por WhatsApp con tu número de pedido.</li>
+            <li>3. Sube aquí la captura del pago.</li>
           </ol>
-          {whatsapp ? (
-            <a
-              href={whatsappUrl(whatsapp, `Hola TWENTY, pagué mi pedido ${number} por ${formatPrice(order.totalCents)}. Les envío la captura.`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-5 flex h-13 items-center justify-center gap-2 rounded-full bg-black text-sm font-bold tracking-wide text-white uppercase"
-            >
-              <MessageCircle className="size-5" aria-hidden /> Enviar captura por WhatsApp
-            </a>
+          <PaymentProofUpload orderId={order.id} tone="light" whatsappHref={proofWhatsapp} />
+        </section>
+      ) : null}
+
+      {order.status === "por_verificar" && wallet ? (
+        <section id="pago" className="mt-8 scroll-mt-20 rounded-2xl bg-raised p-6 text-center">
+          <Clock className="mx-auto size-8" aria-hidden />
+          <h2 className="mt-3 text-lg font-bold">{proofs.length ? "Recibimos tu captura" : "Estamos verificando tu pago"}</h2>
+          <p className="mt-1 text-sm text-muted">
+            Estamos verificando tu pago de {formatPrice(order.totalCents)}. Te avisaremos por email apenas lo confirmemos.
+          </p>
+          {proofs.length ? (
+            <ul className="mt-5 flex flex-wrap justify-center gap-3">
+              {proofs.map((p) => (
+                <li key={p.id}>
+                  <a href={`/pedido/${order.id}/captura/${p.id}`} target="_blank" rel="noopener noreferrer" className="block">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- imagen privada del pedido, no pasa por el bucket */}
+                    <img
+                      src={`/pedido/${order.id}/captura/${p.id}`}
+                      alt={`Captura enviada el ${messageDate.format(p.createdAt)}`}
+                      width={p.width}
+                      height={p.height}
+                      loading="lazy"
+                      className="h-32 w-auto rounded-lg border border-line object-contain"
+                    />
+                    <span className="mt-1 block text-xs text-subtle">{messageDate.format(p.createdAt)}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {proofs.length < MAX_PROOFS_PER_ORDER ? (
+            <PaymentProofUpload
+              orderId={order.id}
+              tone="dark"
+              label={proofs.length ? "Subir otra captura" : "Subir captura del pago"}
+              secondary={proofs.length > 0}
+              whatsappHref={proofWhatsapp}
+            />
           ) : null}
         </section>
       ) : null}
