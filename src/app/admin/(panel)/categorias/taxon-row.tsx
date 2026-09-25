@@ -7,7 +7,8 @@ import { FormAlert, SubmitButton } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
 import { inputClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
-import { resizeForUpload } from "@/lib/resize-image";
+import { IMAGE_SPECS, imageWarnings } from "@/lib/image-specs";
+import { readImageSize, resizeForUpload } from "@/lib/resize-image";
 import { idle, type ActionState } from "../../_lib/action-state";
 import { deleteTaxonAction, saveTaxonAction, uploadTaxonImageAction } from "./actions";
 
@@ -16,6 +17,7 @@ type Taxon = { id: string; name: string; slug: string; isVisible: boolean; produ
 export function TaxonRow({ kind, taxon }: { kind: "category" | "fit"; taxon: Taxon }) {
   const [state, action] = useActionState(saveTaxonAction.bind(null, kind, taxon.id), idle);
   const [extra, setExtra] = useState<ActionState>(idle);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
 
   return (
@@ -32,7 +34,9 @@ export function TaxonRow({ kind, taxon }: { kind: "category" | "fit"; taxon: Tax
                 const file = e.target.files?.[0];
                 if (!file) return;
                 const fd = new FormData();
-                fd.set("file", await resizeForUpload(file, 900));
+                const [size, resized] = await Promise.all([readImageSize(file), resizeForUpload(file, 900)]);
+                setWarnings(size ? imageWarnings(size, IMAGE_SPECS.category) : []);
+                fd.set("file", resized);
                 startTransition(async () => setExtra(await uploadTaxonImageAction(kind, taxon.id, fd)));
               }}
             />
@@ -66,6 +70,11 @@ export function TaxonRow({ kind, taxon }: { kind: "category" | "fit"; taxon: Tax
       <div className="mt-2 space-y-2 empty:hidden">
         <FormAlert state={state} />
         <FormAlert state={extra} />
+        {warnings.map((w) => (
+          <p key={w} role="status" className="text-xs text-warning">
+            {w}
+          </p>
+        ))}
       </div>
     </li>
   );

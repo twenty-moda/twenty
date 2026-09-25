@@ -5,7 +5,8 @@ import Image from "next/image";
 import { useRef, useState, useTransition } from "react";
 import { buttonClass } from "@/components/admin/ui";
 import { cn } from "@/lib/cn";
-import { resizeForUpload } from "@/lib/resize-image";
+import { FORMAT_HINT, IMAGE_SPECS, imageWarnings, specLabel } from "@/lib/image-specs";
+import { readImageSize, resizeForUpload } from "@/lib/resize-image";
 import { deletePhotoAction, movePhotoAction, setPhotoColorAction, uploadProductPhotoAction } from "./actions";
 
 type Photo = { id: string; path: string; colorId: string | null };
@@ -21,7 +22,8 @@ export function PhotoManager({ productId, photos, colors }: { productId: string;
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted">
-        Las fotos van por color: en la tienda, al elegir un color se muestran sus fotos. La primera de cada color es la principal.
+        Las fotos van por color: en la tienda, al elegir un color se muestran sus fotos. La primera de cada color es la principal. Tamaño ideal:{" "}
+        {specLabel(IMAGE_SPECS.product)}. {FORMAT_HINT}
       </p>
       {groups.map((g) =>
         g.color || g.photos.length ? (
@@ -36,15 +38,20 @@ function PhotoGroup({ productId, color, photos, colors }: { productId: string; c
   const inputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
 
   const upload = async (files: FileList) => {
     setError(null);
+    setWarnings([]);
     const list = [...files];
     for (const [i, file] of list.entries()) {
       setProgress(`Subiendo ${i + 1} de ${list.length}…`);
       const fd = new FormData();
-      fd.set("file", await resizeForUpload(file));
+      const [size, resized] = await Promise.all([readImageSize(file), resizeForUpload(file)]);
+      const fileWarnings = size ? imageWarnings(size, IMAGE_SPECS.product) : [];
+      if (fileWarnings.length) setWarnings((ws) => [...ws, `${file.name}: ${fileWarnings.join(" ")}`]);
+      fd.set("file", resized);
       const result = await uploadProductPhotoAction(productId, color?.id ?? null, fd);
       if (result.status === "error") setError(`${file.name}: ${result.message}`);
     }
@@ -64,6 +71,11 @@ function PhotoGroup({ productId, color, photos, colors }: { productId: string; c
         </label>
       </div>
       {error ? <p className="mb-2 text-sm text-danger">{error}</p> : null}
+      {warnings.map((w) => (
+        <p key={w} role="status" className="mb-2 text-xs text-warning">
+          {w}
+        </p>
+      ))}
       {photos.length ? (
         <ul className={cn("grid grid-cols-2 gap-2 min-[400px]:grid-cols-3 sm:grid-cols-4 lg:grid-cols-6", pending && "opacity-60")}>
           {photos.map((p, i) => (

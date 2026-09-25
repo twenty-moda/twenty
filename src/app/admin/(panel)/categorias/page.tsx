@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AdminPage, Card } from "@/components/admin/ui";
+import { FORMAT_HINT, IMAGE_SPECS, specLabel } from "@/lib/image-specs";
 import { getDb } from "@/server/db/client";
 import { listTaxonomy } from "@/server/services/admin-products";
 import { requireAdmin } from "../../_lib/auth";
@@ -16,7 +17,9 @@ export default async function TaxonomyPage() {
     <AdminPage title="Categorías y fits" description="Las categorías arman el menú de la tienda; los fits (cortes) sirven de filtro en el catálogo.">
       <div className="space-y-4">
         <Card title="Categorías">
-          <p className="mb-2 text-sm text-muted">El número es el orden en el menú (0 va primero). La imagen se ve en “Compra por categoría”.</p>
+          <p className="mb-2 text-sm text-muted">
+            El número es el orden en el menú (0 va primero). La imagen se ve en “Compra por categoría”: ideal {specLabel(IMAGE_SPECS.category)}. {FORMAT_HINT}
+          </p>
           <ul className="divide-y divide-line">
             {categories.map((c) => (
               <TaxonRow key={c.id} kind="category" taxon={c} />

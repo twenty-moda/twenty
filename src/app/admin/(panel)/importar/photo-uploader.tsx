@@ -2,11 +2,12 @@
 
 import { CheckCircle2, CircleAlert, Images, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { FORMAT_HINT, IMAGE_SPECS, imageWarnings, specLabel } from "@/lib/image-specs";
 import { parsePhotoName } from "@/lib/product-import";
-import { resizeForUpload } from "@/lib/resize-image";
+import { readImageSize, resizeForUpload } from "@/lib/resize-image";
 import { uploadSkuPhotoAction } from "./actions";
 
-type Item = { name: string; state: "pending" | "uploading" | "ok" | "error"; message?: string };
+type Item = { name: string; state: "pending" | "uploading" | "ok" | "error"; message?: string; warning?: string };
 
 /** Varias fotos nombradas con su SKU: se suben una por una y se asignan solas a su producto y color. */
 export function SkuPhotoUploader() {
@@ -23,10 +24,12 @@ export function SkuPhotoUploader() {
       if (list[i].state === "error") continue;
       setItems((xs) => xs.map((x, j) => (j === i ? { ...x, state: "uploading" } : x)));
       const fd = new FormData();
-      fd.set("file", await resizeForUpload(file));
+      const [size, resized] = await Promise.all([readImageSize(file), resizeForUpload(file)]);
+      const warning = size ? imageWarnings(size, IMAGE_SPECS.product).join(" ") : "";
+      fd.set("file", resized);
       fd.set("name", file.name);
       const result = await uploadSkuPhotoAction(fd).catch(() => ({ ok: false as const, message: "Error de conexión" }));
-      setItems((xs) => xs.map((x, j) => (j === i ? { ...x, state: result.ok ? "ok" : "error", message: result.message } : x)));
+      setItems((xs) => xs.map((x, j) => (j === i ? { ...x, state: result.ok ? "ok" : "error", message: result.message, warning: result.ok ? warning : undefined } : x)));
     }
     setBusy(false);
   };
@@ -40,6 +43,9 @@ export function SkuPhotoUploader() {
         <Images className="size-8" aria-hidden />
         <span className="font-semibold">{busy ? "Subiendo fotos…" : "Elige las fotos (puedes elegir muchas)"}</span>
         <span className="text-sm text-muted">Nombradas con el SKU: TMW-0001.jpg, TMW-0001_02.jpg, TMW-0001_03.jpg…</span>
+        <span className="text-xs text-subtle">
+          Tamaño ideal: {specLabel(IMAGE_SPECS.product)}. {FORMAT_HINT}
+        </span>
         <input type="file" accept="image/*" multiple disabled={busy} className="sr-only" onChange={(e) => e.target.files?.length && start([...e.target.files])} />
       </label>
 
@@ -59,7 +65,9 @@ export function SkuPhotoUploader() {
                   <Loader2 className={`size-4 shrink-0 text-muted ${item.state === "uploading" ? "animate-spin" : ""}`} aria-hidden />
                 )}
                 <span className="min-w-0 flex-1 truncate font-mono text-xs">{item.name}</span>
-                <span className={`truncate text-xs ${item.state === "error" ? "text-danger" : "text-muted"}`}>{item.message ?? (item.state === "uploading" ? "Subiendo…" : "")}</span>
+                <span className={`truncate text-xs ${item.state === "error" ? "text-danger" : item.warning ? "text-warning" : "text-muted"}`} title={item.warning || undefined}>
+                  {[item.message, item.warning].filter(Boolean).join(" · ") || (item.state === "uploading" ? "Subiendo…" : "")}
+                </span>
               </li>
             ))}
           </ul>

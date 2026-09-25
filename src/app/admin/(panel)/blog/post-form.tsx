@@ -8,6 +8,7 @@ import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { buttonClass } from "@/components/admin/ui";
 import { inputClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
+import { IMAGE_SPECS } from "@/lib/image-specs";
 import { slugify } from "@/lib/slug";
 import { idle, type ActionState } from "../../_lib/action-state";
 import { deletePostAction, savePostAction } from "./actions";
@@ -77,7 +78,7 @@ export function PostForm({ post, categories, created }: { post: PostFormValues; 
             ))}
           </datalist>
           <Input label="Autor" name="author" state={state} defaultValue={post.author || "TWENTY"} />
-          <ImageInput name="image" label="Foto principal" current={post.image} maxSize={1600} />
+          <ImageInput name="image" label="Foto principal" current={post.image} spec={IMAGE_SPECS.post} maxSize={1600} aspect="aspect-4/3" />
         </div>
 
         <details className="rounded-2xl border border-line bg-surface p-5">

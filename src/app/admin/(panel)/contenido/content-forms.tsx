@@ -8,6 +8,7 @@ import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { buttonClass } from "@/components/admin/ui";
 import { inputClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
+import { IMAGE_SPECS } from "@/lib/image-specs";
 import type { LegalKey, SettingKey, SiteSettings } from "@/server/services/content";
 import { idle } from "../../_lib/action-state";
 import { deleteSlideAction, saveSettingAction, saveSlideAction } from "./actions";
@@ -109,7 +110,7 @@ export function PaymentsForm({ payments, culqiReady }: { payments: SiteSettings[
       />
       <Toggle name="walletEnabled" defaultChecked={payments.walletEnabled} label="Ofrecer pago con Yape / Plin (QR)" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[192px_1fr]">
-        <ImageInput name="qr" label="Código QR" current={payments.walletQr} maxSize={800} />
+        <ImageInput name="qr" label="Código QR" current={payments.walletQr} spec={IMAGE_SPECS.qr} maxSize={800} />
         <div className="space-y-4">
           <Text label="A nombre de" name="walletName" defaultValue={payments.walletName} />
           <Text label="Texto de ayuda" name="walletDescription" defaultValue={payments.walletDescription} />
@@ -138,8 +139,8 @@ export function SlideForm({ slide }: { slide?: Slide }) {
   return (
     <form action={action} className="space-y-4">
       <div className="flex flex-wrap gap-4">
-        <ImageInput name="image" label="Imagen (computadora)" current={slide?.image} maxSize={1800} />
-        <ImageInput name="imageMobile" label="Imagen (celular)" current={slide?.imageMobile} maxSize={1200} />
+        <ImageInput name="image" label="Imagen (computadora)" current={slide?.image} spec={IMAGE_SPECS.bannerDesktop} maxSize={1600} />
+        <ImageInput name="imageMobile" label="Imagen (celular)" current={slide?.imageMobile} spec={IMAGE_SPECS.bannerMobile} maxSize={1200} />
       </div>
       <FieldError state={state} name="image" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -197,7 +198,7 @@ export function AboutForm({ about }: { about: SiteSettings["about"] }) {
   return (
     <SettingForm settingKey="about">
       <Text label="Título" name="title" defaultValue={about.title} />
-      <ImageInput name="image" label="Foto principal" current={about.image} maxSize={1600} aspect="aspect-video" />
+      <ImageInput name="image" label="Foto principal" current={about.image} spec={IMAGE_SPECS.about} maxSize={1600} aspect="aspect-4/3" />
       <RichTextEditor name="body" label="Historia" defaultValue={about.body} rows={12} />
       <Text label="Frase destacada" name="quote" defaultValue={about.quote} hint="Se muestra grande al final de la historia. Usa **así** para resaltar." />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

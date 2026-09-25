@@ -1,3 +1,15 @@
+/** Medidas reales de la foto (ya girada según el celular), o null si el navegador no puede leerla. */
+export async function readImageSize(file: File): Promise<{ width: number; height: number } | null> {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return size;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Achica una foto en el navegador antes de subirla (máx. 1600 px, JPEG). Así las fotos del celular
  * suben rápido y no superan el límite de 4.5 MB por request de Vercel. El servidor la convierte a WebP.
