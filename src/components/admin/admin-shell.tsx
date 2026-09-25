@@ -16,6 +16,7 @@ import {
   ShoppingBag,
   Tag,
   Truck,
+  UserCog,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -56,6 +57,10 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/admin/contenido", label: "Contenido de la web", icon: LayoutTemplate },
       { href: "/admin/envios", label: "Envíos", icon: Truck },
     ],
+  },
+  {
+    title: "Ajustes",
+    items: [{ href: "/admin/equipo", label: "Equipo", icon: UserCog }],
   },
 ];
 const NAV = NAV_GROUPS.flatMap((g) => g.items);

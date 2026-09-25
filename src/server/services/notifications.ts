@@ -159,3 +159,31 @@ export async function sendContactReply(message: { name: string; email: string; m
     replyTo: contactReplyTo(settings) || undefined,
   });
 }
+
+/** Aviso a quien recibe acceso al panel: con qué correo entrar y cómo (Google o crear su contraseña). */
+export async function sendAdminInvite(person: { name: string; email: string }, invitedBy: string, settings: Settings) {
+  const loginUrl = `${appUrl()}/admin/login`;
+  const email = renderBrandedEmail(
+    {
+      audience: "team",
+      preheader: `${invitedBy} te dio acceso al panel de la tienda.`,
+      eyebrow: "Panel de TWENTY",
+      title: "Ya tienes acceso al panel",
+      blocks: [
+        { type: "text", text: `Hola ${person.name.trim().split(/\s+/)[0]}, ${invitedBy} te dio acceso al panel de la tienda TWENTY: pedidos, productos, stock y contenido de la web.` },
+        {
+          type: "steps",
+          items: [
+            "Abre el panel con el botón de abajo.",
+            `Entra con tu cuenta de Google (${person.email}) o, si no usas Google, toca «Crear contraseña» con este mismo correo.`,
+            "Si creas contraseña, te llegará un correo para confirmarla. Luego ya puedes entrar.",
+          ],
+        },
+        { type: "button", label: "Entrar al panel", url: loginUrl },
+        { type: "text", text: "También recibirás por email los avisos de pedidos nuevos.", muted: true, small: true },
+      ],
+    },
+    emailBrand(settings, appUrl()),
+  );
+  return sendEmail({ tag: "equipo-invitacion", to: person.email, subject: "Tu acceso al panel de TWENTY", ...email });
+}

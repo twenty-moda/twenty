@@ -7,7 +7,7 @@
 import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import type { AddressInput, ProfileInput } from "@/lib/account-forms";
 import type { Db } from "../db/client";
-import { addresses, customers, districts, orderItems, orders, users } from "../db/schema";
+import { addresses, customers, districts, orderItems, orders, sessions, users } from "../db/schema";
 import type { FirebaseIdentity } from "./firebase-auth";
 import { ORDERS_ID } from "./orders";
 
@@ -278,12 +278,49 @@ export async function linkCustomerToAccount(db: Db, user: AccountUser, orderEmai
  * Da acceso al panel a un email (crea la cuenta si no existe, sin contraseña). La persona entra en /admin/login con
  * Google o con correo y contraseña (si no tiene, la crea en /ingresar → Crear cuenta con ese email).
  */
+// ─── Equipo (quién entra al panel) ───────────────────────────────────────────
+
+/**
+ * Da acceso al panel a un email: crea la cuenta o, si ya existía (p. ej. como cliente de la tienda), le da el rol
+ * admin. La persona entra en /admin/login con Google o creando su contraseña con ese correo (Firebase).
+ */
 export async function grantAdmin(db: Db, input: { email: string; name: string }) {
   const email = input.email.trim().toLowerCase();
+  const [before] = await db.select({ role: users.role }).from(users).where(eq(users.email, email)).limit(1);
   const [user] = await db
     .insert(users)
     .values({ email, name: input.name.trim(), role: "admin" })
     .onConflictDoUpdate({ target: users.email, set: { role: "admin", isActive: true, updatedAt: new Date() } })
-    .returning({ id: users.id, email: users.email });
-  return user;
+    .returning({ id: users.id, email: users.email, name: users.name });
+  return { ...user, alreadyAdmin: before?.role === "admin" };
+}
+
+/** Quienes pueden entrar al panel. */
+export function listAdmins(db: Db) {
+  return db
+    .select({ id: users.id, name: users.name, email: users.email, lastLoginAt: users.lastLoginAt })
+    .from(users)
+    .where(and(eq(users.role, "admin"), eq(users.isActive, true)))
+    .orderBy(users.name);
+}
+
+/**
+ * Quita el acceso al panel: la cuenta sigue siendo de cliente en la tienda y sus sesiones del panel se cierran al
+ * instante. No se puede quitar el acceso propio ni dejar el panel sin admins.
+ */
+export async function revokeAdmin(db: Db, userId: string, actorId: string): Promise<{ ok: true; email: string } | { ok: false; message: string }> {
+  if (userId === actorId) return { ok: false, message: "No puedes quitarte el acceso a ti mismo: pídeselo a otro admin." };
+  return db.transaction(async (tx) => {
+    const admins = await tx
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(and(eq(users.role, "admin"), eq(users.isActive, true)))
+      .for("update");
+    const target = admins.find((a) => a.id === userId);
+    if (!target) return { ok: false as const, message: "Esa persona ya no tiene acceso al panel." };
+    if (admins.length <= 1) return { ok: false as const, message: "Tiene que quedar al menos un admin." };
+    await tx.update(users).set({ role: "customer", updatedAt: new Date() }).where(eq(users.id, userId));
+    await tx.delete(sessions).where(and(eq(sessions.userId, userId), eq(sessions.scope, "admin")));
+    return { ok: true as const, email: target.email };
+  });
 }

@@ -211,3 +211,36 @@ describe("direcciones", () => {
     expect(list.find((a) => a.kind === "agency")).toMatchObject({ label: "Shalom Av. Ejército", isDefault: false });
   });
 });
+
+describe("equipo del panel", () => {
+  it("dar acceso crea la cuenta o sube a admin a un cliente que ya existía, y entra con Google", async () => {
+    const created = await accounts.grantAdmin(db, { email: " Nueva@Example.com ", name: "Nueva Admin" });
+    expect(created).toMatchObject({ email: "nueva@example.com", alreadyAdmin: false });
+    expect((await accounts.grantAdmin(db, { email: "nueva@example.com", name: "Otra vez" })).alreadyAdmin).toBe(true);
+
+    await accounts.signInWithFirebase(db, google());
+    const promoted = await accounts.grantAdmin(db, { email: "ana@example.com", name: "Ana" });
+    expect(promoted.alreadyAdmin).toBe(false);
+    expect(await accounts.signInWithFirebase(db, google(), { createIfMissing: false })).toMatchObject({ ok: true, role: "admin" });
+    expect((await accounts.listAdmins(db)).map((a) => a.email).sort()).toEqual(["ana@example.com", "nueva@example.com"]);
+  });
+
+  it("quitar acceso cierra sus sesiones del panel y no deja quitarse a uno mismo ni al último admin", async () => {
+    const a = await accounts.grantAdmin(db, { email: "a@example.com", name: "A" });
+    const b = await accounts.grantAdmin(db, { email: "b@example.com", name: "B" });
+    const { token } = await createSession(db, b.id, null, "admin");
+
+    expect(await accounts.revokeAdmin(db, a.id, a.id)).toMatchObject({ ok: false });
+    expect(await accounts.revokeAdmin(db, b.id, a.id)).toEqual({ ok: true, email: "b@example.com" });
+    expect(await validateSession(db, token, "admin")).toBeNull();
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.id, b.id));
+    expect(user).toMatchObject({ role: "customer", isActive: true });
+
+    // C queda como único admin: nadie puede dejar el panel sin admins.
+    const c = await accounts.grantAdmin(db, { email: "c@example.com", name: "C" });
+    await accounts.revokeAdmin(db, a.id, c.id);
+    expect(await accounts.revokeAdmin(db, c.id, a.id)).toEqual({ ok: false, message: "Tiene que quedar al menos un admin." });
+    expect(await accounts.revokeAdmin(db, c.id, c.id)).toMatchObject({ ok: false });
+    expect((await accounts.listAdmins(db)).map((x) => x.email)).toEqual(["c@example.com"]);
+  });
+});

@@ -8,7 +8,7 @@ import { endSession, startSession } from "../_lib/auth";
 
 /**
  * Panel: entra con Google o con correo y contraseña (Firebase). Es la misma cuenta que en la tienda; solo pasa si
- * tiene rol admin. No crea cuentas: el acceso se da con `pnpm admin:create`.
+ * tiene rol admin. No crea cuentas: el acceso se da en Equipo (o con `pnpm admin:create`).
  */
 export async function adminSignInAction(idToken: unknown, next: unknown): Promise<SignInResult> {
   const verified = await verifySignInToken(idToken);
