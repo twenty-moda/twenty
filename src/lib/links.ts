@@ -9,6 +9,21 @@ export function mapsUrl(latitude: number, longitude: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 }
 
+/** La ruta hasta ese punto en Google Maps (en el celular abre la app). */
+export function mapsDirectionsUrl(latitude: number, longitude: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+}
+
+/** La ruta hasta ese punto en Waze (en el celular abre la app; si no la tiene, la web de Waze). */
+export function wazeUrl(latitude: number, longitude: number): string {
+  return `https://waze.com/ul?ll=${latitude},${longitude}&navigate=yes`;
+}
+
+/** Mapa de Google a color para un <iframe>, sin API key. */
+export function mapEmbedUrl(latitude: number, longitude: number): string {
+  return `https://maps.google.com/maps?q=${latitude},${longitude}&z=16&hl=es&output=embed`;
+}
+
 export function catalogUrl(params: Record<string, string | undefined> = {}): string {
   const query = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1])).toString();
   return `/catalogo${query ? `?${query}` : ""}`;

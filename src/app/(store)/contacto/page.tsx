@@ -1,4 +1,4 @@
-import { BookOpenText, Clock, Mail, MapPin, MessageCircle, PackageSearch, Phone } from "lucide-react";
+import { BookOpenText, Clock, Mail, MapPin, MessageCircle, Navigation, PackageSearch, Phone } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ContactForm } from "@/components/forms/contact-form";
@@ -6,7 +6,7 @@ import { FaqList } from "@/components/store/faq-list";
 import { JsonLd } from "@/components/store/json-ld";
 import { PageHeader } from "@/components/store/page-header";
 import { richTextToPlain } from "@/lib/rich-text";
-import { mapsUrl, whatsappUrl } from "@/lib/links";
+import { mapEmbedUrl, mapsDirectionsUrl, wazeUrl, whatsappUrl } from "@/lib/links";
 import { getSiteSettings } from "../_data";
 
 export const metadata: Metadata = {
@@ -73,7 +73,7 @@ export default async function ContactPage() {
             <section aria-labelledby="tienda" className="reveal overflow-hidden rounded-2xl border border-line">
               <iframe
                 title="Mapa de la tienda TWENTY en Gamarra"
-                src={`https://maps.google.com/maps?q=${store.latitude},${store.longitude}&z=16&hl=es&output=embed`}
+                src={mapEmbedUrl(store.latitude, store.longitude)}
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
                 className="aspect-4/3 w-full border-0 bg-raised lg:aspect-auto lg:h-80"
@@ -90,14 +90,26 @@ export default async function ContactPage() {
                     <Clock className="mt-0.5 size-4 shrink-0" aria-hidden /> {contact.openingHours}
                   </p>
                 ) : null}
-                <a
-                  href={mapsUrl(store.latitude, store.longitude)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex h-12 items-center rounded-full border border-line px-6 text-sm font-semibold"
-                >
-                  Cómo llegar
-                </a>
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  <a
+                    href={mapsDirectionsUrl(store.latitude, store.longitude)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Cómo llegar con Google Maps"
+                    className="inline-flex h-12 grow items-center justify-center gap-2 rounded-full border border-line px-6 text-sm font-semibold sm:grow-0"
+                  >
+                    <MapPin className="size-4" aria-hidden /> Google Maps
+                  </a>
+                  <a
+                    href={wazeUrl(store.latitude, store.longitude)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Cómo llegar con Waze"
+                    className="inline-flex h-12 grow items-center justify-center gap-2 rounded-full border border-line px-6 text-sm font-semibold sm:grow-0"
+                  >
+                    <Navigation className="size-4" aria-hidden /> Waze
+                  </a>
+                </div>
               </div>
             </section>
           ) : null}
