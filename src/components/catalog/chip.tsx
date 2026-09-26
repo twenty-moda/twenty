@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { ColorSwatch } from "@/components/ui/color-swatch";
 import { cn } from "@/lib/cn";
 
 type ChipProps = {
@@ -21,13 +22,7 @@ export function Chip({ active, count, swatch, children, className, ...props }: C
       )}
       {...props}
     >
-      {swatch !== undefined ? (
-        <span
-          aria-hidden
-          className="size-4 rounded-full border border-white/30"
-          style={swatch ? { backgroundColor: swatch } : { background: "linear-gradient(135deg,#9fb4c7,#3d4b5c)" }}
-        />
-      ) : null}
+      {swatch !== undefined ? <ColorSwatch hex={swatch} /> : null}
       {children}
       {count !== undefined ? <span className={cn("text-xs tabular-nums", active ? "text-black/60" : "text-subtle")}>{count}</span> : null}
     </button>

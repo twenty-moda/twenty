@@ -1,10 +1,12 @@
 "use client";
 
 import { CheckCircle2, CircleAlert, Minus, Plus, Trash2, Wand2 } from "lucide-react";
-import { useId, useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
+import { Combobox, type ComboOption } from "@/components/admin/combobox";
 import { FormAlert } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
-import { inputClass } from "@/components/ui/form";
+import { Chip } from "@/components/catalog/chip";
+import { fieldClass, inputCompactClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { compareSizes } from "@/lib/sizes";
 import { slugify } from "@/lib/slug";
@@ -37,11 +39,17 @@ const newKey = () => `n${++seq}`;
 /** Misma regla que el servidor para saber si dos variantes son la misma combinación. */
 const optionKey = (color: string, size: string) => `${slugify(color)}|${size.toUpperCase()}`;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const newColor = (v: string) => `Color nuevo: «${v}»`;
+const newSize = (v: string) => `Talla nueva: «${v.toUpperCase()}»`;
+// Encabezado y filas con la misma plantilla. Las dos últimas columnas tienen ancho fijo: con `auto`, el
+// encabezado ("Activa") y las filas (casilla y tacho) las medían distinto y los títulos no calzaban.
+const COLUMNS =
+  "lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_3.5rem_2.75rem]";
+const inkInputClass = cn(fieldClass, "h-12 w-full bg-ink px-4 text-base");
 
-type VariantsEditorProps = { productId: string; initial: EditableVariant[]; colorNames: string[]; sizeLabels: string[] };
+type VariantsEditorProps = { productId: string; initial: EditableVariant[]; colors: ComboOption[]; sizeLabels: string[] };
 
-export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: VariantsEditorProps) {
-  const listId = useId();
+export function VariantsEditor({ productId, initial, colors, sizeLabels }: VariantsEditorProps) {
   const [rows, setRows] = useState<Row[]>(() =>
     initial.map((v) => ({ ...v, key: v.id ?? newKey(), price: toSoles(v.priceCents), compareAt: toSoles(v.compareAtPriceCents) })),
   );
@@ -90,21 +98,11 @@ export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: V
     });
 
   const totalStock = rows.reduce((s, r) => s + (r.isActive ? r.stock : 0), 0);
-  const sizesDatalist = [...new Set([...COMMON_SIZES, ...sizeLabels])].sort(compareSizes);
+  const sizes = [...new Set([...COMMON_SIZES, ...sizeLabels])].sort(compareSizes);
+  const sizeOptions = sizes.map((value) => ({ value }));
 
   return (
     <div className="space-y-4">
-      <datalist id={`${listId}-colors`}>
-        {colorNames.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
-      <datalist id={`${listId}-sizes`}>
-        {sizesDatalist.map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
-
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -126,8 +124,9 @@ export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: V
 
       {generatorOpen ? (
         <Generator
-          sizes={sizesDatalist}
-          colorsListId={`${listId}-colors`}
+          sizes={sizes}
+          colors={colors}
+          productColors={rows.map((r) => r.color)}
           existing={new Set(rows.map((r) => optionKey(r.color, r.size)))}
           onAdd={(combos, values) => {
             const fresh = combos.map((c) => ({ key: newKey(), sku: "", isActive: true, ...c, ...values }));
@@ -162,28 +161,48 @@ export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: V
 
       {rows.length ? (
         <>
-          <div className="hidden grid-cols-[1.3fr_0.7fr_1fr_0.8fr_0.8fr_1.1fr_auto_auto] gap-2 px-1 text-xs text-muted lg:grid">
-            <span>Color</span>
-            <span>Talla</span>
-            <span>SKU</span>
-            <span>Precio S/</span>
-            <span>Antes S/</span>
-            <span>Stock</span>
-            <span>Activa</span>
-            <span className="sr-only">Quitar</span>
+          <div aria-hidden className={cn("hidden gap-2 px-1 text-xs text-muted lg:grid", COLUMNS)}>
+            <span className="px-3">Color</span>
+            <span className="px-3">Talla</span>
+            <span className="px-3">SKU</span>
+            <span className="px-3">Precio S/</span>
+            <span className="px-3">Antes S/</span>
+            <span className="text-center">Stock</span>
+            <span className="text-center">Activa</span>
+            <span />
           </div>
           <ul className="space-y-2">
             {rows.map((r) => (
               <li
                 key={r.key}
                 className={cn(
-                  "grid grid-cols-2 gap-2 rounded-xl border border-line p-3 lg:grid-cols-[1.3fr_0.7fr_1fr_0.8fr_0.8fr_1.1fr_auto_auto] lg:items-center lg:border-0 lg:p-1",
+                  "grid grid-cols-2 gap-2 rounded-xl border border-line p-3 lg:items-center lg:border-0 lg:p-1",
+                  COLUMNS,
                   !r.isActive && "opacity-60",
                   recent?.keys.has(r.key) && "bg-success/10 ring-1 ring-success/40",
                 )}
               >
-                <Input label="Color" list={`${listId}-colors`} value={r.color} onChange={(v) => update(r.key, { color: v })} className="col-span-2 lg:col-span-1" />
-                <Input label="Talla" list={`${listId}-sizes`} value={r.size} onChange={(v) => update(r.key, { size: v.toUpperCase() })} />
+                <Cell label="Color" className="col-span-2 lg:col-span-1">
+                  <Combobox
+                    label="Color"
+                    options={colors}
+                    value={r.color}
+                    onChange={(v) => update(r.key, { color: v })}
+                    swatches
+                    createLabel={newColor}
+                    className={inputCompactClass}
+                  />
+                </Cell>
+                <Cell label="Talla">
+                  <Combobox
+                    label="Talla"
+                    options={sizeOptions}
+                    value={r.size}
+                    onChange={(v) => update(r.key, { size: v.toUpperCase() })}
+                    createLabel={newSize}
+                    className={inputCompactClass}
+                  />
+                </Cell>
                 <Input label="SKU" value={r.sku} placeholder="Automático" onChange={(v) => update(r.key, { sku: v.toUpperCase() })} mono />
                 <Input label="Precio S/" value={r.price} inputMode="decimal" onChange={(v) => update(r.key, { price: v })} />
                 <Input label="Antes S/" value={r.compareAt} inputMode="decimal" placeholder="—" onChange={(v) => update(r.key, { compareAt: v })} />
@@ -239,35 +258,42 @@ export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: V
   );
 }
 
+/** Celda con su título visible solo en el teléfono (en la computadora está el encabezado). */
+function Cell({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={cn("min-w-0", className)}>
+      <span aria-hidden className="mb-1 block text-xs text-muted lg:hidden">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 function Input({
   label,
   value,
   onChange,
-  list,
   placeholder,
   inputMode,
   mono,
-  className,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  list?: string;
   placeholder?: string;
   inputMode?: "decimal" | "numeric";
   mono?: boolean;
-  className?: string;
 }) {
   return (
-    <label className={cn("block min-w-0", className)}>
+    <label className="block min-w-0">
       <span className="mb-1 block text-xs text-muted lg:sr-only">{label}</span>
       <input
         value={value}
-        list={list}
         placeholder={placeholder}
         inputMode={inputMode}
         onChange={(e) => onChange(e.target.value)}
-        className={cn(inputClass, "h-11 px-3 text-sm", mono && "font-mono")}
+        className={cn(inputCompactClass, mono && "font-mono")}
       />
     </label>
   );
@@ -275,24 +301,36 @@ function Input({
 
 type GeneratorProps = {
   sizes: string[];
-  colorsListId: string;
+  /** Todos los colores del catálogo, para el buscador. */
+  colors: ComboOption[];
+  /** Los colores que ya tiene esta prenda: salen como botones, listos para tocar. */
+  productColors: string[];
   /** `optionKey` de las variantes que ya están en la lista. */
   existing: Set<string>;
   onAdd: (combos: Combo[], values: ComboValues) => void;
   onUpdate: (combos: Combo[], values: ComboValues) => void;
 };
 
-function Generator({ sizes, colorsListId, existing, onAdd, onUpdate }: GeneratorProps) {
-  const [colors, setColors] = useState("");
+const uniqueColors = (names: string[]) => names.map((c) => c.trim()).filter((c, i, all) => c && all.findIndex((o) => slugify(o) === slugify(c)) === i);
+
+function Generator({ sizes, colors, productColors, existing, onAdd, onUpdate }: GeneratorProps) {
+  // "Negro" y "negro" son un solo color (igual que en el servidor): queda como se escribió primero.
+  const [choices, setChoices] = useState(() => uniqueColors(productColors));
+  const [colorList, setColorList] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [price, setPrice] = useState("");
   const [compareAt, setCompareAt] = useState("");
   const [stock, setStock] = useState("0");
-  // "Negro, negro" es un solo color (igual que en el servidor): queda el primero.
-  const colorList = colors
-    .split(",")
-    .map((c) => c.trim())
-    .filter((c, i, all) => c && all.findIndex((o) => slugify(o) === slugify(c)) === i);
+  const inCatalog = (name: string) => colors.find((c) => slugify(c.value) === slugify(name));
+  const isOn = (name: string) => colorList.some((c) => slugify(c) === slugify(name));
+  const toggleColor = (name: string) => setColorList((list) => (isOn(name) ? list.filter((c) => slugify(c) !== slugify(name)) : [...list, name]));
+  const addColor = (name: string) => {
+    const known = choices.find((c) => slugify(c) === slugify(name));
+    if (!known) setChoices((list) => uniqueColors([...list, name]));
+    if (!isOn(name)) setColorList((list) => [...list, known ?? name]);
+    setSearch("");
+  };
   const combos = colorList.flatMap((color) => [...selected].sort(compareSizes).map((size) => ({ color, size })));
   const fresh = combos.filter((c) => !existing.has(optionKey(c.color, c.size)));
   const repeated = combos.filter((c) => existing.has(optionKey(c.color, c.size)));
@@ -302,10 +340,35 @@ function Generator({ sizes, colorsListId, existing, onAdd, onUpdate }: Generator
   return (
     <div className="space-y-4 rounded-xl bg-raised p-4">
       <p className="text-sm font-medium">Crea todas las combinaciones de colores × tallas de una vez.</p>
-      <label className="block">
-        <span className="mb-1.5 block text-sm">Colores (separados por coma)</span>
-        <input value={colors} onChange={(e) => setColors(e.target.value)} list={colorsListId} placeholder="Negro, Blanco, Beige" className={cn(inputClass, "bg-ink")} />
-      </label>
+      <div>
+        <span className="mb-1.5 block text-sm">Colores</span>
+        {choices.length ? (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {choices.map((c) => {
+              const known = inCatalog(c);
+              // Un color nuevo todavía no tiene punto (sin hex, el punto es el de los lavados de jean).
+              return (
+                <Chip key={slugify(c)} active={isOn(c)} swatch={known ? (known.hex ?? null) : undefined} onClick={() => toggleColor(c)}>
+                  {c}
+                </Chip>
+              );
+            })}
+          </div>
+        ) : null}
+        <div className="sm:max-w-sm">
+          <Combobox
+            label={choices.length ? "Otro color" : "Color"}
+            placeholder={choices.length ? "Otro color…" : "Busca o escribe un color"}
+            options={colors.filter((o) => !choices.some((c) => slugify(c) === slugify(o.value)))}
+            value={search}
+            onChange={setSearch}
+            onPick={addColor}
+            swatches
+            createLabel={(v) => `Agregar «${v}» (color nuevo)`}
+            className={inkInputClass}
+          />
+        </div>
+      </div>
       <div>
         <span className="mb-1.5 block text-sm">Tallas</span>
         <div className="flex flex-wrap gap-2">
@@ -328,15 +391,15 @@ function Generator({ sizes, colorsListId, existing, onAdd, onUpdate }: Generator
       <div className="grid grid-cols-3 gap-2">
         <label>
           <span className="mb-1.5 block text-sm">Precio S/</span>
-          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className={cn(inputClass, "bg-ink")} />
+          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className={inkInputClass} />
         </label>
         <label>
           <span className="mb-1.5 block text-sm">Antes S/</span>
-          <input value={compareAt} onChange={(e) => setCompareAt(e.target.value)} inputMode="decimal" placeholder="—" className={cn(inputClass, "bg-ink")} />
+          <input value={compareAt} onChange={(e) => setCompareAt(e.target.value)} inputMode="decimal" placeholder="—" className={inkInputClass} />
         </label>
         <label>
           <span className="mb-1.5 block text-sm">Stock c/u</span>
-          <input value={stock} onChange={(e) => setStock(e.target.value)} inputMode="numeric" className={cn(inputClass, "bg-ink")} />
+          <input value={stock} onChange={(e) => setStock(e.target.value)} inputMode="numeric" className={inkInputClass} />
         </label>
       </div>
       {repeated.length ? (
@@ -382,11 +445,11 @@ function BulkPrice({ onApply }: { onApply: (price: string, compareAt: string) =>
       <div className="flex flex-wrap items-end gap-2 border-t border-line p-4">
         <label>
           <span className="mb-1 block text-xs text-muted">Precio S/</span>
-          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className={cn(inputClass, "h-11 w-28")} />
+          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className={cn(fieldClass, "h-11 w-28 bg-raised px-3 text-base pointer-fine:text-sm")} />
         </label>
         <label>
           <span className="mb-1 block text-xs text-muted">Antes S/</span>
-          <input value={compareAt} onChange={(e) => setCompareAt(e.target.value)} inputMode="decimal" placeholder="—" className={cn(inputClass, "h-11 w-28")} />
+          <input value={compareAt} onChange={(e) => setCompareAt(e.target.value)} inputMode="decimal" placeholder="—" className={cn(fieldClass, "h-11 w-28 bg-raised px-3 text-base pointer-fine:text-sm")} />
         </label>
         <button type="button" disabled={!toCents(price)} onClick={() => onApply(price, compareAt)} className={buttonClass("secondary", "sm")}>
           Aplicar a todas

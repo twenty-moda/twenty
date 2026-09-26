@@ -2,8 +2,16 @@ import { ChevronDown } from "lucide-react";
 import { useId, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
-export const inputClass =
-  "h-12 w-full rounded-xl border border-line bg-raised px-4 text-base text-white outline-none transition placeholder:text-subtle focus:border-white aria-invalid:border-danger";
+/**
+ * Borde, texto y foco de un campo, sin medidas ni fondo. `cn` no fusiona clases de Tailwind y en el CSS
+ * `h-12` gana a `h-11`, `w-full` a `w-20` y `bg-raised` a `bg-ink`: para otra medida o fondo se arma desde
+ * aquí, no sumándole clases a `inputClass` (no se aplicarían).
+ */
+export const fieldClass =
+  "rounded-xl border border-line text-white outline-none transition placeholder:text-subtle focus:border-white aria-invalid:border-danger";
+export const inputClass = cn(fieldClass, "h-12 w-full bg-raised px-4 text-base");
+/** 44 px de alto, para filas y tablas del admin. Letra de 16 px en pantallas táctiles: con menos, el iPhone hace zoom al tocar el campo. */
+export const inputCompactClass = cn(fieldClass, "h-11 w-full bg-raised px-3 text-base pointer-fine:text-sm");
 export const selectClass = cn(inputClass, "appearance-none pr-10");
 
 /** <select> nativo (en móvil abre el selector del sistema) con su flecha. */

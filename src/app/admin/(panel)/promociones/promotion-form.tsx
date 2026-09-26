@@ -4,7 +4,7 @@ import { Search } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
 import { FieldError, FormAlert, SubmitButton, Toggle } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
-import { inputClass } from "@/components/ui/form";
+import { fieldClass, inputClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { formatPrice } from "@/lib/money";
 import { matchesAllWords } from "@/lib/slug";
@@ -66,7 +66,7 @@ export function PromotionForm({ id, products, initial }: PromotionFormProps) {
             value={quantity}
             onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ""))}
             aria-label="Cantidad de prendas"
-            className={cn(inputClass, "w-20 bg-ink text-center text-lg")}
+            className={cn(fieldClass, "h-12 w-20 bg-ink px-2 text-center text-lg")}
           />
           prendas por S/
           <input
@@ -75,7 +75,7 @@ export function PromotionForm({ id, products, initial }: PromotionFormProps) {
             value={price}
             onChange={(e) => setPrice(e.target.value)}
             aria-label="Precio del paquete"
-            className={cn(inputClass, "w-28 bg-ink text-center text-lg")}
+            className={cn(fieldClass, "h-12 w-28 bg-ink px-2 text-center text-lg")}
           />
         </div>
         <p className="mt-2 text-sm text-muted">

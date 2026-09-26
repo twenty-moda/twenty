@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useActionState, useState, useTransition } from "react";
 import { FormAlert, SubmitButton } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
-import { inputClass } from "@/components/ui/form";
+import { fieldClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { IMAGE_SPECS, imageWarnings } from "@/lib/image-specs";
 import { readImageSize, resizeForUpload } from "@/lib/resize-image";
@@ -42,9 +42,9 @@ export function TaxonRow({ kind, taxon }: { kind: "category" | "fit"; taxon: Tax
             />
           </label>
         ) : null}
-        <input name="name" defaultValue={taxon.name} aria-label="Nombre" className={cn(inputClass, "h-11 min-w-40 flex-1")} />
+        <input name="name" defaultValue={taxon.name} aria-label="Nombre" className={cn(fieldClass, "h-11 min-w-40 flex-1 bg-raised px-4 text-base")} />
         {kind === "category" ? (
-          <input name="position" type="number" min={0} defaultValue={taxon.position} aria-label="Orden en el menú" title="Orden en el menú" className={cn(inputClass, "h-11 w-20")} />
+          <input name="position" type="number" min={0} defaultValue={taxon.position} aria-label="Orden en el menú" title="Orden en el menú" className={cn(fieldClass, "h-11 w-20 bg-raised px-3 text-base")} />
         ) : null}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="isVisible" defaultChecked={taxon.isVisible} className="size-5 accent-white" /> Visible
@@ -84,7 +84,7 @@ export function NewTaxonForm({ kind }: { kind: "category" | "fit" }) {
   const [state, action] = useActionState(saveTaxonAction.bind(null, kind, null), idle);
   return (
     <form action={action} className="flex flex-wrap items-center gap-3">
-      <input name="name" placeholder={kind === "category" ? "Nueva categoría (ej. Bermudas)" : "Nuevo fit (ej. Wide Leg)"} className={cn(inputClass, "h-11 min-w-48 flex-1")} />
+      <input name="name" placeholder={kind === "category" ? "Nueva categoría (ej. Bermudas)" : "Nuevo fit (ej. Wide Leg)"} className={cn(fieldClass, "h-11 min-w-48 flex-1 bg-raised px-4 text-base")} />
       <input type="hidden" name="isVisible" value="on" />
       <SubmitButton variant="primary" className="h-11">
         Agregar

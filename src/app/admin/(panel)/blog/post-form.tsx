@@ -2,6 +2,7 @@
 
 import { ExternalLink, Trash2 } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
+import { Combobox } from "@/components/admin/combobox";
 import { FieldError, FormAlert, SubmitButton, Toggle } from "@/components/admin/form-controls";
 import { ImageInput } from "@/components/admin/image-input";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
@@ -28,14 +29,33 @@ export type PostFormValues = {
   image: string | null;
 };
 
-function Input({ label, name, state, defaultValue, hint, placeholder, list, type = "text", maxLength }: { label: string; name: string; state: ActionState; defaultValue?: string; hint?: string; placeholder?: string; list?: string; type?: string; maxLength?: number }) {
+function Input({ label, name, state, defaultValue, hint, placeholder, type = "text", maxLength }: { label: string; name: string; state: ActionState; defaultValue?: string; hint?: string; placeholder?: string; type?: string; maxLength?: number }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-medium">{label}</span>
-      <input type={type} name={name} defaultValue={defaultValue} placeholder={placeholder} list={list} maxLength={maxLength} aria-invalid={!!state.fieldErrors?.[name]} className={inputClass} />
+      <input type={type} name={name} defaultValue={defaultValue} placeholder={placeholder} maxLength={maxLength} aria-invalid={!!state.fieldErrors?.[name]} className={inputClass} />
       <FieldError state={state} name={name} />
       {hint ? <span className="mt-1.5 block text-xs text-muted">{hint}</span> : null}
     </label>
+  );
+}
+
+function CategoryInput({ state, defaultValue, categories }: { state: ActionState; defaultValue: string; categories: string[] }) {
+  const [value, setValue] = useState(defaultValue);
+  return (
+    <div>
+      <span className="mb-1.5 block text-sm font-medium">Categoría</span>
+      <Combobox
+        label="Categoría"
+        name="category"
+        options={categories.map((c) => ({ value: c }))}
+        value={value}
+        onChange={setValue}
+        placeholder="Estilo y Tendencias"
+        createLabel={(v) => `Categoría nueva: «${v}»`}
+      />
+      <FieldError state={state} name="category" />
+    </div>
   );
 }
 
@@ -71,12 +91,7 @@ export function PostForm({ post, categories, created }: { post: PostFormValues; 
         <div className="space-y-4 rounded-2xl border border-line bg-surface p-5">
           <Toggle name="isPublished" defaultChecked={post.isPublished} label="Publicado" hint="Apagado = borrador, no se ve en la tienda." />
           <Input label="Fecha" name="publishedAt" type="date" state={state} defaultValue={post.publishedAt} hint="Vacío = hoy. Con fecha futura, se publica ese día." />
-          <Input label="Categoría" name="category" state={state} defaultValue={post.category} list="post-categories" placeholder="Estilo y Tendencias" />
-          <datalist id="post-categories">
-            {categories.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
+          <CategoryInput state={state} defaultValue={post.category} categories={categories} />
           <Input label="Autor" name="author" state={state} defaultValue={post.author || "TWENTY"} />
           <ImageInput name="image" label="Foto principal" current={post.image} spec={IMAGE_SPECS.post} maxSize={1600} aspect="aspect-4/3" />
         </div>

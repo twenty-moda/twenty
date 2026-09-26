@@ -121,7 +121,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
             <Card title="Variantes: color, talla, precio y stock">
               <VariantsEditor
                 productId={product.id}
-                colorNames={options.colors.map((c) => c.name)}
+                colors={options.colors.map((c) => ({ value: c.name, hex: c.hex }))}
                 sizeLabels={options.sizes.map((s) => s.label)}
                 initial={variants.map((v) => ({
                   id: v.id,

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, ImagePlus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ImagePlus, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { useRef, useState, useTransition } from "react";
 import { buttonClass } from "@/components/admin/ui";
@@ -122,19 +122,22 @@ function PhotoGroup({ productId, color, photos, colors, title }: { productId: st
                 </button>
               </div>
               {colors.length ? (
-                <select
-                  aria-label="Color de la foto"
-                  value={p.colorId ?? ""}
-                  onChange={(e) => startTransition(() => setPhotoColorAction(p.id, e.target.value || null))}
-                  className="w-full border-t border-line bg-surface px-1 py-1.5 text-xs"
-                >
-                  <option value="">Sin color</option>
-                  {colors.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative border-t border-line">
+                  <select
+                    aria-label="Color de la foto"
+                    value={p.colorId ?? ""}
+                    onChange={(e) => startTransition(() => setPhotoColorAction(p.id, e.target.value || null))}
+                    className="h-10 w-full appearance-none bg-surface pr-7 pl-2.5 text-xs outline-none focus-visible:bg-raised"
+                  >
+                    <option value="">Sin color</option>
+                    {colors.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-muted" />
+                </div>
               ) : null}
             </li>
           ))}

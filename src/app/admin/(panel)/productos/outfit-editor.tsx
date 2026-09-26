@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { FormAlert } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
-import { inputClass, SelectWrap, selectClass } from "@/components/ui/form";
+import { fieldClass, SelectWrap, selectClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { discountPercent, formatPrice } from "@/lib/money";
 import { MAX_OUTFIT_PIECES, MIN_OUTFIT_PIECES, pieceLabel } from "@/lib/outfits";
@@ -134,7 +134,7 @@ export function OutfitEditor({ productId, candidates, initial }: { productId: st
                       onChange={(e) => update(i, { label: e.target.value })}
                       maxLength={40}
                       placeholder={pieceLabel(null, candidate.categoryName)}
-                      className={cn(inputClass, "h-11")}
+                      className={cn(fieldClass, "h-11 w-full bg-raised px-4 text-base")}
                     />
                   </label>
                   <p className="text-xs sm:pb-3 sm:text-right">
