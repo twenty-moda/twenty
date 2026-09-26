@@ -71,7 +71,9 @@ export function Sheet({ open, onClose, title, side = "right", footer, children, 
         className,
       )}
     >
-      <div className="flex h-full max-h-[inherit] flex-col">
+      {/* h-full solo donde el panel tiene alto fijo (h-dvh). Arriba y abajo en el teléfono el alto sale del
+          contenido, y ahí Safari de iPhone resuelve h-full como 0: el panel se abría sin verse. */}
+      <div className={cn("flex max-h-[inherit] flex-col", side === "left" || side === "right" ? "h-full" : "md:h-full")}>
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-line pl-4 pr-1">
           <h2 id={titleId} className="text-sm font-semibold tracking-widest uppercase">
             {title}
