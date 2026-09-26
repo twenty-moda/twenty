@@ -23,6 +23,9 @@ type HomeHeroProps = {
  * Hero de la portada. En el teléfono la foto ocupa la pantalla y el texto va encima; desde tablet, el texto a la
  * izquierda y la foto a la derecha. Todo sale del banner del admin: la foto (sin texto encima), la etiqueta
  * (`title`), el titular (`seoHeading`, la última palabra en contorno), el texto y el botón.
+ * En la computadora el hero entra completo en la pantalla: la foto no pasa del alto que queda bajo la franja de anuncios
+ * y el menú (5.5rem) y sus márgenes (4rem), así que en una laptop se recorta en lugar de alargar la página; el titular
+ * también se achica con el alto.
  */
 export function HomeHero({ slide, product, combo, hasPromos }: HomeHeroProps) {
   const href = slide.href || "/catalogo";
@@ -44,9 +47,9 @@ export function HomeHero({ slide, product, combo, hasPromos }: HomeHeroProps) {
   return (
     <section
       aria-label={slide.title}
-      className="relative isolate overflow-hidden md:mx-auto md:grid md:max-w-7xl md:grid-cols-2 md:items-end md:gap-10 md:px-6 md:py-10 lg:gap-14 2xl:max-w-[96rem]"
+      className="relative isolate overflow-hidden md:mx-auto md:grid md:max-w-7xl md:grid-cols-2 md:items-end md:gap-10 md:px-6 md:py-10 lg:gap-14 lg:py-8 2xl:max-w-[96rem]"
     >
-      <div className="absolute inset-0 -z-10 bg-raised md:relative md:inset-auto md:z-0 md:order-2 md:aspect-4/5 md:overflow-hidden md:rounded-3xl">
+      <div className="absolute inset-0 -z-10 bg-raised md:relative md:inset-auto md:z-0 md:order-2 md:aspect-4/5 md:overflow-hidden md:rounded-3xl lg:max-h-[max(28rem,100svh_-_9.5rem)] lg:w-full">
         <picture>
           <source media="(min-width: 768px)" srcSet={desktop.srcSet} sizes={desktop.sizes} />
           <img {...img} srcSet={mobileSrcSet} alt={slide.title} className="size-full animate-hero-zoom object-cover object-[50%_20%]" />
@@ -63,7 +66,7 @@ export function HomeHero({ slide, product, combo, hasPromos }: HomeHeroProps) {
           <span aria-hidden className="size-1.5 animate-blink rounded-full bg-white" />
           {slide.title}
         </p>
-        <h1 className="font-display text-[clamp(4rem,23vw,6rem)] leading-[0.84] font-black uppercase md:text-[clamp(5rem,9.5vw,10.5rem)]">
+        <h1 className="font-display text-[clamp(4rem,23vw,6rem)] leading-[0.84] font-black uppercase md:text-[clamp(5rem,9.5vw,10.5rem)] lg:text-[clamp(4.5rem,min(9.5vw,38svh_-_10rem),10.5rem)]">
           {words.map((word, i) => (
             <Fragment key={i}>
               {/* La máscara deja espacio arriba para las tildes (Á, Ñ) del texto en mayúsculas. */}
