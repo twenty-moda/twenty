@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus, Trash2, Wand2 } from "lucide-react";
+import { CheckCircle2, CircleAlert, Minus, Plus, Trash2, Wand2 } from "lucide-react";
 import { useId, useState, useTransition } from "react";
 import { FormAlert } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
@@ -23,6 +23,8 @@ export type EditableVariant = {
 };
 
 type Row = Omit<EditableVariant, "priceCents" | "compareAtPriceCents"> & { key: string; price: string; compareAt: string };
+type Combo = { color: string; size: string };
+type ComboValues = Pick<Row, "price" | "compareAt" | "stock">;
 
 const COMMON_SIZES = ["XS", "S", "M", "L", "XL", "28", "30", "32", "34", "36"];
 const toSoles = (cents: number | null) => (cents ? String(cents / 100) : "");
@@ -32,6 +34,9 @@ const toCents = (value: string) => {
 };
 let seq = 0;
 const newKey = () => `n${++seq}`;
+/** Misma regla que el servidor para saber si dos variantes son la misma combinación. */
+const optionKey = (color: string, size: string) => `${slugify(color)}|${size.toUpperCase()}`;
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 type VariantsEditorProps = { productId: string; initial: EditableVariant[]; colorNames: string[]; sizeLabels: string[] };
 
@@ -44,6 +49,8 @@ export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: V
   const [state, setState] = useState<ActionState>(idle);
   const [pending, startTransition] = useTransition();
   const [generatorOpen, setGeneratorOpen] = useState(initial.length === 0);
+  // Lo que acaba de hacer el generador: se resaltan esas filas y se avisa que falta guardar.
+  const [recent, setRecent] = useState<{ keys: Set<string>; message: string } | null>(null);
 
   const update = (key: string, patch: Partial<Row>) => {
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -76,7 +83,10 @@ export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: V
       }));
       const result = await saveVariantsAction(productId, payload);
       setState(result);
-      if (result.status === "success") setDirty(false);
+      if (result.status === "success") {
+        setDirty(false);
+        setRecent(null);
+      }
     });
 
   const totalStock = rows.reduce((s, r) => s + (r.isActive ? r.stock : 0), 0);
@@ -96,7 +106,14 @@ export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: V
       </datalist>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => setGeneratorOpen((o) => !o)} className={buttonClass("secondary", "sm")}>
+        <button
+          type="button"
+          onClick={() => {
+            setGeneratorOpen((o) => !o);
+            setRecent(null);
+          }}
+          className={buttonClass("secondary", "sm")}
+        >
           <Wand2 className="size-4" aria-hidden /> Generar combinaciones
         </button>
         <button type="button" onClick={addRow} className={buttonClass("secondary", "sm")}>
@@ -111,18 +128,36 @@ export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: V
         <Generator
           sizes={sizesDatalist}
           colorsListId={`${listId}-colors`}
-          onGenerate={(combos) => {
-            setRows((rs) => {
-              const existing = new Set(rs.map((r) => `${slugify(r.color)}|${r.size.toUpperCase()}`));
-              const fresh = combos
-                .filter((c) => !existing.has(`${slugify(c.color)}|${c.size.toUpperCase()}`))
-                .map((c) => ({ key: newKey(), sku: "", isActive: true, ...c }));
-              return [...rs, ...fresh];
-            });
+          existing={new Set(rows.map((r) => optionKey(r.color, r.size)))}
+          onAdd={(combos, values) => {
+            const fresh = combos.map((c) => ({ key: newKey(), sku: "", isActive: true, ...c, ...values }));
+            setRows((rs) => [...rs, ...fresh]);
             setDirty(true);
             setGeneratorOpen(false);
+            setRecent({
+              keys: new Set(fresh.map((r) => r.key)),
+              message: `Agregaste ${plural(fresh.length, "variante", "variantes")} al final de la lista. Toca «Guardar variantes» para que queden.`,
+            });
+          }}
+          onUpdate={(combos, values) => {
+            const targets = new Set(combos.map((c) => optionKey(c.color, c.size)));
+            const keys = new Set(rows.filter((r) => targets.has(optionKey(r.color, r.size))).map((r) => r.key));
+            setRows((rs) => rs.map((r) => (keys.has(r.key) ? { ...r, ...values } : r)));
+            setDirty(true);
+            setGeneratorOpen(false);
+            setRecent({
+              keys,
+              message: `Cambiaste el precio y el stock de ${plural(keys.size, "variante", "variantes")} (resaltadas abajo). Toca «Guardar variantes» para que queden.`,
+            });
           }}
         />
+      ) : null}
+
+      {recent ? (
+        <p role="status" className="flex items-start gap-2 rounded-xl bg-success/15 px-4 py-3 text-sm text-success animate-fade-in">
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />
+          {recent.message}
+        </p>
       ) : null}
 
       {rows.length ? (
@@ -144,6 +179,7 @@ export function VariantsEditor({ productId, initial, colorNames, sizeLabels }: V
                 className={cn(
                   "grid grid-cols-2 gap-2 rounded-xl border border-line p-3 lg:grid-cols-[1.3fr_0.7fr_1fr_0.8fr_0.8fr_1.1fr_auto_auto] lg:items-center lg:border-0 lg:p-1",
                   !r.isActive && "opacity-60",
+                  recent?.keys.has(r.key) && "bg-success/10 ring-1 ring-success/40",
                 )}
               >
                 <Input label="Color" list={`${listId}-colors`} value={r.color} onChange={(v) => update(r.key, { color: v })} className="col-span-2 lg:col-span-1" />
@@ -237,17 +273,31 @@ function Input({
   );
 }
 
-function Generator({ sizes, colorsListId, onGenerate }: { sizes: string[]; colorsListId: string; onGenerate: (rows: Omit<Row, "key" | "sku" | "isActive">[]) => void }) {
+type GeneratorProps = {
+  sizes: string[];
+  colorsListId: string;
+  /** `optionKey` de las variantes que ya están en la lista. */
+  existing: Set<string>;
+  onAdd: (combos: Combo[], values: ComboValues) => void;
+  onUpdate: (combos: Combo[], values: ComboValues) => void;
+};
+
+function Generator({ sizes, colorsListId, existing, onAdd, onUpdate }: GeneratorProps) {
   const [colors, setColors] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [price, setPrice] = useState("");
   const [compareAt, setCompareAt] = useState("");
   const [stock, setStock] = useState("0");
+  // "Negro, negro" es un solo color (igual que en el servidor): queda el primero.
   const colorList = colors
     .split(",")
     .map((c) => c.trim())
-    .filter(Boolean);
-  const count = colorList.length * selected.length;
+    .filter((c, i, all) => c && all.findIndex((o) => slugify(o) === slugify(c)) === i);
+  const combos = colorList.flatMap((color) => [...selected].sort(compareSizes).map((size) => ({ color, size })));
+  const fresh = combos.filter((c) => !existing.has(optionKey(c.color, c.size)));
+  const repeated = combos.filter((c) => existing.has(optionKey(c.color, c.size)));
+  const values = { price, compareAt, stock: Math.max(0, Number(stock) || 0) };
+  const priceOk = !!toCents(price);
 
   return (
     <div className="space-y-4 rounded-xl bg-raised p-4">
@@ -289,22 +339,38 @@ function Generator({ sizes, colorsListId, onGenerate }: { sizes: string[]; color
           <input value={stock} onChange={(e) => setStock(e.target.value)} inputMode="numeric" className={cn(inputClass, "bg-ink")} />
         </label>
       </div>
-      <button
-        type="button"
-        disabled={count === 0 || !toCents(price)}
-        onClick={() =>
-          onGenerate(
-            colorList.flatMap((color) =>
-              [...selected].sort(compareSizes).map((size) => ({ color, size, price, compareAt, stock: Math.max(0, Number(stock) || 0) })),
-            ),
-          )
-        }
-        className={buttonClass("primary", "sm")}
-      >
-        {count ? `Agregar ${count} ${count === 1 ? "variante" : "variantes"}` : "Elige colores y tallas"}
+      {repeated.length ? (
+        <div className="space-y-3 rounded-xl border border-line bg-ink p-3 text-sm">
+          <p className="flex items-start gap-2">
+            <CircleAlert className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+            <span>
+              {repeated.length === 1 ? "Ya está en la lista (no se duplica): " : "Ya están en la lista (no se duplican): "}
+              <strong className="font-semibold">{describeCombos(repeated)}</strong>.
+            </span>
+          </p>
+          <button type="button" disabled={!priceOk} onClick={() => onUpdate(repeated, values)} className={buttonClass("secondary", "sm")}>
+            {repeated.length === 1 ? "Ponerle" : "Ponerles"} este precio y stock
+          </button>
+        </div>
+      ) : null}
+      <button type="button" disabled={fresh.length === 0 || !priceOk} onClick={() => onAdd(fresh, values)} className={buttonClass("primary", "sm")}>
+        {combos.length === 0
+          ? "Elige colores y tallas"
+          : fresh.length
+            ? `Agregar ${plural(fresh.length, "variante", "variantes")}`
+            : "No hay variantes nuevas"}
       </button>
     </div>
   );
+}
+
+const sizeList = new Intl.ListFormat("es", { type: "conjunction" });
+
+/** "Negro S, M y L · Blanco XL" */
+function describeCombos(combos: Combo[]) {
+  const byColor = new Map<string, string[]>();
+  for (const c of combos) byColor.set(c.color, [...(byColor.get(c.color) ?? []), c.size]);
+  return [...byColor].map(([color, sizes]) => `${color} ${sizeList.format(sizes)}`).join(" · ");
 }
 
 function BulkPrice({ onApply }: { onApply: (price: string, compareAt: string) => void }) {
