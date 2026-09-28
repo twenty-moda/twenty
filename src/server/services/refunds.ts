@@ -144,6 +144,9 @@ export async function refundOrder(db: Db, client: CulqiClient | null, input: Ref
       .catch(() => null);
     const outcome = interpretRefundResponse(response);
     if (outcome.kind === "rejected") {
+      // CulqiPanel solo la muestra como "rechazada", sin el motivo: queda aquí (no trae datos personales).
+      const { type, code, decline_code, merchant_message } = response!.body;
+      console.warn(`[culqi] devolución rechazada, pedido #${plan.order.number} (HTTP ${response!.status}):`, JSON.stringify({ type, code, decline_code, merchant_message }));
       await db.delete(refunds).where(eq(refunds.id, plan.refundId));
       return fail(`Culqi no hizo la devolución: ${outcome.message}`);
     }
