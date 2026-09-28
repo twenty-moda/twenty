@@ -76,13 +76,42 @@ export type PayResult =
 
 const PAYABLE: OrderStatus[] = ["pendiente", "por_verificar"];
 
+type AntifraudOrder = Pick<typeof orders.$inferSelect, "customerName" | "phone" | "address" | "agencyName" | "district">;
+
+/**
+ * Datos del comprador para el antifraude de Culqi. Si un campo se sale de su largo, Culqi rechaza el cargo entero
+ * (400 y al cliente "Hubo algunos problemas al intentar validar tu compra"), y el nombre de una agencia de Shalom
+ * u Olva pasa de 100 caracteres. Largos medidos contra la API: nombre y apellido 2–50, dirección 5–100,
+ * ciudad 2–30, celular 5–15 dígitos.
+ */
+export function antifraudDetails(order: AntifraudOrder, deviceId?: string | null) {
+  const [firstName = "", ...rest] = order.customerName.trim().split(/\s+/);
+  const lastName = rest.join(" ") || firstName;
+  const address = order.address ?? (order.agencyName ? `Agencia ${order.agencyName}` : "Recojo en tienda");
+  return {
+    first_name: fit(firstName, 2, 50, "Cliente"),
+    last_name: fit(lastName, 2, 50, "Cliente"),
+    phone_number: order.phone.replace(/\D/g, "").slice(-15),
+    address: fit(address, 5, 100, "Sin dirección"),
+    address_city: fit(order.district ?? "", 2, 30, "Lima"),
+    country_code: "PE",
+    ...(deviceId ? { device_finger_print_id: deviceId } : {}),
+  };
+}
+
+/** Culqi cuenta caracteres (no bytes): lo largo se corta en `max` y lo que no llega a `min` se cambia por `fallback`. */
+function fit(text: string, min: number, max: number, fallback: string): string {
+  const chars = Array.from(text.replace(/\s+/g, " ").trim());
+  if (chars.length < min) return fallback;
+  return chars.slice(0, max).join("").trimEnd();
+}
+
 export async function payOrderWithCulqi(db: Db, client: CulqiClient, input: PayInput): Promise<PayResult> {
   const [order] = await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1);
   if (!order) return { status: "not_payable", message: "No encontramos el pedido." };
   if (PAID_STATUSES.includes(order.status)) return { status: "paid" };
   if (!PAYABLE.includes(order.status)) return { status: "not_payable", message: "Este pedido ya no se puede pagar." };
 
-  const [firstName, ...rest] = order.customerName.split(/\s+/);
   const response = await client.createCharge({
     amount: order.totalCents,
     currency_code: "PEN",
@@ -91,21 +120,17 @@ export async function payOrderWithCulqi(db: Db, client: CulqiClient, input: PayI
     capture: true,
     description: `Pedido #${order.number} TWENTY`,
     metadata: { order_id: order.id, order_number: String(order.number) },
-    antifraud_details: {
-      first_name: firstName,
-      last_name: rest.join(" ") || firstName,
-      phone_number: order.phone,
-      address: order.address ?? order.agencyName ?? "Recojo en tienda",
-      address_city: order.district ?? "Lima",
-      country_code: "PE",
-      ...(input.deviceId ? { device_finger_print_id: input.deviceId } : {}),
-    },
+    antifraud_details: antifraudDetails(order, input.deviceId),
     ...(input.authentication3DS ? { authentication_3DS: input.authentication3DS } : {}),
   });
 
   const outcome = interpretChargeResponse(response);
   if (outcome.kind === "review") return { status: "review" };
-  if (outcome.kind === "declined") return { status: "declined", message: outcome.userMessage };
+  if (outcome.kind === "declined") {
+    // El mensaje para el comercio dice el motivo (fondos, antifraude, un campo inválido) y no trae datos personales.
+    console.warn(`[culqi] cargo rechazado, pedido #${order.number} (HTTP ${response.status}):`, outcome.merchantMessage);
+    return { status: "declined", message: outcome.userMessage };
+  }
   const { change } = await recordCulqiPayment(db, {
     orderId: order.id,
     chargeId: outcome.chargeId,
