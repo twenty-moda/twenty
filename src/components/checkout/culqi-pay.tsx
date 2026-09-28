@@ -11,6 +11,7 @@ type CulqiToken = { id: string; email?: string };
 type CulqiInstance = {
   open(): void;
   close(): void;
+  readonly isOpen: boolean;
   culqi?: () => void;
   token?: CulqiToken | null;
   error?: { user_message?: string } | null;
@@ -39,11 +40,16 @@ type CulqiPayProps = { orderId: string; orderNumber: number; amountCents: number
 export function CulqiPay({ orderId, orderNumber, amountCents, email, publicKey, autoOpen }: CulqiPayProps) {
   const router = useRouter();
   const [ready, setReady] = useState({ checkout: false, tds: false });
-  const [status, setStatus] = useState<"idle" | "processing" | "verifying" | "paid">("idle");
+  const [status, setStatus] = useState<"idle" | "opening" | "processing" | "verifying" | "paid">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const token = useRef<CulqiToken | null>(null);
   const device = useRef<string | null>(null);
   const opened = useRef(false);
+  // Cada `new CulqiCheckout` es otra ventana. Con dos abiertas (dos toques mientras carga, o el toque y la apertura
+  // automática) se pagaba en una y la otra quedaba encima de la página ya pagada: solo una, y se cierra al salir.
+  const checkout = useRef<CulqiInstance | null>(null);
+  const opening = useRef(false);
+  useEffect(() => () => checkout.current?.close(), []);
 
   const charge = async (authentication3DS?: unknown) => {
     if (!token.current) return;
@@ -93,15 +99,19 @@ export function CulqiPay({ orderId, orderNumber, amountCents, email, publicKey, 
   }, []);
 
   const open = async () => {
+    if (opening.current || checkout.current?.isOpen) return;
     setMessage(null);
     const Checkout = window.CulqiCheckout;
     if (!Checkout) {
       setMessage("La pasarela todavía está cargando. Intenta en unos segundos.");
       return;
     }
+    opening.current = true;
+    setStatus("opening");
     if (window.Culqi3DS) {
       window.Culqi3DS.publicKey = publicKey;
-      device.current = await window.Culqi3DS.generateDevice().catch(() => null);
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
+      device.current = await Promise.race([window.Culqi3DS.generateDevice().catch(() => null), timeout]);
     }
     const culqi = new Checkout(publicKey, {
       settings: { title: "TWENTY", currency: "PEN", amount: amountCents },
@@ -129,7 +139,10 @@ export function CulqiPay({ orderId, orderNumber, amountCents, email, publicKey, 
         setMessage(culqi.error.user_message ?? "No se pudo procesar el pago.");
       }
     };
+    checkout.current = culqi;
     culqi.open();
+    opening.current = false;
+    setStatus("idle");
   };
 
   // Al llegar desde el checkout se abre la pasarela sola, una vez.
@@ -144,7 +157,7 @@ export function CulqiPay({ orderId, orderNumber, amountCents, email, publicKey, 
     return <p className="rounded-2xl bg-success/15 p-5 text-center font-semibold text-success">¡Pago recibido! Actualizando tu pedido…</p>;
   }
 
-  const busy = status === "processing" || status === "verifying";
+  const busy = status !== "idle";
   return (
     <section className="rounded-2xl bg-white p-6 text-center text-black">
       <Script src="https://js.culqi.com/checkout-js" strategy="afterInteractive" onReady={() => setReady((r) => ({ ...r, checkout: true }))} />
@@ -158,7 +171,13 @@ export function CulqiPay({ orderId, orderNumber, amountCents, email, publicKey, 
         className="mt-5 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-black text-sm font-bold tracking-wide text-white uppercase disabled:opacity-60"
       >
         {busy ? <Loader2 className="size-5 animate-spin" aria-hidden /> : <CreditCard className="size-5" aria-hidden />}
-        {status === "verifying" ? "Validando con tu banco…" : status === "processing" ? "Procesando pago…" : `Pagar ${formatPrice(amountCents)}`}
+        {status === "verifying"
+          ? "Validando con tu banco…"
+          : status === "processing"
+            ? "Procesando pago…"
+            : status === "opening"
+              ? "Abriendo la pasarela…"
+              : `Pagar ${formatPrice(amountCents)}`}
       </button>
       {message ? (
         <p role="alert" className="mt-3 text-sm font-medium text-danger">
