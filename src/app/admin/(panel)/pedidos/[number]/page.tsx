@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminPage, Badge, Card, formatDateTime, StatusBadge } from "@/components/admin/ui";
+import { AdminPage, Badge, Card, formatDateTime, RefundBadge, StatusBadge } from "@/components/admin/ui";
 import { cn } from "@/lib/cn";
 import { siteUrl, whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
@@ -60,6 +60,7 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
       title={
         <span className="flex flex-wrap items-center gap-3">
           Pedido {orderLabel} <StatusBadge status={order.status} />
+          <RefundBadge refundedCents={refundOptions.refundedCents} totalCents={order.totalCents} />
         </span>
       }
       description={`${formatDateTime(order.createdAt)} · ${formatPrice(order.totalCents)} · ${PAYMENT_METHOD_LABEL[order.paymentMethod]}`}

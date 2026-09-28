@@ -264,3 +264,29 @@ describe("emails de la devolución", () => {
     expect(team?.to).not.toContain(actor.email);
   });
 });
+
+describe("panel: ventas y listas sin lo devuelto", () => {
+  it("resta lo devuelto de las ventas y del total del cliente, y lo muestra en cada pedido", async () => {
+    const { getDashboard, listOrders, listCustomers, getCustomer } = await import("./orders");
+    const { client } = fakeCulqi();
+    const partial = await paidOrder(client);
+    const full = await paidOrder(client);
+    const cancelled = await paidOrder(client);
+    await refundOrder(db, client, { ...base, orderId: partial.orderId, amount: 3000, reason: "cortesia" });
+    await refundOrder(db, client, { ...base, orderId: full.orderId, amount: "all", reason: "cliente" });
+    // Anulado: ya no suma a las ventas, así que su devolución tampoco se resta.
+    await refundOrder(db, client, { ...base, orderId: cancelled.orderId, amount: "all", reason: "cliente" });
+    await changeOrderStatus(db, { orderId: cancelled.orderId, to: "anulado", userId: null });
+
+    const dashboard = await getDashboard(db);
+    expect(dashboard).toMatchObject({ salesTodayCents: 5000, refundedTodayCents: 11000, sales30Cents: 5000, refunded30Cents: 11000, orders30: 2 });
+    const byNumber = Object.fromEntries(dashboard.recent.map((o) => [o.number, o.refundedCents]));
+    expect(byNumber).toEqual({ [partial.number]: 3000, [full.number]: 8000, [cancelled.number]: 8000 });
+
+    const { rows } = await listOrders(db, { status: "pagado" });
+    expect(rows.map((o) => o.refundedCents).sort()).toEqual([3000, 8000]);
+    const [customer] = (await listCustomers(db)).rows;
+    expect(customer.spentCents).toBe(5000);
+    expect((await getCustomer(db, customer.id))?.spentCents).toBe(5000);
+  });
+});

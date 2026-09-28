@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AdminPage, EmptyState, FilterTabs, formatDateTime, Pagination, SearchBox, StatusBadge } from "@/components/admin/ui";
+import { AdminPage, EmptyState, FilterTabs, formatDateTime, Pagination, RefundBadge, SearchBox, StatusBadge } from "@/components/admin/ui";
 import { formatPrice } from "@/lib/money";
 import { formatOrderNumber, ORDER_STATUSES, OPEN_STATUSES, STATUS_INFO, type OrderStatus } from "@/lib/order-status";
 import { getDb } from "@/server/db/client";
@@ -61,7 +61,10 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/ped
                   <Link href={`/admin/pedidos/${o.number}`} className="block rounded-2xl border border-line bg-surface p-4">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono font-semibold">{formatOrderNumber(o.number)}</span>
-                      <StatusBadge status={o.status} />
+                      <span className="flex flex-wrap justify-end gap-1">
+                        <RefundBadge refundedCents={o.refundedCents} totalCents={o.totalCents} />
+                        <StatusBadge status={o.status} />
+                      </span>
                     </div>
                     <p className="mt-2 font-medium">{o.customerName}</p>
                     <div className="mt-1 flex items-center justify-between text-sm text-muted">
@@ -109,7 +112,10 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/ped
                       <td className="px-4 py-3 text-muted">{PAYMENT_LABEL[o.paymentMethod]}</td>
                       <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatPrice(o.totalCents)}</td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={o.status} />
+                        <span className="flex flex-wrap gap-1">
+                          <StatusBadge status={o.status} />
+                          <RefundBadge refundedCents={o.refundedCents} totalCents={o.totalCents} />
+                        </span>
                       </td>
                     </tr>
                   ))}

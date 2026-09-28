@@ -2,6 +2,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { formatPrice } from "@/lib/money";
 import { STATUS_INFO, type OrderStatus } from "@/lib/order-status";
 
 export const buttonClass = (variant: "primary" | "secondary" | "danger" | "ghost" = "secondary", size: "md" | "sm" = "md") =>
@@ -71,6 +72,12 @@ export function Badge({ tone = "neutral", children }: { tone?: keyof typeof TONE
 export function StatusBadge({ status }: { status: OrderStatus }) {
   const info = STATUS_INFO[status];
   return <Badge tone={info.tone}>{info.label}</Badge>;
+}
+
+/** Junto al estado en las listas: "Devuelto" si se devolvió todo, o cuánto si fue una parte. */
+export function RefundBadge({ refundedCents, totalCents }: { refundedCents: number; totalCents: number }) {
+  if (refundedCents <= 0) return null;
+  return <Badge>{refundedCents >= totalCents ? "Devuelto" : `Devuelto ${formatPrice(refundedCents)}`}</Badge>;
 }
 
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {

@@ -2,7 +2,7 @@ import { Mail, MessageCircle, Phone } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminPage, buttonClass, Card, formatDateTime, formatDay, StatusBadge } from "@/components/admin/ui";
+import { AdminPage, buttonClass, Card, formatDateTime, formatDay, RefundBadge, StatusBadge } from "@/components/admin/ui";
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { formatOrderNumber } from "@/lib/order-status";
@@ -46,7 +46,10 @@ export default async function CustomerPage({ params }: PageProps<"/admin/cliente
                     {formatDateTime(o.createdAt)} · {o.units} {o.units === 1 ? "prenda" : "prendas"}
                   </span>
                   <span className="text-sm font-semibold">{formatPrice(o.totalCents)}</span>
-                  <StatusBadge status={o.status} />
+                  <span className="flex flex-col items-end gap-1 sm:flex-row sm:items-center">
+                    <RefundBadge refundedCents={o.refundedCents} totalCents={o.totalCents} />
+                    <StatusBadge status={o.status} />
+                  </span>
                 </Link>
               </li>
             ))}

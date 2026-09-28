@@ -16,6 +16,9 @@ import { getDistrict, listShippingMethods, toShippingInfo } from "./shipping";
  */
 export const ORDERS_ID = sql.raw(`"orders"."id"`);
 
+/** Lo devuelto de cada pedido (las devoluciones pendientes de confirmar cuentan como hechas, igual que en el pedido). */
+const refundedCents = () => sql<number>`(select coalesce(sum(${refunds.amountCents}), 0)::int from ${refunds} where ${refunds.orderId} = ${ORDERS_ID})`;
+
 export type PlaceOrderResult =
   | { ok: true; orderId: string; number: number; totalCents: number; productSlugs: string[]; soldOut: boolean; shippingKind: ShippingKind }
   | { ok: false; code: "unavailable" | "out_of_stock"; variantIds: string[] }
@@ -410,6 +413,7 @@ export async function listOrders(db: Db, filter: OrderListFilter = {}) {
         paymentMethod: orders.paymentMethod,
         createdAt: orders.createdAt,
         units: sql<number>`(select coalesce(sum(${orderItems.quantity}), 0)::int from ${orderItems} where ${orderItems.orderId} = ${ORDERS_ID})`,
+        refundedCents: refundedCents(),
       })
       .from(orders)
       .where(where)
@@ -554,9 +558,14 @@ export async function getDashboard(db: Db, now = new Date()) {
   const last30 = new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000);
   const paid = inArray(orders.status, PAID_STATUSES);
 
+  // Ventas netas: lo pagado menos lo devuelto de esos mismos pedidos (los anulados ya no suman).
   const sales = (since: Date) =>
     db
-      .select({ count: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${orders.totalCents}), 0)::int` })
+      .select({
+        count: sql<number>`count(*)::int`,
+        total: sql<number>`coalesce(sum(${orders.totalCents}), 0)::int`,
+        refunded: sql<number>`coalesce(sum(${refundedCents()}), 0)::int`,
+      })
       .from(orders)
       .where(and(paid, gte(orders.createdAt, since)));
 
@@ -583,8 +592,10 @@ export async function getDashboard(db: Db, now = new Date()) {
 
   return {
     ordersToday: todayAll.count,
-    salesTodayCents: todayPaid.total,
-    sales30Cents: monthPaid.total,
+    salesTodayCents: todayPaid.total - todayPaid.refunded,
+    refundedTodayCents: todayPaid.refunded,
+    sales30Cents: monthPaid.total - monthPaid.refunded,
+    refunded30Cents: monthPaid.refunded,
     orders30: monthPaid.count,
     byStatus,
     open: OPEN_STATUSES.reduce((sum, s) => sum + (byStatus[s] ?? 0), 0),
@@ -613,7 +624,7 @@ export async function listCustomers(db: Db, { q, page = 1 }: { q?: string; page?
         phone: customers.phone,
         createdAt: customers.createdAt,
         orders: sql<number>`count(${orders.id})::int`,
-        spentCents: sql<number>`coalesce(sum(${orders.totalCents}) filter (where ${paidOnly}), 0)::int`,
+        spentCents: sql<number>`coalesce(sum(${orders.totalCents} - ${refundedCents()}) filter (where ${paidOnly}), 0)::int`,
         lastOrderAt: sql<Date | null>`max(${orders.createdAt})`,
       })
       .from(customers)
@@ -634,7 +645,7 @@ export async function getCustomer(db: Db, id: string) {
   const orderList = await listOrders(db, { customerId: id });
   const [stats] = await db
     .select({
-      spentCents: sql<number>`coalesce(sum(${orders.totalCents}), 0)::int`,
+      spentCents: sql<number>`coalesce(sum(${orders.totalCents} - ${refundedCents()}), 0)::int`,
       paidOrders: sql<number>`count(*)::int`,
     })
     .from(orders)

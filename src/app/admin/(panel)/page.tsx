@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowRight, BookOpenText, Inbox } from "lucide-react";
 import Link from "next/link";
-import { AdminPage, Card, EmptyState, formatDateTime, StatusBadge } from "@/components/admin/ui";
+import { AdminPage, Card, EmptyState, formatDateTime, RefundBadge, StatusBadge } from "@/components/admin/ui";
+import { cn } from "@/lib/cn";
 import { formatPrice } from "@/lib/money";
 import { formatOrderNumber, STATUS_INFO, type OrderStatus } from "@/lib/order-status";
 import { getDb } from "@/server/db/client";
@@ -61,8 +62,12 @@ export default async function AdminDashboardPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Pedidos hoy" value={String(data.ordersToday)} />
-        <Stat label="Ventas hoy" value={formatPrice(data.salesTodayCents)} hint="Pedidos pagados" />
-        <Stat label="Ventas 30 días" value={formatPrice(data.sales30Cents)} hint={`${data.orders30} pedidos pagados`} />
+        <Stat label="Ventas hoy" value={formatPrice(data.salesTodayCents)} hint={withRefunds("Pedidos pagados", data.refundedTodayCents)} />
+        <Stat
+          label="Ventas 30 días"
+          value={formatPrice(data.sales30Cents)}
+          hint={withRefunds(`${data.orders30} ${data.orders30 === 1 ? "pedido pagado" : "pedidos pagados"}`, data.refunded30Cents)}
+        />
         <Stat label="Por atender" value={String(data.open)} href="/admin/pedidos?estado=abiertos" highlight={data.open > 0} />
       </div>
 
@@ -85,8 +90,13 @@ export default async function AdminDashboardPage() {
                       <span className="block truncate text-sm">{o.customerName}</span>
                       <span className="block text-xs text-muted">{formatDateTime(o.createdAt)}</span>
                     </span>
-                    <span className="hidden text-sm font-semibold sm:block">{formatPrice(o.totalCents)}</span>
-                    <StatusBadge status={o.status} />
+                    <span className={cn("hidden text-sm font-semibold sm:block", o.refundedCents >= o.totalCents && "text-muted line-through")}>
+                      {formatPrice(o.totalCents)}
+                    </span>
+                    <span className="flex flex-col items-end gap-1 sm:flex-row sm:items-center">
+                      <RefundBadge refundedCents={o.refundedCents} totalCents={o.totalCents} />
+                      <StatusBadge status={o.status} />
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -141,6 +151,11 @@ export default async function AdminDashboardPage() {
       </div>
     </AdminPage>
   );
+}
+
+/** Las ventas ya vienen sin lo devuelto: se dice cuánto fue, para que el número cuadre con los pedidos. */
+function withRefunds(hint: string, refundedCents: number) {
+  return refundedCents > 0 ? `${hint} · menos ${formatPrice(refundedCents)} devueltos` : hint;
 }
 
 function Stat({ label, value, hint, href, highlight }: { label: string; value: string; hint?: string; href?: string; highlight?: boolean }) {
