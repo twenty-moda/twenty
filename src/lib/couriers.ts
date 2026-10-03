@@ -42,8 +42,14 @@ export type CourierTracking = {
 /** Guía del courier que anota el equipo. Shalom: N° de orden y código; Olva: N° de tracking y año de emisión. */
 export type CourierGuide = { number: string; code: string };
 
-/** Texto que queda en el pedido (y que ve el equipo para despachar). */
-export const agencyLabel = (a: Pick<CourierAgency, "name" | "address">) => (a.address && !a.address.startsWith(a.name) ? `${a.name} — ${a.address}` : a.address || a.name);
+/** Largo máximo de la agencia en el pedido y en las direcciones: con la dirección, hay agencias de Shalom de más de 220 letras. */
+export const AGENCY_NAME_MAX = 300;
+
+/** Texto que queda en el pedido (y que ve el equipo para despachar). Se corta en `AGENCY_NAME_MAX`: una agencia de la lista siempre se puede elegir. */
+export function agencyLabel(a: Pick<CourierAgency, "name" | "address">): string {
+  const label = a.address && !a.address.startsWith(a.name) ? `${a.name} — ${a.address}` : a.address || a.name;
+  return label.length > AGENCY_NAME_MAX ? `${label.slice(0, AGENCY_NAME_MAX - 1).trimEnd()}…` : label;
+}
 
 /** Courier de un método de envío por agencia (por su slug o nombre: "shalom", "Envío Olva"). */
 export function methodCourier(method: { kind: string; slug?: string; name: string }): Courier | null {

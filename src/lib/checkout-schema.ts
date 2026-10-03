@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AGENCY_NAME_MAX } from "./couriers";
 import { MAX_OUTFIT_PIECES, MIN_OUTFIT_PIECES } from "./outfits";
 
 /** Celular peruano: 9 dígitos que empiezan con 9 (se aceptan espacios y +51). */
@@ -20,7 +21,7 @@ const optionalText = (max: number) =>
   z
     .string()
     .trim()
-    .max(max)
+    .max(max, `Máximo ${max} caracteres`)
     .optional()
     .transform((v) => v || undefined);
 
@@ -50,7 +51,7 @@ export const checkoutSchema = z
     ubigeo: optionalText(6),
     address: optionalText(200),
     addressReference: optionalText(200),
-    agencyName: optionalText(160),
+    agencyName: optionalText(AGENCY_NAME_MAX),
     /** Agencia de Shalom elegida de la lista (`ter_id`); el servidor toma su nombre y distrito de la lista oficial. */
     agencyId: optionalText(9).pipe(z.string().regex(/^\d+$/, "Elige la agencia de la lista").optional()),
     // "whatsapp" (coordinar el pago) se quitó del checkout; la BD lo conserva por los pedidos anteriores.

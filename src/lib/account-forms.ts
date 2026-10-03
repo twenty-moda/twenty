@@ -1,13 +1,13 @@
 /** Validaciones de la cuenta de cliente (mis datos y direcciones). Las usan el navegador y el servidor. */
 import { z } from "zod";
 import { documentError, normalizePhone } from "./checkout-schema";
-import { COURIERS } from "./couriers";
+import { AGENCY_NAME_MAX, COURIERS } from "./couriers";
 
 const optional = (max: number) =>
   z
     .string()
     .trim()
-    .max(max)
+    .max(max, `Máximo ${max} caracteres`)
     .optional()
     .transform((v) => v || null);
 
@@ -40,7 +40,7 @@ export const addressSchema = z
     ubigeo: z.string().regex(/^\d{6}$/, "Elige el distrito"),
     address: optional(200),
     reference: optional(200),
-    agencyName: optional(160),
+    agencyName: optional(AGENCY_NAME_MAX),
     /** Agencia elegida de la lista de Shalom u Olva (su id en el courier). */
     agencyId: z
       .string()

@@ -6,7 +6,7 @@ import { deleteAddressAction, saveAddressAction, setDefaultAddressAction } from 
 import { ADDRESS_KINDS, addressSummary, type AddressKind } from "@/lib/account-forms";
 import type { ActionState } from "@/lib/action-state";
 import type { SavedAddress } from "@/server/services/accounts";
-import { agencyLabel, COURIER_NAME, COURIERS, type Courier } from "@/lib/couriers";
+import { AGENCY_NAME_MAX, agencyLabel, COURIER_NAME, COURIERS, type Courier } from "@/lib/couriers";
 import { AgencyPicker } from "../checkout/agency-picker";
 import { DistrictSearch, type PickedDistrict } from "../checkout/district-search";
 import { Field, inputClass, Segmented, SelectWrap, selectClass } from "../ui/form";
@@ -223,6 +223,7 @@ function AddressForm({ address, limaDistricts, onSaved }: { address: SavedAddres
                 label={`Agencia ${COURIER_NAME[courier]} donde recoges`}
                 name="agencyName"
                 state={state}
+                maxLength={AGENCY_NAME_MAX}
                 placeholder={`${COURIER_NAME[courier]} Av. Ejército`}
                 hint="La agencia y su sede."
                 required

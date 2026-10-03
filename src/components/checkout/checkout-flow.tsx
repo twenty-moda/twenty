@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNod
 import { placeOrderAction } from "@/app/(store)/checkout/actions";
 import { getCheckoutAccountAction, type CheckoutAccount } from "@/app/(store)/cuenta/actions";
 import { addressSummary } from "@/lib/account-forms";
-import { agencyLabel, COURIER_NAME, methodCourier, type Courier } from "@/lib/couriers";
+import { AGENCY_NAME_MAX, agencyLabel, COURIER_NAME, methodCourier, type Courier } from "@/lib/couriers";
 import { cartTotals, lineItem, type CartLine } from "@/lib/cart";
 import { checkoutSchema, fieldErrors, normalizePhone, type CheckoutFieldErrors, type CheckoutInput } from "@/lib/checkout-schema";
 import { cn } from "@/lib/cn";
@@ -548,6 +548,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                           {...p}
                           value={form.agencyName}
                           onChange={(e) => set("agencyName", e.target.value)}
+                          maxLength={AGENCY_NAME_MAX}
                           placeholder="Ej. Agencia Arequipa Centro"
                           className={inputClass}
                         />

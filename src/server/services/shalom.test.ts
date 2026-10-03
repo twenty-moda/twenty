@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { agencyLabel, orderCourier, parseTrackingInput } from "@/lib/couriers";
+import { addressSchema } from "@/lib/account-forms";
+import { checkoutSchema } from "@/lib/checkout-schema";
+import { AGENCY_NAME_MAX, agencyLabel, orderCourier, parseTrackingInput } from "@/lib/couriers";
 import { resolveAgency, titleCase } from "./couriers";
 import { hoursText, parseTracking, toAgencies } from "./shalom";
 
@@ -92,6 +94,23 @@ describe("textos", () => {
     expect(hoursText("LUNES A SABADO 8AM A 7PM")).toBe("Lunes a sabado 8AM a 7PM");
     expect(agencyLabel({ name: "Av Parra 379", address: "Av. Parra 379 - Arequipa" })).toBe("Av Parra 379 — Av. Parra 379 - Arequipa");
     expect(agencyLabel({ name: "Av. Parra", address: "Av. Parra 379" })).toBe("Av. Parra 379");
+  });
+
+  it("una agencia de la lista siempre se puede elegir, aunque su dirección sea larga", () => {
+    const sunampe = agencyLabel({
+      name: "Sunampe Co",
+      address:
+        "Carr. Panamericana Sur Nro. 198 -b , Sin Barrio Cercado Sunampe, Sunampe - Chincha - Ica, Ref. Antigua Panamericana Sur Frente a la Entrada de Grocio Prado.",
+    });
+    expect(sunampe.length).toBeGreaterThan(160);
+    const checkout = checkoutSchema.safeParse({ agencyName: sunampe, agencyId: "123" });
+    expect(checkout.error?.issues.find((i) => i.path[0] === "agencyName")).toBeUndefined();
+    const saved = addressSchema.safeParse({ kind: "agency", label: "Chincha", ubigeo: "110201", agencyName: sunampe, agencyId: "123", agencyCourier: "shalom" });
+    expect(saved.success).toBe(true);
+
+    const huge = agencyLabel({ name: "Agencia", address: "Av. ".padEnd(400, "x") });
+    expect(huge).toHaveLength(AGENCY_NAME_MAX);
+    expect(huge.endsWith("…")).toBe(true);
   });
 });
 
