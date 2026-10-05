@@ -677,7 +677,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                       onSelect={() => set("paymentMethod", "yape_plin")}
                       icon={<Smartphone className="size-5" aria-hidden />}
                       title={payments.cardEnabled ? "Yape o Plin con QR" : "Yape o Plin"}
-                      subtitle="Al confirmar te mostramos el QR; nos envías la captura por WhatsApp."
+                      subtitle="Al confirmar te mostramos el QR: pagas y adjuntas aquí la captura del pago."
                     />
                   ) : null}
                   {!payments.cardEnabled && !payments.walletEnabled ? (
