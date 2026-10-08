@@ -1,8 +1,9 @@
 /**
- * Shalom y Olva por la API de Mathyu's Solutions (MATHYU_API_URL + MATHYU_API_KEY), que reemplaza a shalom-api.lat y
- * olva-api.lat: lee las webs de Shalom y Olva directamente. Mismos usos: la lista de agencias de destino del
- * checkout y el seguimiento de la guía. Con las dos variables, `courier-api.ts` la usa para los dos couriers; sin
- * ellas, siguen las APIs de terceros (shalom.ts y olva.ts).
+ * Shalom y Olva por la API de Mathyu's Solutions (MATHYU_API_URL + una llave por courier: MATHYU_SHALOM_API_KEY y
+ * MATHYU_OLVA_API_KEY, cada una con su plan), que reemplaza a shalom-api.lat y olva-api.lat: lee las webs de Shalom
+ * y Olva directamente. Mismos usos: la lista de agencias de destino del checkout y el seguimiento de la guía. Con la
+ * URL y la llave de un courier, `courier-api.ts` la usa para ese courier; sin ellas, sigue la API de terceros
+ * (shalom.ts u olva.ts).
  */
 import type { Courier, CourierAgency, CourierTracking, TrackingStep } from "@/lib/couriers";
 import { districtIndex, sortAgencies, titleCase, toCoordinate, type DistrictRow } from "./couriers";
@@ -61,9 +62,9 @@ export function mathyuClient(baseUrl: string, apiKey: string, fetchImpl: typeof 
   };
 }
 
-export function mathyuFromEnv(): MathyuClient | null {
+export function mathyuFromEnv(courier: Courier): MathyuClient | null {
   const url = process.env.MATHYU_API_URL;
-  const key = process.env.MATHYU_API_KEY;
+  const key = courier === "shalom" ? process.env.MATHYU_SHALOM_API_KEY : process.env.MATHYU_OLVA_API_KEY;
   return url && key ? mathyuClient(url, key) : null;
 }
 

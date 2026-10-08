@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { mathyuClient, parseTracking, toAgencies } from "./mathyu-api";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mathyuClient, mathyuFromEnv, parseTracking, toAgencies } from "./mathyu-api";
 
 const districts: [string, string, string, string][] = [
   ["010101", "Chachapoyas", "Chachapoyas", "Amazonas"],
@@ -131,6 +131,25 @@ describe("parseTracking", () => {
 });
 
 describe("cliente", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("cada courier usa su llave (su plan); sin la URL o sin su llave, null", async () => {
+    vi.stubEnv("MATHYU_API_URL", "https://api.example.com/v1");
+    vi.stubEnv("MATHYU_SHALOM_API_KEY", "mk_shalom");
+    vi.stubEnv("MATHYU_OLVA_API_KEY", "");
+    const keys: (string | null)[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) => {
+      keys.push(new Headers(init?.headers).get("x-api-key"));
+      return new Response("[]", { status: 200 });
+    });
+    await mathyuFromEnv("shalom")?.listAgencies("shalom");
+    vi.unstubAllGlobals();
+    expect(keys).toEqual(["mk_shalom"]);
+    expect(mathyuFromEnv("olva")).toBeNull();
+    vi.stubEnv("MATHYU_API_URL", "");
+    expect(mathyuFromEnv("shalom")).toBeNull();
+  });
+
   it("pide /{courier}/track con la llave; 404 = guía no encontrada", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     const fetchImpl = (async (url: string, init?: RequestInit) => {

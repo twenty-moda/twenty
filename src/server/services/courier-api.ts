@@ -11,8 +11,8 @@ export type CourierApi = {
 };
 
 export function courierFromEnv(courier: Courier): CourierApi | null {
-  // La API de Mathyu's Solutions, si está configurada, para los dos couriers; si no, las de terceros.
-  const own = mathyu.mathyuFromEnv();
+  // La API de Mathyu's Solutions, si el courier tiene su llave; si no, la de terceros.
+  const own = mathyu.mathyuFromEnv(courier);
   if (own) return { agencies: async (districts) => mathyu.toAgencies(courier, await own.listAgencies(courier), districts), track: (n, c) => own.track(courier, n, c) };
   if (courier === "shalom") {
     const client = shalom.shalomFromEnv();
