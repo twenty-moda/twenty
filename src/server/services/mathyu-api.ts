@@ -5,7 +5,8 @@
  * URL y la llave de un courier, `courier-api.ts` la usa para ese courier; sin ellas, sigue la API de terceros
  * (shalom.ts u olva.ts).
  */
-import type { Courier, CourierAgency, CourierTracking, TrackingStep } from "@/lib/couriers";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { COURIERS, type Courier, type CourierAgency, type CourierTracking, type TrackingStep } from "@/lib/couriers";
 import { districtIndex, sortAgencies, titleCase, toCoordinate, type DistrictRow } from "./couriers";
 import { agencyName, scheduleText } from "./olva";
 
@@ -32,6 +33,13 @@ export type MathyuClient = {
   listAgencies(courier: Courier): Promise<ApiAgency[]>;
   /** Shalom: N° de orden y código; Olva: N° de tracking y año de emisión (2 dígitos). */
   track(courier: Courier, guideNumber: string, guideCode: string): Promise<CourierTracking | null>;
+  /**
+   * La API vigila la guía y avisa por webhook (/api/webhooks/mathyu) cada vez que cambia, hasta que se entrega.
+   * `false` = el courier no tiene esa guía.
+   */
+  watch(courier: Courier, guideNumber: string, guideCode: string): Promise<boolean>;
+  /** Deja de vigilarla (si no la vigilaba, no pasa nada). */
+  unwatch(courier: Courier, guideNumber: string): Promise<void>;
 };
 
 export class MathyuApiError extends Error {}
@@ -58,6 +66,19 @@ export function mathyuClient(baseUrl: string, apiKey: string, fetchImpl: typeof 
       if (status === 404) return null;
       if (status !== 200) throw new MathyuApiError(`La API respondió ${status} al rastrear la guía de ${courier}`);
       return parseTracking(courier, body);
+    },
+    async watch(courier, guideNumber, guideCode) {
+      const { status, body } = await call(`/${courier}/tracking/subscriptions`, { method: "POST", body: JSON.stringify({ orderNumber: guideNumber, orderCode: guideCode }) });
+      if (status === 404) return false;
+      if (status !== 200) {
+        const message = (body as { message?: unknown } | null)?.message;
+        throw new MathyuApiError(`La API respondió ${status} al vigilar la guía de ${courier}${typeof message === "string" ? `: ${message}` : ""}`);
+      }
+      return true;
+    },
+    async unwatch(courier, guideNumber) {
+      const { status } = await call(`/${courier}/tracking/subscriptions?orderNumber=${encodeURIComponent(guideNumber)}`, { method: "DELETE" });
+      if (status !== 200 && status !== 404) throw new MathyuApiError(`La API respondió ${status} al dejar de vigilar la guía de ${courier}`);
     },
   };
 }
@@ -157,4 +178,32 @@ export function parseTracking(courier: Courier, body: unknown): CourierTracking 
     eta: transitTime && !delivered ? `Tiempo estimado: ${transitTime}` : null,
     steps,
   };
+}
+
+// ─── Webhook ─────────────────────────────────────────────────────────────────
+
+/**
+ * Firma de los avisos (`x-mathyu-signature: t=<unix>,v1=<hex>`): v1 = HMAC-SHA256(MATHYU_WEBHOOK_SECRET, `${t}.${cuerpo}`).
+ * Se rechazan los de más de 5 minutos (un aviso capturado no se puede reenviar después).
+ */
+export function verifyWebhookSignature(rawBody: string, header: string | null, secret: string, now = Date.now()): boolean {
+  const parts = Object.fromEntries((header ?? "").split(",").map((p) => p.split("=", 2)));
+  const t = Number(parts.t);
+  const v1 = String(parts.v1 ?? "");
+  if (!Number.isFinite(t) || !/^[0-9a-f]{64}$/.test(v1) || Math.abs(now / 1000 - t) > 300) return false;
+  const expected = createHmac("sha256", secret).update(`${t}.${rawBody}`).digest();
+  return timingSafeEqual(expected, Buffer.from(v1, "hex"));
+}
+
+export type WebhookEvent = { type: "webhook.test" } | { type: "tracking.updated"; courier: Courier; guideNumber: string; delivered: boolean };
+
+/** Lo que importa de un aviso; `null` = un evento que la tienda no usa. */
+export function parseWebhookEvent(body: unknown): WebhookEvent | null {
+  const event = body as { type?: unknown; data?: { carrier?: unknown; trackingNumber?: unknown; delivered?: unknown } } | null;
+  if (event?.type === "webhook.test") return { type: "webhook.test" };
+  if (event?.type !== "tracking.updated") return null;
+  const courier = COURIERS.find((c) => c === event.data?.carrier);
+  const guideNumber = typeof event.data?.trackingNumber === "string" ? event.data.trackingNumber.trim() : "";
+  if (!courier || !guideNumber) return null;
+  return { type: "tracking.updated", courier, guideNumber, delivered: event.data?.delivered === true };
 }

@@ -8,6 +8,7 @@ import { canTransition, ORDER_STATUSES, STATUS_INFO } from "@/lib/order-status";
 import { parseSoles, REFUND_REASONS } from "@/lib/refunds";
 import { getDb } from "@/server/db/client";
 import { notifyAfterResponse } from "@/server/order-events";
+import { watchGuideAfterResponse } from "@/server/courier-events";
 import { emailConfigured } from "@/server/services/email";
 import { planOrderEmails } from "@/server/services/order-notifications";
 import { parseTrackingInput } from "@/lib/couriers";
@@ -46,7 +47,10 @@ export async function changeStatusAction(orderId: string, _: ActionState, formDa
   if (courier) {
     const tracking = parseTrackingInput(courier, formData.get("trackingNumber"), formData.get("trackingCode"));
     if (!tracking.ok) return failure(tracking.message);
-    if (tracking.tracking) await setOrderTracking(getDb(), orderId, tracking.tracking);
+    if (tracking.tracking) {
+      const previous = await setOrderTracking(getDb(), orderId, tracking.tracking);
+      watchGuideAfterResponse(courier, previous, tracking.tracking);
+    }
   }
 
   // Anular devolviendo el dinero: primero la devolución. Si no se hace, el pedido no se anula.
@@ -149,7 +153,8 @@ export async function saveTrackingAction(orderId: string, _: ActionState, formDa
   if (!courier) return failure("Este pedido no va por Shalom ni por Olva.");
   const tracking = parseTrackingInput(courier, formData.get("trackingNumber"), formData.get("trackingCode"));
   if (!tracking.ok) return failure(tracking.message);
-  await setOrderTracking(getDb(), orderId, tracking.tracking);
+  const previous = await setOrderTracking(getDb(), orderId, tracking.tracking);
+  watchGuideAfterResponse(courier, previous, tracking.tracking);
   refresh();
   return success(tracking.tracking ? "Guía guardada. El cliente ve el seguimiento en la página de su pedido." : "Guía borrada.");
 }

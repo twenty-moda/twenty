@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mathyuClient, mathyuFromEnv, parseTracking, toAgencies } from "./mathyu-api";
+import { createHmac } from "node:crypto";
+import { mathyuClient, mathyuFromEnv, parseTracking, parseWebhookEvent, toAgencies, verifyWebhookSignature } from "./mathyu-api";
 
 const districts: [string, string, string, string][] = [
   ["010101", "Chachapoyas", "Chachapoyas", "Amazonas"],
@@ -169,5 +170,57 @@ describe("cliente", () => {
     const quota = (async () => new Response(JSON.stringify({ statusCode: 429 }), { status: 429 })) as typeof fetch;
     await expect(mathyuClient("https://api.example.com/v1", "mk_test", quota).listAgencies("shalom")).rejects.toThrow("429");
     await expect(mathyuClient("https://api.example.com/v1", "mk_test", quota).track("shalom", "12345678", "3KTH")).rejects.toThrow("429");
+  });
+});
+
+describe("vigilar guías", () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const respond = (status: number, body: unknown = {}) =>
+    (async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify(body), { status });
+    }) as typeof fetch;
+
+  it("suscribe la guía; 404 = el courier no la tiene; un error trae el motivo", async () => {
+    calls.length = 0;
+    expect(await mathyuClient("https://api.example.com/v1", "mk_test", respond(200)).watch("olva", "12345678", "26")).toBe(true);
+    expect(calls[0].url).toBe("https://api.example.com/v1/olva/tracking/subscriptions");
+    expect(calls[0].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ orderNumber: "12345678", orderCode: "26" });
+    expect(await mathyuClient("https://api.example.com/v1", "mk_test", respond(404)).watch("shalom", "66479331", "3KTH")).toBe(false);
+    await expect(
+      mathyuClient("https://api.example.com/v1", "mk_test", respond(409, { message: "Ya vigilas 1000 guías" })).watch("olva", "1", "26"),
+    ).rejects.toThrow("Ya vigilas 1000 guías");
+  });
+
+  it("deja de vigilar con DELETE ?orderNumber=; si no la vigilaba, no es un error", async () => {
+    calls.length = 0;
+    await mathyuClient("https://api.example.com/v1", "mk_test", respond(404)).unwatch("shalom", "66479331");
+    expect(calls[0]).toMatchObject({ url: "https://api.example.com/v1/shalom/tracking/subscriptions?orderNumber=66479331", init: { method: "DELETE" } });
+  });
+});
+
+describe("webhook de la API", () => {
+  const secret = "whsec_test";
+  const body = JSON.stringify({ id: "d1", type: "tracking.updated", data: { carrier: "olva", trackingNumber: "12345678", delivered: true, status: "DELIVERED" } });
+  const sign = (t: number, b = body) => `t=${t},v1=${createHmac("sha256", secret).update(`${t}.${b}`).digest("hex")}`;
+  const now = 1_760_000_000_000;
+
+  it("acepta solo la firma del secreto, del mismo cuerpo y de hace menos de 5 minutos", () => {
+    const t = now / 1000;
+    expect(verifyWebhookSignature(body, sign(t), secret, now)).toBe(true);
+    expect(verifyWebhookSignature(`${body} `, sign(t), secret, now)).toBe(false);
+    expect(verifyWebhookSignature(body, sign(t - 301), secret, now)).toBe(false);
+    expect(verifyWebhookSignature(body, sign(t), "whsec_otro", now)).toBe(false);
+    expect(verifyWebhookSignature(body, null, secret, now)).toBe(false);
+    expect(verifyWebhookSignature(body, "t=1,v1=zz", secret, now)).toBe(false);
+  });
+
+  it("lee el courier, la guía y si se entregó; lo demás se ignora", () => {
+    expect(parseWebhookEvent(JSON.parse(body))).toEqual({ type: "tracking.updated", courier: "olva", guideNumber: "12345678", delivered: true });
+    expect(parseWebhookEvent({ type: "webhook.test" })).toEqual({ type: "webhook.test" });
+    expect(parseWebhookEvent({ type: "tracking.updated", data: { carrier: "dhl", trackingNumber: "1" } })).toBeNull();
+    expect(parseWebhookEvent({ type: "otra.cosa" })).toBeNull();
+    expect(parseWebhookEvent(null)).toBeNull();
   });
 });

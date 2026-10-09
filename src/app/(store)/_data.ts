@@ -138,9 +138,10 @@ export async function getCourierAgencies(courier: Courier): Promise<CourierAgenc
   }
 }
 
-/** Estado de una guía de Shalom u Olva (se consulta como mucho cada 15 minutos por guía). */
+/** Estado de una guía de Shalom u Olva (se consulta como mucho cada 15 minutos por guía; el webhook lo refresca antes). */
 export async function getCourierTracking(courier: Courier, guideNumber: string, guideCode: string): Promise<CourierTracking | null> {
   "use cache";
+  cacheTag(cacheTags.courierGuide(courier, guideNumber));
   const api = courierFromEnv(courier);
   if (!api) {
     cacheLife("hours");

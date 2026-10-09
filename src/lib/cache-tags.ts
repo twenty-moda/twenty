@@ -10,4 +10,6 @@ export const cacheTags = {
   /** Artículos del blog (lista y detalle). */
   blog: "blog",
   shipping: "shipping",
+  /** Seguimiento de una guía de Shalom u Olva: el webhook de la API propia lo refresca cuando cambia. */
+  courierGuide: (courier: string, guideNumber: string) => `guide:${courier}:${guideNumber}`,
 } as const;

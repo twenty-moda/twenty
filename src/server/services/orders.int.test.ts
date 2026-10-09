@@ -8,7 +8,7 @@ import type { Db } from "../db/client";
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
-const { placeOrder, changeOrderStatus, getOrderByNumber, getOrderCourier, getOrderTracking, listOrders, setOrderTracking } = await import("./orders");
+const { placeOrder, changeOrderStatus, getOrderByNumber, getOrderCourier, getOrderTracking, listOrders, markDeliveredByGuide, setOrderTracking } = await import("./orders");
 
 let db: Db;
 const ids = {
@@ -197,6 +197,50 @@ describe("getOrderTracking", () => {
     expect((await getOrderTracking(db, delivery.number))?.courierGuide).toBeNull();
     expect(await getOrderCourier(db, olva.orderId)).toBe("olva");
     expect(await getOrderCourier(db, delivery.orderId)).toBeNull();
+  });
+});
+
+describe("markDeliveredByGuide (webhook de la API propia)", () => {
+  it("pasa a Entregado solo los pedidos Enviado del courier de esa guía, con historial y sin usuario", async () => {
+    await setStock(3);
+    const order = (method: "shalom" | "olva", agencyName: string) =>
+      placeOrder(db, checkout({ shippingMethod: method, ubigeo: "040101", agencyName }, Math.floor(Math.random() * 1e6)));
+    const sent = await order("olva", "Olva Arequipa");
+    const paid = await order("olva", "Olva Arequipa");
+    const shalom = await order("shalom", "Shalom Arequipa");
+    if (!sent.ok || !paid.ok || !shalom.ok) throw new Error("no se creó el pedido");
+    for (const o of [sent, paid, shalom]) {
+      await changeOrderStatus(db, { orderId: o.orderId, to: "pagado", userId: null });
+      await setOrderTracking(db, o.orderId, { number: "77778888", code: "26" });
+    }
+    await changeOrderStatus(db, { orderId: sent.orderId, to: "enviado", userId: null });
+    await changeOrderStatus(db, { orderId: shalom.orderId, to: "enviado", userId: null });
+
+    const changes = await markDeliveredByGuide(db, "olva", "77778888");
+    expect(changes.map((c) => c.orderId)).toEqual([sent.orderId]);
+    expect(changes[0]).toMatchObject({ from: "enviado", to: "entregado", changedBy: null });
+    const status = async (id: string) => (await db.select({ s: schema.orders.status }).from(schema.orders).where(eq(schema.orders.id, id)))[0].s;
+    expect(await status(sent.orderId)).toBe("entregado");
+    expect(await status(paid.orderId)).toBe("pagado"); // no estaba enviado
+    expect(await status(shalom.orderId)).toBe("enviado"); // misma guía, otro courier
+    const [history] = await db
+      .select({ note: schema.orderStatusHistory.note })
+      .from(schema.orderStatusHistory)
+      .where(eq(schema.orderStatusHistory.orderId, sent.orderId))
+      .orderBy(sql`${schema.orderStatusHistory.createdAt} desc`)
+      .limit(1);
+    expect(history.note).toBe("Olva avisó que se entregó.");
+    // Un aviso repetido no cambia nada.
+    expect(await markDeliveredByGuide(db, "olva", "77778888")).toEqual([]);
+  });
+
+  it("setOrderTracking devuelve la guía que tenía", async () => {
+    await setStock(1);
+    const o = await placeOrder(db, checkout({ shippingMethod: "olva", ubigeo: "040101", agencyName: "Olva Arequipa" }, 4242));
+    if (!o.ok) throw new Error("no se creó el pedido");
+    expect(await setOrderTracking(db, o.orderId, { number: "11111111", code: "26" })).toBeNull();
+    expect(await setOrderTracking(db, o.orderId, { number: "22222222", code: "26" })).toEqual({ number: "11111111", code: "26" });
+    expect(await setOrderTracking(db, o.orderId, null)).toEqual({ number: "22222222", code: "26" });
   });
 });
 

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { normalizePhone, type CheckoutInput } from "@/lib/checkout-schema";
-import { orderCourier, type Courier } from "@/lib/couriers";
+import { COURIER_NAME, orderCourier, type Courier, type CourierGuide } from "@/lib/couriers";
 import { canTransition, OPEN_STATUSES, PAID_STATUSES, RESTOCK_STATUSES, type OrderStatus } from "@/lib/order-status";
 import { allocateOutfitPrice, outfitLineKey } from "@/lib/outfits";
 import { priceLines } from "@/lib/pricing";
@@ -533,12 +533,39 @@ export async function getOrderCourier(db: Db, orderId: string): Promise<Courier 
   return row ? orderCourier(row) : null;
 }
 
-/** Guía del courier para el seguimiento (Shalom: N° de orden y código; Olva: N° de tracking y año). `null` la borra. */
-export async function setOrderTracking(db: Db, orderId: string, tracking: { number: string; code: string } | null) {
+/**
+ * Guía del courier para el seguimiento (Shalom: N° de orden y código; Olva: N° de tracking y año). `null` la borra.
+ * Devuelve la que tenía antes (para dejar de vigilarla si cambió).
+ */
+export async function setOrderTracking(db: Db, orderId: string, tracking: CourierGuide | null): Promise<CourierGuide | null> {
+  const [previous] = await db
+    .select({ number: orders.trackingNumber, code: orders.trackingCode })
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
   await db
     .update(orders)
     .set({ trackingNumber: tracking?.number ?? null, trackingCode: tracking?.code ?? null, updatedAt: new Date() })
     .where(eq(orders.id, orderId));
+  return previous?.number ? { number: previous.number, code: previous.code ?? "" } : null;
+}
+
+/**
+ * El courier avisó (webhook de la API propia) que entregó la guía: los pedidos "Enviado" con esa guía pasan a
+ * "Entregado" como si lo marcara el equipo (historial y email al cliente), sin `changedBy`. En otro estado no se tocan.
+ */
+export async function markDeliveredByGuide(db: Db, courier: Courier, guideNumber: string): Promise<StatusChange[]> {
+  const rows = await db
+    .select({ id: orders.id, status: orders.status, shippingKind: orders.shippingKind, shippingMethodName: orders.shippingMethodName })
+    .from(orders)
+    .where(eq(orders.trackingNumber, guideNumber));
+  const changes: StatusChange[] = [];
+  for (const row of rows) {
+    if (row.status !== "enviado" || orderCourier(row) !== courier) continue;
+    const result = await changeOrderStatus(db, { orderId: row.id, to: "entregado", note: `${COURIER_NAME[courier]} avisó que se entregó.`, userId: null });
+    if (result.ok) changes.push(result.change);
+  }
+  return changes;
 }
 
 export async function updateInternalNote(db: Db, orderId: string, note: string | null) {
