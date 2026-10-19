@@ -12,6 +12,9 @@ function createSql() {
     max: Number(process.env.DATABASE_POOL_MAX) || 5,
     // El pooler de Neon/Supabase (PgBouncer en modo transacción) no soporta prepared statements.
     prepare: false,
+    // Sin esto, cada conexión nueva pide la lista de tipos de Postgres (~350 filas) solo para leer arreglos, que no
+    // usamos. En serverless se abren conexiones todo el tiempo y eso se suma a la transferencia de Neon.
+    fetch_types: false,
     idle_timeout: 20,
   });
 }

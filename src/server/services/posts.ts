@@ -1,5 +1,5 @@
 /** Blog: lectura para la tienda y edición desde el admin. */
-import { and, asc, desc, eq, lte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lte, min, ne } from "drizzle-orm";
 import { z } from "zod";
 import { excerpt, readingMinutes } from "@/lib/rich-text";
 import { slugify } from "@/lib/slug";
@@ -19,6 +19,15 @@ export type PostCard = {
 const published = (now: Date) => and(eq(posts.isPublished, true), lte(posts.publishedAt, now));
 
 /** Artículos publicados, del más reciente al más antiguo. */
+/** Próximo post programado (publicado con fecha futura): el blog cacheado se renueva a esa hora. */
+export async function nextScheduledPost(db: Db, now = new Date()): Promise<Date | null> {
+  const [row] = await db
+    .select({ at: min(posts.publishedAt) })
+    .from(posts)
+    .where(and(eq(posts.isPublished, true), gt(posts.publishedAt, now)));
+  return row?.at ?? null;
+}
+
 export async function listPublishedPosts(db: Db, now = new Date()): Promise<PostCard[]> {
   const rows = await db.select().from(posts).where(published(now)).orderBy(desc(posts.publishedAt), asc(posts.title));
   return rows.map((p) => ({

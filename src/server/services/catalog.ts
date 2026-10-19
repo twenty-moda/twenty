@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, lte, ne, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, min, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { pieceLabel } from "@/lib/outfits";
 import { compareSizes } from "@/lib/sizes";
@@ -105,6 +105,20 @@ export type StoreProduct = ProductDetail | OutfitDetail;
 export type CategoryLink = Taxon & { image: string | null; productCount: number };
 
 const sellable = and(eq(products.status, "active"), eq(categories.isVisible, true));
+
+/**
+ * Próxima vez que empieza o termina una promoción activa (null si ninguna tiene fecha por delante). Las páginas
+ * cacheadas se renuevan a esa hora, aunque nadie edite nada en el panel.
+ */
+export async function nextPromotionChange(db: Db, now = new Date()): Promise<Date | null> {
+  const [row] = await db
+    .select({
+      at: min(sql`case when ${gt(promotions.startsAt, now)} then ${promotions.startsAt} else ${promotions.endsAt} end`).mapWith(promotions.endsAt),
+    })
+    .from(promotions)
+    .where(and(eq(promotions.isActive, true), or(gt(promotions.startsAt, now), gt(promotions.endsAt, now))));
+  return row?.at ?? null;
+}
 
 /** Promociones vigentes por producto (la de mayor prioridad gana). */
 export async function activePromotionsByProduct(db: Db, productIds: string[], now: Date) {
@@ -461,9 +475,11 @@ export async function listProductSlugs(db: Db): Promise<string[]> {
   return rows.map((r) => r.slug);
 }
 
-/** Categorías visibles con al menos un producto publicado, en el orden del menú. */
-export async function listCategoryLinks(db: Db): Promise<CategoryLink[]> {
-  const cards = await listProductCards(db);
+/**
+ * Categorías visibles con al menos un producto publicado, en el orden del menú. Cuenta sobre las tarjetas que ya
+ * se leyeron (`listProductCards`), para no leer el catálogo entero otra vez.
+ */
+export async function listCategoryLinks(db: Db, cards: ProductCard[]): Promise<CategoryLink[]> {
   const counts = new Map<string, number>();
   for (const c of cards) counts.set(c.category.slug, (counts.get(c.category.slug) ?? 0) + 1);
   const rows = await db

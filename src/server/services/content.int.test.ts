@@ -11,7 +11,8 @@ const { createComplaint, getComplaintByNumber, listComplaints, respondComplaint,
 const { consumeRateLimit } = await import("./rate-limit");
 const { placeOrder, findOrderIdForTracking } = await import("./orders");
 const { subscribe, listSubscribers, createContactMessage, countNewMessages, setMessageHandled, recordContactReply, listContactMessages } = await import("./messages");
-const { savePost, listPublishedPosts, getPublishedPost } = await import("./posts");
+const { savePost, listPublishedPosts, getPublishedPost, nextScheduledPost } = await import("./posts");
+const { listCategoryLinks, listProductCards, nextPromotionChange } = await import("./catalog");
 
 let db: Db;
 const variantId = randomUUID();
@@ -160,6 +161,9 @@ describe("blog", () => {
     expect(list.map((p) => p.slug)).toEqual(["como-elegir-tu-talla"]);
     expect(list[0].summary).toBe("Texto del artículo con suficiente contenido.");
     expect(await getPublishedPost(db, "programado", now)).toBeNull();
+    // El blog cacheado se renueva cuando sale el programado (y después ya no hay nada por delante).
+    expect(await nextScheduledPost(db, now)).toEqual(new Date("2026-12-01T12:00:00Z"));
+    expect(await nextScheduledPost(db, new Date("2026-12-02T00:00:00Z"))).toBeNull();
   });
 
   it("al cambiar la URL avisa cuál era la anterior", async () => {
@@ -167,5 +171,26 @@ describe("blog", () => {
     if (!created.ok) throw new Error("no se creó");
     const renamed = await savePost(db, created.id, { ...base, title: "Lavado de jeans", slug: "como-lavar-jeans", isPublished: true, publishedAt: new Date("2026-09-01T12:00:00Z") });
     expect(renamed).toMatchObject({ ok: true, slug: "como-lavar-jeans", previousSlug: "lavado-de-jeans" });
+  });
+});
+
+describe("caché de la tienda", () => {
+  it("se renueva cuando empieza o termina una promo activa", async () => {
+    const promo = { type: "bundle_price" as const, quantity: 2, bundlePriceCents: 10000 };
+    await db.insert(schema.promotions).values([
+      { ...promo, name: "Empieza en noviembre", startsAt: new Date("2026-11-01T05:00:00Z") },
+      { ...promo, name: "Vigente hasta el 25", startsAt: new Date("2026-10-01T05:00:00Z"), endsAt: new Date("2026-10-25T05:00:00Z") },
+      { ...promo, name: "Apagada", isActive: false, startsAt: new Date("2026-10-20T05:00:00Z") },
+      { ...promo, name: "Sin fechas" },
+    ]);
+    expect(await nextPromotionChange(db, new Date("2026-10-19T12:00:00Z"))).toEqual(new Date("2026-10-25T05:00:00Z"));
+    expect(await nextPromotionChange(db, new Date("2026-10-26T12:00:00Z"))).toEqual(new Date("2026-11-01T05:00:00Z"));
+    expect(await nextPromotionChange(db, new Date("2026-11-02T12:00:00Z"))).toBeNull();
+  });
+
+  it("el menú cuenta las prendas sobre las tarjetas ya leídas", async () => {
+    const links = await listCategoryLinks(db, await listProductCards(db));
+    expect(links).toEqual([expect.objectContaining({ slug: "polos", name: "Polos", productCount: 1 })]);
+    expect(await listCategoryLinks(db, [])).toEqual([]);
   });
 });

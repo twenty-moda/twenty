@@ -1,6 +1,10 @@
 /**
  * Lecturas cacheadas de la tienda. Solo envuelven servicios con 'use cache' + tags:
  * la navegación se sirve desde el caché/CDN y no llega a la base de datos.
+ *
+ * Duran un día: lo que cambia por el panel (updateTag) o por una venta (revalidateTag) ya se refresca con los tags.
+ * En Vercel 'use cache' vive en la memoria de cada instancia, así que cada página que se regenera vuelve a leer la BD:
+ * con "hours" eran ~80 páginas por hora leyendo el catálogo, y en octubre de 2026 se acabaron los 5 GB de Neon.
  */
 import { cacheLife, cacheTag } from "next/cache";
 import { cacheTags } from "@/lib/cache-tags";
@@ -12,32 +16,43 @@ import type { Courier, CourierAgency, CourierTracking } from "@/lib/couriers";
 import { courierFromEnv } from "@/server/services/courier-api";
 import * as shipping from "@/server/services/shipping";
 
+const DAY = 86_400;
+
+/** Un día, o hasta `next` si llega antes (empieza o termina una promo, sale un post programado). */
+function lifeUntil(next: Date | null) {
+  const seconds = next ? Math.ceil((next.getTime() - Date.now()) / 1000) : DAY;
+  return { stale: 300, revalidate: Math.min(DAY, Math.max(60, seconds)), expire: 7 * DAY };
+}
+
 export async function getProductCards() {
   "use cache";
-  cacheLife("hours");
   cacheTag(cacheTags.catalog);
-  return catalog.listProductCards(getDb());
+  const db = getDb();
+  const [cards, next] = await Promise.all([catalog.listProductCards(db), catalog.nextPromotionChange(db)]);
+  cacheLife(lifeUntil(next));
+  return cards;
 }
 
 export async function getCategoryLinks() {
   "use cache";
-  cacheLife("hours");
+  cacheLife("days");
   cacheTag(cacheTags.catalog);
-  return catalog.listCategoryLinks(getDb());
+  return catalog.listCategoryLinks(getDb(), await getProductCards());
 }
 
 export async function getProductSlugs() {
   "use cache";
-  cacheLife("hours");
+  cacheLife("days");
   cacheTag(cacheTags.catalog);
   return catalog.listProductSlugs(getDb());
 }
 
 export async function getProduct(slug: string) {
   "use cache";
-  cacheLife("hours");
   cacheTag(cacheTags.catalog, cacheTags.product(slug));
-  const product = await catalog.getProductDetail(getDb(), slug);
+  const db = getDb();
+  const [product, next] = await Promise.all([catalog.getProductDetail(db, slug), catalog.nextPromotionChange(db)]);
+  cacheLife(lifeUntil(next));
   // Un conjunto muestra el stock y los precios de sus prendas: se refresca también cuando cambia alguna.
   if (product?.kind === "outfit") cacheTag(...product.pieces.map((piece) => cacheTags.product(piece.slug)));
   return product;
@@ -52,7 +67,7 @@ export async function getLegacyProductUrl(slug: string) {
 
 export async function getSiteSettings() {
   "use cache";
-  cacheLife("hours");
+  cacheLife("days");
   cacheTag(cacheTags.content);
   return content.getSiteSettings(getDb());
 }
@@ -60,7 +75,7 @@ export async function getSiteSettings() {
 /** Formas de entrega y distritos con delivery Lima (con su precio). */
 export async function getCheckoutShipping() {
   "use cache";
-  cacheLife("hours");
+  cacheLife("days");
   cacheTag(cacheTags.shipping);
   const db = getDb();
   const [methods, limaDistricts] = await Promise.all([shipping.listShippingMethods(db), shipping.listDeliveryDistricts(db)]);
@@ -87,28 +102,32 @@ export async function getCurrentYear() {
 
 export async function getSlides() {
   "use cache";
-  cacheLife("hours");
+  cacheLife("days");
   cacheTag(cacheTags.content);
   return content.listVisibleSlides(getDb());
 }
 
 export async function getPosts() {
   "use cache";
-  cacheLife("hours");
   cacheTag(cacheTags.blog);
-  return blog.listPublishedPosts(getDb());
+  const db = getDb();
+  const [posts, next] = await Promise.all([blog.listPublishedPosts(db), blog.nextScheduledPost(db)]);
+  cacheLife(lifeUntil(next));
+  return posts;
 }
 
 export async function getPost(slug: string) {
   "use cache";
-  cacheLife("hours");
   cacheTag(cacheTags.blog);
-  return blog.getPublishedPost(getDb(), slug);
+  const db = getDb();
+  const [post, next] = await Promise.all([blog.getPublishedPost(db, slug), blog.nextScheduledPost(db)]);
+  cacheLife(lifeUntil(next));
+  return post;
 }
 
 export async function getFeedVariants() {
   "use cache";
-  cacheLife("hours");
+  cacheLife("days");
   cacheTag(cacheTags.catalog);
   return { variants: await catalog.listFeedVariants(getDb()), generatedAt: new Date().toISOString() };
 }
