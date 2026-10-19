@@ -1,15 +1,14 @@
 /**
- * Sube a Vercel Blob las imágenes que usa la BD (fotos de productos, categorías, banners, blog, "Nosotros"),
+ * Sube a R2 las imágenes que usa la BD (fotos de productos, categorías, banners, blog, "Nosotros"),
  * desde assets/images y con el mismo nombre ("item/TMW-0001.webp"). Salta las que ya están: se puede repetir.
- * Solo las usadas, no las 1.023 del kit: el plan Hobby incluye pocas operaciones de escritura al mes.
+ * Solo las usadas, no las 1.023 del kit.
  *
- * Uso: DATABASE_URL=<BD> BLOB_READ_WRITE_TOKEN=<token> pnpm media:upload
- *      (o BLOB_STORE_ID + VERCEL_OIDC_TOKEN en lugar del token)
+ * Uso: DATABASE_URL=<BD> R2_ACCOUNT_ID=… R2_ACCESS_KEY_ID=… R2_SECRET_ACCESS_KEY=… R2_BUCKET=… pnpm media:upload
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { list, put } from "@vercel/blob";
 import { sql } from "drizzle-orm";
+import { listMediaKeys, putMedia } from "../../storage";
 import { closeDb, getDb } from "../client";
 
 const ROOT = path.join(process.cwd(), "assets/images");
@@ -30,44 +29,23 @@ async function usedPaths(): Promise<string[]> {
   return rows.map((r) => r.path).filter((p) => p && !p.startsWith("/")).sort();
 }
 
-async function existingPaths(): Promise<Set<string>> {
-  const found = new Set<string>();
-  let cursor: string | undefined;
-  do {
-    const page = await list({ cursor, limit: 1000 });
-    for (const blob of page.blobs) found.add(blob.pathname);
-    cursor = page.hasMore ? page.cursor : undefined;
-  } while (cursor);
-  return found;
-}
-
 async function main() {
   const wanted = await usedPaths();
   const missingLocal = wanted.filter((p) => !existsSync(path.join(ROOT, p)));
-  const existing = await existingPaths();
+  const existing = await listMediaKeys();
   const pending = wanted.filter((p) => !existing.has(p) && !missingLocal.includes(p));
-  console.log(`${wanted.length} imágenes usadas · ${existing.size} ya en Blob · ${pending.length} por subir · ${missingLocal.length} sin archivo local`);
+  console.log(`${wanted.length} imágenes usadas · ${existing.size} ya en R2 · ${pending.length} por subir · ${missingLocal.length} sin archivo local`);
   for (const p of missingLocal) console.warn(`  ⚠️  falta assets/images/${p}`);
 
   let done = 0;
-  let baseUrl = "";
   const queue = [...pending];
   const worker = async () => {
     for (let p = queue.shift(); p; p = queue.shift()) {
-      const result = await put(p, readFileSync(path.join(ROOT, p)), {
-        access: "public",
-        contentType: CONTENT_TYPES[path.extname(p).toLowerCase()] ?? "application/octet-stream",
-        cacheControlMaxAge: 31_536_000,
-        addRandomSuffix: false,
-        multipart: false,
-      });
-      baseUrl ||= result.url.slice(0, result.url.length - p.length - 1);
+      await putMedia(p, readFileSync(path.join(ROOT, p)), CONTENT_TYPES[path.extname(p).toLowerCase()] ?? "application/octet-stream");
       if (++done % 25 === 0 || done === pending.length) console.log(`  ${done}/${pending.length}`);
     }
   };
-  // Pocas en paralelo: el plan Hobby permite ~15 escrituras por segundo.
-  await Promise.all(Array.from({ length: 4 }, worker));
-  if (baseUrl) console.log(`\nNEXT_PUBLIC_MEDIA_URL=${baseUrl}`);
+  await Promise.all(Array.from({ length: 8 }, worker));
 }
 
 main()

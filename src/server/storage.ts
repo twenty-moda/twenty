@@ -1,22 +1,19 @@
 /**
  * Guardado de imágenes. Según las variables de entorno:
- * - Vercel Blob (`BLOB_READ_WRITE_TOKEN`, o `BLOB_STORE_ID` con el token OIDC de Vercel): el de producción.
- * - Cloudflare R2 (`R2_*`, API compatible con S3): alternativa si algún día conviene cambiar.
- * - Sin ninguno, en desarrollo: la carpeta local assets/images (se sirve en /media por el symlink de public/media).
- * Toda imagen se convierte a WebP de máximo 1600 px con sharp. La ruta guardada en la BD es la misma en los tres
+ * - Cloudflare R2 (`R2_*`, API compatible con S3): el de producción. La descarga desde R2 no se cobra.
+ * - Sin R2, en desarrollo: la carpeta local assets/images (se sirve en /media por el symlink de public/media).
+ * Toda imagen se convierte a WebP de máximo 1600 px con sharp. La ruta guardada en la BD es la misma en los dos
  * ("item/TMW-0001.webp"), así que cambiar de proveedor es copiar los archivos y cambiar NEXT_PUBLIC_MEDIA_URL.
+ * (Hasta octubre de 2026 fue Vercel Blob: en el plan Hobby se pasó de los 10 GB de transferencia y Vercel lo bloqueó.)
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { put as blobPut } from "@vercel/blob";
 import { AwsClient } from "aws4fetch";
 import sharp from "sharp";
 
 const MAX_SIZE = 1600;
 /** Cada archivo tiene un nombre único (nunca se sobrescribe), así que puede quedar en caché un año. */
 const CACHE_SECONDS = 31_536_000;
-
-const blobConfigured = () => !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 
 function r2() {
   const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET } = process.env;
@@ -27,12 +24,8 @@ function r2() {
   };
 }
 
-async function put(key: string, body: Buffer, contentType: string) {
-  if (blobConfigured()) {
-    // Una sola operación (sin multipart): el plan Hobby incluye pocas operaciones de escritura al mes.
-    await blobPut(key, body, { access: "public", contentType, cacheControlMaxAge: CACHE_SECONDS, addRandomSuffix: false, multipart: false });
-    return;
-  }
+/** Sube un archivo con esa ruta. Fuera de Vercel y sin R2, lo deja en la carpeta local. */
+export async function putMedia(key: string, body: Buffer, contentType: string) {
   const remote = r2();
   if (remote) {
     const res = await remote.client.fetch(`${remote.endpoint}/${key}`, {
@@ -43,12 +36,32 @@ async function put(key: string, body: Buffer, contentType: string) {
     if (!res.ok) throw new Error(`No se pudo subir ${key} a R2 (${res.status})`);
     return;
   }
-  if (process.env.VERCEL) throw new Error("Falta configurar dónde guardar las imágenes: conecta un Blob store (BLOB_READ_WRITE_TOKEN) o R2.");
+  if (process.env.VERCEL) throw new Error("Falta configurar dónde guardar las imágenes: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET.");
   // Solo desarrollo: carpeta local. El comentario evita que el bundler incluya todo el proyecto en la función.
   const file = path.join(/*turbopackIgnore: true*/ process.cwd(), process.env.MEDIA_LOCAL_DIR ?? "assets/images", key);
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, body);
 }
+
+/** Rutas que ya están en R2 (para los scripts que suben en lote y saltan las que ya existen). */
+export async function listMediaKeys(): Promise<Set<string>> {
+  const remote = r2();
+  if (!remote) throw new Error("Faltan las variables R2_*.");
+  const keys = new Set<string>();
+  let token: string | undefined;
+  do {
+    const query = new URLSearchParams({ "list-type": "2", "max-keys": "1000", ...(token ? { "continuation-token": token } : {}) });
+    const res = await remote.client.fetch(`${remote.endpoint}?${query}`);
+    if (!res.ok) throw new Error(`No se pudo listar R2 (${res.status})`);
+    const xml = await res.text();
+    for (const [, key] of xml.matchAll(/<Key>([^<]*)<\/Key>/g)) keys.add(decodeXml(key));
+    token = /<IsTruncated>true<\/IsTruncated>/.test(xml) ? decodeXml(/<NextContinuationToken>([^<]*)</.exec(xml)?.[1] ?? "") : undefined;
+  } while (token);
+  return keys;
+}
+
+const decodeXml = (text: string) =>
+  text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
 
 export class InvalidImageError extends Error {}
 
@@ -74,6 +87,6 @@ export async function saveImage(input: ArrayBuffer | Buffer, folder: string, bas
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
   const key = `${folder}/${safeName || "imagen"}.webp`;
-  await put(key, webp, "image/webp");
+  await putMedia(key, webp, "image/webp");
   return key;
 }
