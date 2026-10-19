@@ -1,16 +1,23 @@
 import { randomUUID } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "../db/client";
 import type { CulqiClient, CulqiResponse } from "./payments";
 
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+// Las capturas no van al R2 de verdad (.env.local lo tiene) sino a una carpeta temporal, sin ensuciar assets/images.
+for (const key of ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"]) delete process.env[key];
+process.env.MEDIA_LOCAL_DIR = mkdtempSync(path.join(tmpdir(), "twenty-media-"));
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
 const { placeOrder, getOrderByNumber } = await import("./orders");
 const { payOrderWithCulqi, handleCulqiEvent, interpretChargeResponse } = await import("./payments");
 const { planOrderEmails, notifyOrderEvent } = await import("./order-notifications");
-const { processProofImage, submitPaymentProof, listPaymentProofs, getPaymentProofImage, MAX_PROOFS_PER_ORDER } = await import("./payment-proofs");
+const { processProofImage, submitPaymentProof, listPaymentProofs, MAX_PROOFS_PER_ORDER } = await import("./payment-proofs");
+const { getMedia } = await import("../storage");
 const sharp = (await import("sharp")).default;
 
 let db: Db;
@@ -186,7 +193,7 @@ describe("handleCulqiEvent (webhook)", () => {
 describe("captura del pago con Yape/Plin", () => {
   const screenshot = () => sharp({ create: { width: 1170, height: 2532, channels: 3, background: "#7b2cbf" } }).png().toBuffer();
 
-  it("la guarda achicada en WebP, pasa el pedido a por verificar y avisa al equipo", async () => {
+  it("la guarda achicada en WebP en el bucket, pasa el pedido a por verificar y avisa al equipo", async () => {
     const order = await newOrder();
     const proof = await processProofImage(await screenshot());
     expect(proof.height).toBe(1400);
@@ -200,11 +207,9 @@ describe("captura del pago con Yape/Plin", () => {
     expect(again).toMatchObject({ ok: true, change: null });
     const proofs = await listPaymentProofs(db, order.orderId);
     expect(proofs).toHaveLength(2);
-    const image = await getPaymentProofImage(db, proofs[0].id, order.orderId);
-    expect(image?.contentType).toBe("image/webp");
-    expect((await sharp(image!.image).metadata()).format).toBe("webp");
-    // Con el id de otro pedido no se ve.
-    expect(await getPaymentProofImage(db, proofs[0].id, randomUUID())).toBeNull();
+    // La imagen va al bucket con el id de la captura (no se adivina), no a la BD.
+    expect(proofs[0].path).toBe(`comprobantes/${proofs[0].id}.webp`);
+    expect((await sharp((await getMedia(proofs[0].path))!).metadata()).format).toBe("webp");
   });
 
   it("el email al equipo lleva la captura en JPEG, dentro del email y adjunta", async () => {

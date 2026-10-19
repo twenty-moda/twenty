@@ -10,7 +10,7 @@ import { OrderProgress } from "@/components/store/order-progress";
 import { CourierTrackingCard } from "@/components/store/courier-tracking";
 import { orderCourier, type Courier } from "@/lib/couriers";
 import { culqiConfig } from "@/lib/culqi-config";
-import { whatsappUrl } from "@/lib/links";
+import { absoluteMediaUrl, whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { formatOrderNumber, STATUS_INFO } from "@/lib/order-status";
 import { groupOrderItems } from "@/lib/outfits";
@@ -137,14 +137,12 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
             <ul className="mt-5 flex flex-wrap justify-center gap-3">
               {proofs.map((p) => (
                 <li key={p.id}>
-                  <a href={`/pedido/${order.id}/captura/${p.id}`} target="_blank" rel="noopener noreferrer" className="block">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- imagen privada del pedido, no pasa por el bucket */}
-                    <img
-                      src={`/pedido/${order.id}/captura/${p.id}`}
+                  <a href={absoluteMediaUrl(p.path)} target="_blank" rel="noopener noreferrer" className="block">
+                    <Image
+                      src={p.path}
                       alt={`Captura enviada el ${messageDate.format(p.createdAt)}`}
                       width={p.width}
                       height={p.height}
-                      loading="lazy"
                       className="h-32 w-auto rounded-lg border border-line object-contain"
                     />
                     <span className="mt-1 block text-xs text-subtle">{messageDate.format(p.createdAt)}</span>

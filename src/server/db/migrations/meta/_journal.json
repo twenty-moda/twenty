@@ -99,6 +99,20 @@
       "when": 1790377537685,
       "tag": "0013_address-agency-courier",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792427840468,
+      "tag": "0014_proofs-path",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792427849604,
+      "tag": "0015_proofs-drop-image",
+      "breakpoints": true
     }
   ]
 }

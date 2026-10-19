@@ -6,7 +6,7 @@
  * ("item/TMW-0001.webp"), así que cambiar de proveedor es copiar los archivos y cambiar NEXT_PUBLIC_MEDIA_URL.
  * (Hasta octubre de 2026 fue Vercel Blob: en el plan Hobby se pasó de los 10 GB de transferencia y Vercel lo bloqueó.)
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AwsClient } from "aws4fetch";
 import sharp from "sharp";
@@ -24,6 +24,12 @@ function r2() {
   };
 }
 
+/**
+ * Solo desarrollo y tests: carpeta local (`MEDIA_LOCAL_DIR` puede ser absoluta). El comentario evita que el bundler
+ * incluya todo el proyecto en la función.
+ */
+const localFile = (key: string) => path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.MEDIA_LOCAL_DIR ?? "assets/images", key);
+
 /** Sube un archivo con esa ruta. Fuera de Vercel y sin R2, lo deja en la carpeta local. */
 export async function putMedia(key: string, body: Buffer, contentType: string) {
   const remote = r2();
@@ -37,10 +43,21 @@ export async function putMedia(key: string, body: Buffer, contentType: string) {
     return;
   }
   if (process.env.VERCEL) throw new Error("Falta configurar dónde guardar las imágenes: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET.");
-  // Solo desarrollo: carpeta local. El comentario evita que el bundler incluya todo el proyecto en la función.
-  const file = path.join(/*turbopackIgnore: true*/ process.cwd(), process.env.MEDIA_LOCAL_DIR ?? "assets/images", key);
+  const file = localFile(key);
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, body);
+}
+
+/** Lee un archivo guardado (p. ej. la captura de un pago, para adjuntarla al email). `null` si no existe. */
+export async function getMedia(key: string): Promise<Buffer | null> {
+  const remote = r2();
+  if (remote) {
+    const res = await remote.client.fetch(`${remote.endpoint}/${key}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`No se pudo leer ${key} de R2 (${res.status})`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  return readFile(localFile(key)).catch(() => null);
 }
 
 /** Rutas que ya están en R2 (para los scripts que suben en lote y saltan las que ya existen). */

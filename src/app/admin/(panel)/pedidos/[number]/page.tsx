@@ -5,7 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminPage, Badge, Card, formatDateTime, RefundBadge, StatusBadge } from "@/components/admin/ui";
 import { cn } from "@/lib/cn";
-import { siteUrl, whatsappUrl } from "@/lib/links";
+import { absoluteMediaUrl, siteUrl, whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL, formatOrderNumber, PAYMENT_METHOD_LABEL, STATUS_INFO } from "@/lib/order-status";
 import { groupOrderItems } from "@/lib/outfits";
@@ -74,10 +74,9 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
                   <ul className="flex flex-wrap gap-3">
                     {proofs.map((p) => (
                       <li key={p.id}>
-                        <a href={`/admin/comprobantes/${p.id}`} target="_blank" rel="noopener noreferrer" className="block" title="Ver en grande">
-                          {/* eslint-disable-next-line @next/next/no-img-element -- imagen privada, se sirve solo al equipo */}
-                          <img
-                            src={`/admin/comprobantes/${p.id}`}
+                        <a href={absoluteMediaUrl(p.path)} target="_blank" rel="noopener noreferrer" className="block" title="Ver en grande">
+                          <Image
+                            src={p.path}
                             alt={`Captura subida el ${formatDateTime(p.createdAt)}`}
                             width={p.width}
                             height={p.height}
