@@ -18,9 +18,18 @@ const CACHE_SECONDS = 31_536_000;
 function r2() {
   const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET } = process.env;
   if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET) return null;
+  const client = new AwsClient({ accessKeyId: R2_ACCESS_KEY_ID, secretAccessKey: R2_SECRET_ACCESS_KEY, service: "s3", region: "auto" });
   return {
-    client: new AwsClient({ accessKeyId: R2_ACCESS_KEY_ID, secretAccessKey: R2_SECRET_ACCESS_KEY, service: "s3", region: "auto" }),
     endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET}`,
+    /**
+     * Firma con aws4fetch pero no le pasa su `Request` a fetch: dentro de Next, fetch vuelve a armar ese Request con el
+     * cuerpo como stream, sin Content-Length, y R2 responde 411 a toda subida (pasó el 20/10/2026 con las fotos del
+     * panel; el script de carga sí funcionaba porque corre fuera de Next). Se manda la URL con el cuerpo tal cual.
+     */
+    async fetch(url: string, init: { method?: string; headers?: Record<string, string>; body?: Uint8Array<ArrayBuffer> } = {}) {
+      const signed = await client.sign(url, init);
+      return fetch(signed.url, { method: signed.method, headers: signed.headers, body: init.body });
+    },
   };
 }
 
@@ -34,7 +43,7 @@ const localFile = (key: string) => path.resolve(/*turbopackIgnore: true*/ proces
 export async function putMedia(key: string, body: Buffer, contentType: string) {
   const remote = r2();
   if (remote) {
-    const res = await remote.client.fetch(`${remote.endpoint}/${key}`, {
+    const res = await remote.fetch(`${remote.endpoint}/${key}`, {
       method: "PUT",
       body: new Uint8Array(body),
       headers: { "Content-Type": contentType, "Cache-Control": `public, max-age=${CACHE_SECONDS}, immutable` },
@@ -52,7 +61,7 @@ export async function putMedia(key: string, body: Buffer, contentType: string) {
 export async function getMedia(key: string): Promise<Buffer | null> {
   const remote = r2();
   if (remote) {
-    const res = await remote.client.fetch(`${remote.endpoint}/${key}`);
+    const res = await remote.fetch(`${remote.endpoint}/${key}`);
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`No se pudo leer ${key} de R2 (${res.status})`);
     return Buffer.from(await res.arrayBuffer());
@@ -68,7 +77,7 @@ export async function listMediaKeys(): Promise<Set<string>> {
   let token: string | undefined;
   do {
     const query = new URLSearchParams({ "list-type": "2", "max-keys": "1000", ...(token ? { "continuation-token": token } : {}) });
-    const res = await remote.client.fetch(`${remote.endpoint}?${query}`);
+    const res = await remote.fetch(`${remote.endpoint}?${query}`);
     if (!res.ok) throw new Error(`No se pudo listar R2 (${res.status})`);
     const xml = await res.text();
     for (const [, key] of xml.matchAll(/<Key>([^<]*)<\/Key>/g)) keys.add(decodeXml(key));

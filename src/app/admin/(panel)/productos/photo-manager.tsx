@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, ChevronDown, ImagePlus, Trash2 } from "lucide-re
 import Image from "next/image";
 import { useRef, useState, useTransition } from "react";
 import { buttonClass } from "@/components/admin/ui";
+import { failure } from "@/lib/action-state";
 import { cn } from "@/lib/cn";
 import { FORMAT_HINT, IMAGE_SPECS, imageWarnings, specLabel } from "@/lib/image-specs";
 import { readImageSize, resizeForUpload } from "@/lib/resize-image";
@@ -65,7 +66,8 @@ function PhotoGroup({ productId, color, photos, colors, title }: { productId: st
       const fileWarnings = size ? imageWarnings(size, IMAGE_SPECS.product) : [];
       if (fileWarnings.length) setWarnings((ws) => [...ws, `${file.name}: ${fileWarnings.join(" ")}`]);
       fd.set("file", resized);
-      const result = await uploadProductPhotoAction(productId, color?.id ?? null, fd);
+      // Si la acción falla en el servidor, sin este catch el botón se quedaba en "Subiendo 1 de 2…" sin decir nada.
+      const result = await uploadProductPhotoAction(productId, color?.id ?? null, fd).catch(() => failure("No se pudo subir. Vuelve a intentarlo."));
       if (result.status === "error") setError(`${file.name}: ${result.message}`);
     }
     setProgress(null);
