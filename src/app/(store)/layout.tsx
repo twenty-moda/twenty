@@ -3,6 +3,7 @@ import { AnnouncementBar } from "@/components/store/announcement-bar";
 import { SiteFooter } from "@/components/store/site-footer";
 import { SiteHeader } from "@/components/store/site-header";
 import { SplashScreen } from "@/components/store/splash-screen";
+import { VercelInsights } from "@/components/store/vercel-insights";
 import { WhatsAppFloat } from "@/components/store/whatsapp-float";
 import { promoSections } from "@/lib/promos";
 import { getCategoryLinks, getCurrentYear, getProductCards, getSiteSettings } from "./_data";
@@ -23,6 +24,7 @@ export default async function StoreLayout({ children }: { children: React.ReactN
       {settings.contact.whatsapp && settings.contact.whatsappFloat ? (
         <WhatsAppFloat phone={settings.contact.whatsapp} message={settings.contact.whatsappMessage || "Hola TWENTY, tengo una consulta."} />
       ) : null}
+      <VercelInsights />
     </CartProvider>
   );
 }

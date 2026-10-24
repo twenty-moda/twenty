@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { hidePrivateIds } from "./analytics";
 import { IMAGE_SPECS, imageWarnings } from "./image-specs";
 import { discountPercent, formatPrice } from "./money";
 import { compareSizes } from "./sizes";
 import { slugify } from "./slug";
+
+describe("hidePrivateIds", () => {
+  it("cambia el id del pedido y de la constancia por [id] y deja las demás URLs igual", () => {
+    expect(hidePrivateIds("https://twentymoda.com/pedido/9f3c2b1a-77de-4c1e?pagar=1#pago")).toBe("https://twentymoda.com/pedido/[id]?pagar=1");
+    expect(hidePrivateIds("https://twentymoda.com/libro-de-reclamaciones/constancia/abc123")).toBe(
+      "https://twentymoda.com/libro-de-reclamaciones/constancia/[id]",
+    );
+    expect(hidePrivateIds("https://twentymoda.com/product/baggy-jean?color=negro&talla=30")).toBe(
+      "https://twentymoda.com/product/baggy-jean?color=negro&talla=30",
+    );
+    expect(hidePrivateIds("https://twentymoda.com/libro-de-reclamaciones")).toBe("https://twentymoda.com/libro-de-reclamaciones");
+  });
+});
 
 describe("formatPrice", () => {
   it("muestra soles enteros sin decimales y con decimales cuando los hay", () => {
