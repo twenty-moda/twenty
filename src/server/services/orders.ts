@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { normalizePhone, type CheckoutInput } from "@/lib/checkout-schema";
 import { COURIER_NAME, orderCourier, type Courier, type CourierGuide } from "@/lib/couriers";
 import { canTransition, OPEN_STATUSES, PAID_STATUSES, RESTOCK_STATUSES, type OrderStatus } from "@/lib/order-status";
@@ -629,6 +629,15 @@ export async function getDashboard(db: Db, now = new Date()) {
     recent: recent.rows.slice(0, 8),
     lowStock,
   };
+}
+
+/** Pedidos pagados hechos en [since, until): para la conversión de /admin/visitas. */
+export async function countPaidOrders(db: Db, since: Date, until: Date) {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(and(inArray(orders.status, PAID_STATUSES), gte(orders.createdAt, since), lt(orders.createdAt, until)));
+  return row.count;
 }
 
 // ─── Clientes ────────────────────────────────────────────────────────────────

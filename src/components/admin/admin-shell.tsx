@@ -3,6 +3,7 @@
 import {
   BookOpenText,
   Boxes,
+  ChartColumn,
   ExternalLink,
   FileSpreadsheet,
   FolderTree,
@@ -53,6 +54,7 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
   {
     title: "Web",
     items: [
+      { href: "/admin/visitas", label: "Visitas", icon: ChartColumn },
       { href: "/admin/blog", label: "Blog", icon: Newspaper },
       { href: "/admin/contenido", label: "Contenido de la web", icon: LayoutTemplate },
       { href: "/admin/envios", label: "Envíos", icon: Truck },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hidePrivateIds } from "./analytics";
+import { countryLabel, deviceLabel, groupRows, hidePrivateIds, routeLabel, sourceLabel } from "./analytics";
 import { IMAGE_SPECS, imageWarnings } from "./image-specs";
 import { discountPercent, formatPrice } from "./money";
 import { compareSizes } from "./sizes";
@@ -15,6 +15,33 @@ describe("hidePrivateIds", () => {
       "https://twentymoda.com/product/baggy-jean?color=negro&talla=30",
     );
     expect(hidePrivateIds("https://twentymoda.com/libro-de-reclamaciones")).toBe("https://twentymoda.com/libro-de-reclamaciones");
+  });
+});
+
+describe("nombres de /admin/visitas", () => {
+  it("junta los sitios de cada red y deja «Others» al final", () => {
+    const rows = [
+      { key: "l.instagram.com", visitors: 5, pageviews: 9 },
+      { key: "", visitors: 7, pageviews: 8 },
+      { key: "Others", visitors: 20, pageviews: 30 },
+      { key: "www.instagram.com", visitors: 4, pageviews: 4 },
+      { key: "www.google.com.pe", visitors: 1, pageviews: 1 },
+    ];
+    expect(groupRows(rows, sourceLabel, "visitors")).toEqual([
+      { key: "Instagram", label: "Instagram", value: 9, others: false },
+      { key: "Directo o sin enlace", label: "Directo o sin enlace", value: 7, others: false },
+      { key: "Google", label: "Google", value: 1, others: false },
+      { key: "Otros sitios", label: "Otros sitios", value: 20, others: true },
+    ]);
+    expect(sourceLabel("lm.facebook.com")).toBe("Facebook");
+    expect(sourceLabel("blog.ejemplo.pe")).toBe("blog.ejemplo.pe");
+  });
+
+  it("páginas, dispositivos y países en español", () => {
+    expect(routeLabel("/product/[slug]")).toBe("Fichas de prendas");
+    expect(routeLabel("/una-ruta-nueva")).toBe("/una-ruta-nueva");
+    expect(deviceLabel("mobile")).toBe("Teléfono");
+    expect(countryLabel("PE")).toBe("Perú");
   });
 });
 
