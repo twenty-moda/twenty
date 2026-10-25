@@ -64,7 +64,7 @@ describe("webAnalyticsClient", () => {
 
 describe("getVisitsReport", () => {
   it("varios días: suma las horas por día de Lima; un día: las 24 horas", async () => {
-    const { fetchImpl } = fakeFetch((url) => {
+    const { calls, fetchImpl } = fakeFetch((url) => {
       if (url.searchParams.get("by") !== "hour") return { body: { data: [] } };
       return {
         body: {
@@ -81,6 +81,10 @@ describe("getVisitsReport", () => {
     const week = await getVisitsReport(client, since, 7);
     expect(week.series.map((d) => d.pageviews)).toEqual([5, 7, 0, 0, 0, 0, 0]);
     expect(week.series[1].at).toBe(Date.parse("2026-10-21T05:00:00.000Z"));
+
+    // Las prendas con el máximo de la API: si no, la mayoría queda en "Others" sin decir cuáles son.
+    const products = calls.find(({ url }) => url.searchParams.get("by") === "requestPath")!.url.searchParams;
+    expect([products.get("limit"), products.get("filter")]).toEqual(["100", "route eq '/product/[slug]'"]);
 
     const day = await getVisitsReport(client, since, 1);
     expect(day.series).toHaveLength(24);

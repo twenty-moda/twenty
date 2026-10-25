@@ -99,23 +99,38 @@ export function VisitsChart({ series, unit }: { series: { at: number; pageviews:
   );
 }
 
-/** Lista con barra proporcional al primero (todas de un mismo tono: es cantidad, no categorías). */
-export function BarList({ rows, empty = "Sin datos en estas fechas." }: { rows: { key: string; label: ReactNode; value: number }[]; empty?: string }) {
+type BarRow = { key: string; label: ReactNode; value: number; /** El "Others" de la API: no cuenta para la escala. */ others?: boolean };
+
+/**
+ * Lista con barra proporcional a la fila más alta (todas de un mismo tono: es cantidad, no categorías). Muestra las
+ * primeras `visible` y el resto queda en «Ver las otras N».
+ */
+export function BarList({ rows, visible = 10, empty = "Sin datos en estas fechas." }: { rows: BarRow[]; visible?: number; empty?: string }) {
   if (!rows.length) return <p className="text-sm text-muted">{empty}</p>;
-  const max = Math.max(1, ...rows.map((r) => r.value));
+  const max = Math.max(1, ...rows.filter((r) => !r.others).map((r) => r.value));
+  const item = (r: BarRow) => (
+    <li key={r.key} className="py-1.5">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="min-w-0 flex-1">{r.label}</span>
+        <span className="shrink-0 text-muted tabular-nums">{formatCount(r.value)}</span>
+      </div>
+      <div className="mt-1.5 h-1.5 rounded-full bg-raised">
+        <div className="h-full rounded-full bg-white/70" style={{ width: `${Math.min(100, (r.value / max) * 100)}%` }} />
+      </div>
+    </li>
+  );
+  const rest = rows.slice(visible);
   return (
-    <ul className="-my-1.5">
-      {rows.map((r) => (
-        <li key={r.key} className="py-1.5">
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="min-w-0 flex-1">{r.label}</span>
-            <span className="shrink-0 text-muted tabular-nums">{formatCount(r.value)}</span>
-          </div>
-          <div className="mt-1.5 h-1.5 rounded-full bg-raised">
-            <div className="h-full rounded-full bg-white/70" style={{ width: `${(r.value / max) * 100}%` }} />
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div className="-my-1.5">
+      <ul>{rows.slice(0, visible).map(item)}</ul>
+      {rest.length ? (
+        <details className="group">
+          <summary className="inline-flex min-h-10 cursor-pointer items-center text-sm text-muted hover:text-white group-open:hidden">
+            {rest.length === 1 ? "Ver 1 más" : `Ver las otras ${rest.length}`}
+          </summary>
+          <ul>{rest.map(item)}</ul>
+        </details>
+      ) : null}
+    </div>
   );
 }

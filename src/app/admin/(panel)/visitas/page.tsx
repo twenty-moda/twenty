@@ -112,7 +112,9 @@ function Report({ report, hourly, paidOrders, cards, now }: ReportProps) {
   const bySlug = new Map(cards.map((c) => [c.slug, c]));
 
   const products = report.products.map((row) => {
-    if (row.key === OTHERS) return { key: row.key, label: <span className="text-muted">Otras prendas</span>, value: row.pageviews };
+    if (row.key === OTHERS) {
+      return { key: row.key, label: <span className="text-muted">Otras prendas (fuera de las 100 más vistas)</span>, value: row.pageviews, others: true };
+    }
     const slug = row.key.replace(/^\/product\//, "");
     // Si ya no está en la tienda (archivada o con otro enlace), queda el enlace que se visitó.
     const card = bySlug.get(slug);
@@ -152,7 +154,7 @@ function Report({ report, hourly, paidOrders, cards, now }: ReportProps) {
           <BarList rows={products} empty="Nadie abrió una prenda en estas fechas." />
         </Card>
         <Card title="De dónde llegan">
-          <BarList rows={groupRows(report.sources, sourceLabel, "visitors").slice(0, 8)} />
+          <BarList rows={groupRows(report.sources, sourceLabel, "visitors")} />
         </Card>
         <Card title="Páginas">
           <BarList rows={groupRows(report.pages, routeLabel, "pageviews")} />

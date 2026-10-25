@@ -102,14 +102,15 @@ export type VisitsReport = {
 /** Todo lo que muestra /admin/visitas para `days` días de Lima desde `since` (inicio de un día de Lima). */
 export async function getVisitsReport(client: WebAnalyticsClient, since: Date, days: number): Promise<VisitsReport> {
   const until = new Date(since.getTime() + days * DAY);
+  // Límites altos: lo que no entra la API lo junta en "Others", que no dice qué es (100 es el máximo).
   const [totals, hourly, pages, products, sources, devices, countries] = await Promise.all([
     client.totals(since, until),
     client.hourly(since, until),
-    client.top("route", since, until),
-    client.top("requestPath", since, until, { filter: "route eq '/product/[slug]'" }),
-    client.top("referrerHostname", since, until, { limit: 20 }),
+    client.top("route", since, until, { limit: 50 }),
+    client.top("requestPath", since, until, { filter: "route eq '/product/[slug]'", limit: 100 }),
+    client.top("referrerHostname", since, until, { limit: 50 }),
     client.top("deviceType", since, until),
-    client.top("country", since, until, { limit: 5 }),
+    client.top("country", since, until),
   ]);
   return { totals, series: days === 1 ? fillHours(hourly, since) : byLimaDay(hourly, since, days), pages, products, sources, devices, countries };
 }
