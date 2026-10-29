@@ -6,9 +6,10 @@ import { allocateOutfitPrice, outfitLineKey } from "@/lib/outfits";
 import { priceLines } from "@/lib/pricing";
 import { shippingOptions, type ShippingKind } from "@/lib/shipping";
 import type { Db } from "../db/client";
-import { customers, orderItems, orders, orderStatusHistory, products, productVariants, refundItems, refunds, users } from "../db/schema";
+import { customers, orderItems, orders, orderStatusHistory, products, productVariants, refundItems, refunds, stockMovements, users } from "../db/schema";
 import { getOutfitSnapshots, getVariantSnapshots } from "./cart";
 import { getDistrict, listShippingMethods, toShippingInfo } from "./shipping";
+import { InsufficientStockError, moveStock } from "./stock";
 
 /**
  * `orders.id` con el nombre de la tabla, para subconsultas sobre order_items. En un select de una sola tabla Drizzle
@@ -23,12 +24,6 @@ export type PlaceOrderResult =
   | { ok: true; orderId: string; number: number; totalCents: number; productSlugs: string[]; soldOut: boolean; shippingKind: ShippingKind }
   | { ok: false; code: "unavailable" | "out_of_stock"; variantIds: string[] }
   | { ok: false; code: "shipping" | "address" | "agency"; message: string };
-
-class OutOfStockError extends Error {
-  constructor(readonly variantId: string) {
-    super("out_of_stock");
-  }
-}
 
 /**
  * Crea el pedido. El precio, las promos y el envío se recalculan aquí (no se confía en el navegador), y el
@@ -120,17 +115,12 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
         })
         .returning({ id: customers.id });
 
-      let soldOut = false;
-      for (const id of stockIds) {
-        const qty = demand.get(id)!;
-        const updated = await tx
-          .update(productVariants)
-          .set({ stock: sql`${productVariants.stock} - ${qty}` })
-          .where(and(eq(productVariants.id, id), eq(productVariants.isActive, true), gte(productVariants.stock, qty)))
-          .returning({ stock: productVariants.stock });
-        if (updated.length === 0) throw new OutOfStockError(id);
-        if (updated[0].stock === 0) soldOut = true;
-      }
+      const balances = await moveStock(
+        tx,
+        stockIds.map((id) => ({ variantId: id, quantity: -demand.get(id)! })),
+        { type: "venta_web", requireActive: true },
+      );
+      const soldOut = balances.some((b) => b.quantity === 0);
 
       const [order] = await tx
         .insert(orders)
@@ -168,6 +158,8 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
           customerNote: input.note,
         })
         .returning({ id: orders.id, number: orders.number });
+      // El stock se descuenta antes de crear el pedido (si no alcanza, no se gasta un número): ahora se enlaza.
+      await tx.update(stockMovements).set({ orderId: order.id }).where(inArray(stockMovements.id, balances.map((b) => b.movementId)));
 
       const variantRows = variantIds.length
         ? await tx
@@ -242,7 +234,7 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
       };
     });
   } catch (error) {
-    if (error instanceof OutOfStockError) return { ok: false, code: "out_of_stock", variantIds: shortLines([error.variantId]) };
+    if (error instanceof InsufficientStockError) return { ok: false, code: "out_of_stock", variantIds: shortLines([error.variantId]) };
     throw error;
   }
 }
@@ -475,17 +467,21 @@ export async function changeOrderStatus(
         .innerJoin(refunds, eq(refunds.id, refundItems.refundId))
         .where(eq(refunds.orderId, order.id))
         .groupBy(refundItems.orderItemId);
+      // Cada prenda vuelve al almacén del que salió (los pedidos de antes del kardex, al de la web).
+      const origins = await tx
+        .selectDistinct({ variantId: stockMovements.variantId, warehouseId: stockMovements.warehouseId })
+        .from(stockMovements)
+        .where(and(eq(stockMovements.orderId, order.id), eq(stockMovements.type, "venta_web")));
       const returned = new Set<string>();
+      const changes = [];
       for (const item of items) {
         if (!item.variantId) continue; // la variante se borró del catálogo
         const quantity = item.quantity - (soldOut.find((s) => s.orderItemId === item.id)?.quantity ?? 0);
         if (quantity <= 0) continue;
-        await tx
-          .update(productVariants)
-          .set({ stock: sql`${productVariants.stock} + ${quantity}` })
-          .where(eq(productVariants.id, item.variantId));
+        changes.push({ variantId: item.variantId, warehouseId: origins.find((o) => o.variantId === item.variantId)?.warehouseId, quantity });
         returned.add(item.productSlug);
       }
+      await moveStock(tx, changes, { type: "anulacion_web", orderId: order.id, userId: input.userId, note: input.note });
       stockReturned = true;
       restocked = returned.size > 0;
       productSlugs = [...returned];

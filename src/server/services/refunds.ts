@@ -13,6 +13,7 @@ import type { Db } from "../db/client";
 import { orderItems, orders, orderStatusHistory, payments, productVariants, refundItems, refunds } from "../db/schema";
 import type { OrderDetail } from "./orders";
 import type { CulqiClient, CulqiResponse } from "./payments";
+import { setStock } from "./stock";
 
 export type RefundInput = {
   orderId: string;
@@ -161,7 +162,15 @@ export async function refundOrder(db: Db, client: CulqiClient | null, input: Ref
   }
 
   const variantIds = plan.soldOutItems.map((i) => i.variantId).filter((id): id is string => !!id);
-  if (input.clearStock && variantIds.length) await db.update(productVariants).set({ stock: 0 }).where(inArray(productVariants.id, variantIds));
+  if (input.clearStock && variantIds.length) {
+    await db.transaction((tx) =>
+      setStock(
+        tx,
+        [...new Set(variantIds)].map((variantId) => ({ variantId, quantity: 0 })),
+        { orderId: plan.order.id, userId: input.userId, note: `Prenda agotada (devolución del pedido #${plan.order.number})` },
+      ),
+    );
+  }
   return {
     ok: true,
     refundId: plan.refundId,

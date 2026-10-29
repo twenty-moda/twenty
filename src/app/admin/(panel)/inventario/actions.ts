@@ -8,10 +8,10 @@ import { requireAdmin } from "../../_lib/auth";
 import { failure, success, type ActionState } from "../../_lib/action-state";
 
 export async function saveInventoryAction(updates: unknown): Promise<ActionState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = inventoryUpdateSchema.max(500).safeParse(updates);
   if (!parsed.success) return failure("Revisa los precios y el stock: hay un valor que no es válido.");
-  const slugs = await updateInventory(getDb(), parsed.data);
+  const slugs = await updateInventory(getDb(), parsed.data, admin.id);
   for (const slug of slugs) updateTag(cacheTags.product(slug));
   updateTag(cacheTags.catalog);
   refresh();

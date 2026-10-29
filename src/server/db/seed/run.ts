@@ -7,6 +7,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
+import { recordInitialStock } from "../../services/stock";
 import { closeDb, getDb } from "../client";
 import * as schema from "../schema";
 import { buildRedirectRules, transformLegacyCatalog, type LegacyInput } from "./legacy";
@@ -117,6 +118,7 @@ async function main() {
     await insert(schema.sizes, data.sizes);
     await insert(schema.products, data.products);
     await insert(schema.productVariants, data.variants);
+    await recordInitialStock(tx);
     await insert(schema.productImages, data.images);
     await insert(schema.productRedirects, data.redirects);
     await insert(schema.promotions, data.promotions);

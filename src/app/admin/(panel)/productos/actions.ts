@@ -76,7 +76,7 @@ export async function saveOutfitAction(productId: string, input: unknown): Promi
 }
 
 export async function saveVariantsAction(productId: string, variants: unknown): Promise<ActionState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = z.array(variantInputSchema).max(200).safeParse(variants);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -84,7 +84,7 @@ export async function saveVariantsAction(productId: string, variants: unknown): 
     return failure(`${row}${issue.message}`);
   }
   const db = getDb();
-  const result = await saveVariants(db, productId, parsed.data);
+  const result = await saveVariants(db, productId, parsed.data, admin.id);
   if (!result.ok) return failure(result.message);
   refreshStore(await getProductSlug(db, productId));
   refresh();

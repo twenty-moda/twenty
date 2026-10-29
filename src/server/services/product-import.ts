@@ -11,6 +11,7 @@ import { slugify } from "@/lib/slug";
 import type { Db } from "../db/client";
 import { categories, colors, fits, productImages, products, productVariants, sizes } from "../db/schema";
 import { addProductImage, ensureColor, ensureSize, nextSku } from "./admin-products";
+import { setStock } from "./stock";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Conn = Db | Tx;
@@ -165,7 +166,7 @@ export async function planImport(db: Db, parsed: ParsedSheet): Promise<ImportPla
 }
 
 /** Aplica la carga (las filas con errores se omiten). Devuelve los slugs afectados para refrescar la tienda. */
-export async function applyImport(db: Db, parsed: ParsedSheet): Promise<{ plan: ImportPlan; productSlugs: string[] }> {
+export async function applyImport(db: Db, parsed: ParsedSheet, userId: string | null = null): Promise<{ plan: ImportPlan; productSlugs: string[] }> {
   return db.transaction(async (tx) => {
     const existing = await loadExisting(tx);
     const { plan, resolved } = resolve(parsed, existing);
@@ -173,6 +174,8 @@ export async function applyImport(db: Db, parsed: ParsedSheet): Promise<{ plan: 
     const fitIds = new Map(existing.fit);
     const taken = new Set(existing.bySku.keys());
     const touched = new Set<string>();
+    // El stock va por el kardex al final (setStock anota la diferencia con lo que había).
+    const stockTargets: { variantId: string; quantity: number }[] = [];
 
     for (const r of resolved) {
       const { row } = r;
@@ -181,8 +184,9 @@ export async function applyImport(db: Db, parsed: ParsedSheet): Promise<{ plan: 
         if (r.plan.action === "sin-cambios") continue;
         await tx
           .update(productVariants)
-          .set({ priceCents: row.priceCents, compareAtPriceCents: row.compareAtCents, stock: row.stock, isActive: row.visible })
+          .set({ priceCents: row.priceCents, compareAtPriceCents: row.compareAtCents, isActive: row.visible })
           .where(eq(productVariants.id, r.variantId));
+        stockTargets.push({ variantId: r.variantId, quantity: row.stock });
         continue;
       }
 
@@ -220,18 +224,22 @@ export async function applyImport(db: Db, parsed: ParsedSheet): Promise<{ plan: 
         .select({ position: sql<number>`coalesce(max(${productVariants.position}), -1)::int + 1` })
         .from(productVariants)
         .where(eq(productVariants.productId, productId));
-      await tx.insert(productVariants).values({
-        productId,
-        sku,
-        colorId,
-        sizeId,
-        priceCents: row.priceCents,
-        compareAtPriceCents: row.compareAtCents,
-        stock: row.stock,
-        isActive: row.visible,
-        position,
-      });
+      const [created] = await tx
+        .insert(productVariants)
+        .values({
+          productId,
+          sku,
+          colorId,
+          sizeId,
+          priceCents: row.priceCents,
+          compareAtPriceCents: row.compareAtCents,
+          isActive: row.visible,
+          position,
+        })
+        .returning({ id: productVariants.id });
+      stockTargets.push({ variantId: created.id, quantity: row.stock });
     }
+    await setStock(tx, stockTargets, { userId, note: "Carga por Excel" });
     return { plan, productSlugs: [...touched] };
   });
 }

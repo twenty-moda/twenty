@@ -189,6 +189,92 @@ export const productRedirects = pgTable("product_redirects", {
   variantId: uuid().references(() => productVariants.id, { onDelete: "set null" }),
 });
 
+// ─── Inventario ──────────────────────────────────────────────────────────────
+
+/**
+ * Almacenes y tiendas. Uno solo vende en la web (`sellsOnline`): su stock es `product_variants.stock`, que la tienda
+ * lee y descuenta como siempre, e `inventory_levels` lo refleja. El de los demás vive solo en `inventory_levels`.
+ */
+export const warehouses = pgTable(
+  "warehouses",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    name: text().notNull().unique(),
+    /** Código corto para etiquetas y reportes ("GAM", "SJM"). */
+    code: text().notNull().unique(),
+    address: text(),
+    sellsOnline: boolean().notNull().default(false),
+    isActive: boolean().notNull().default(true),
+    position: integer().notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("warehouses_sells_online_uq").on(t.sellsOnline).where(sql`${t.sellsOnline}`)],
+);
+
+/** Stock de cada variante en cada almacén. Solo se escribe desde `server/services/stock.ts`. */
+export const inventoryLevels = pgTable(
+  "inventory_levels",
+  {
+    variantId: uuid()
+      .notNull()
+      .references(() => productVariants.id, { onDelete: "cascade" }),
+    warehouseId: uuid()
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    quantity: integer().notNull().default(0),
+    updatedAt: timestamps.updatedAt,
+  },
+  (t) => [
+    primaryKey({ columns: [t.variantId, t.warehouseId] }),
+    index("inventory_levels_warehouse_idx").on(t.warehouseId),
+    check("inventory_levels_quantity_non_negative", sql`${t.quantity} >= 0`),
+  ],
+);
+
+export const stockMovementType = pgEnum("stock_movement_type", [
+  "inicial",
+  "ingreso",
+  "venta_web",
+  "anulacion_web",
+  "venta_tienda",
+  "anulacion_tienda",
+  "traslado_salida",
+  "traslado_entrada",
+  "ajuste",
+  "conteo",
+  "devolucion_proveedor",
+]);
+
+/** Kardex: cada cambio de stock de una variante en un almacén, con el saldo que dejó. */
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    variantId: uuid()
+      .notNull()
+      .references(() => productVariants.id, { onDelete: "cascade" }),
+    warehouseId: uuid()
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    type: stockMovementType().notNull(),
+    /** Positivo = entra, negativo = sale. */
+    quantity: integer().notNull(),
+    balanceAfter: integer().notNull(),
+    /** Costo unitario en céntimos (ingresos), para el kardex valorizado. */
+    unitCostCents: integer(),
+    orderId: uuid().references(() => orders.id, { onDelete: "set null" }),
+    userId: uuid().references(() => users.id, { onDelete: "set null" }),
+    note: text(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    index("stock_movements_variant_idx").on(t.variantId, t.warehouseId, t.createdAt),
+    index("stock_movements_created_idx").on(t.createdAt),
+    index("stock_movements_order_idx").on(t.orderId),
+    check("stock_movements_quantity_non_zero", sql`${t.quantity} <> 0`),
+  ],
+);
+
 // ─── Promociones ─────────────────────────────────────────────────────────────
 
 /** "Lleva N por S/ X" (bundle_price). Las reglas de la plataforma anterior se convierten a este formato. */

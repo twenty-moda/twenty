@@ -37,10 +37,10 @@ export async function previewImportAction(_: ImportState, fd: FormData): Promise
 }
 
 export async function applyImportAction(_: ImportState, fd: FormData): Promise<ImportState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const upload = await readUpload(fd);
   if ("error" in upload) return { status: "error", message: upload.error };
-  const { plan, productSlugs } = await applyImport(getDb(), upload.parsed);
+  const { plan, productSlugs } = await applyImport(getDb(), upload.parsed, admin.id);
   for (const slug of productSlugs) updateTag(cacheTags.product(slug));
   updateTag(cacheTags.catalog);
   refresh();

@@ -17,6 +17,7 @@ import {
   productVariants,
   sizes,
 } from "../db/schema";
+import { setStock } from "./stock";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Conn = Db | Tx;
@@ -364,7 +365,7 @@ export type VariantInput = z.infer<typeof variantInputSchema>;
  * Reemplaza las variantes del producto por la lista enviada: crea, actualiza y elimina las que ya no estén
  * (si una variante ya se vendió, se desactiva en vez de borrarse).
  */
-export async function saveVariants(db: Db, productId: string, input: VariantInput[]): Promise<ServiceResult> {
+export async function saveVariants(db: Db, productId: string, input: VariantInput[], userId: string | null = null): Promise<ServiceResult> {
   const optionKeys = new Set<string>();
   for (const v of input) {
     const k = `${slugify(v.color)}|${v.size.toUpperCase()}`;
@@ -402,6 +403,8 @@ export async function saveVariants(db: Db, productId: string, input: VariantInpu
 
     const taken = new Set(skus);
     const sorted = [...input].sort((a, b) => a.color.localeCompare(b.color, "es") || compareSizes(a.size, b.size));
+    // El stock no se escribe aquí: va por el kardex (setStock), que anota la diferencia.
+    const stockTargets: { variantId: string; quantity: number }[] = [];
     for (const [position, v] of sorted.entries()) {
       const colorId = await ensureColor(tx, v.color);
       const sizeId = await ensureSize(tx, v.size);
@@ -417,13 +420,18 @@ export async function saveVariants(db: Db, productId: string, input: VariantInpu
         sizeId,
         priceCents: v.priceCents,
         compareAtPriceCents: v.compareAtPriceCents && v.compareAtPriceCents > v.priceCents ? v.compareAtPriceCents : null,
-        stock: v.stock,
         isActive: v.isActive,
         position,
       };
-      if (v.id && keepIds.includes(v.id)) await tx.update(productVariants).set(values).where(eq(productVariants.id, v.id));
-      else await tx.insert(productVariants).values(values);
+      if (v.id && keepIds.includes(v.id)) {
+        await tx.update(productVariants).set(values).where(eq(productVariants.id, v.id));
+        stockTargets.push({ variantId: v.id, quantity: v.stock });
+      } else {
+        const [created] = await tx.insert(productVariants).values(values).returning({ id: productVariants.id });
+        stockTargets.push({ variantId: created.id, quantity: v.stock });
+      }
     }
+    await setStock(tx, stockTargets, { userId, note: "Editado en la ficha del producto" });
     return { ok: true as const };
   });
 }
@@ -469,19 +477,23 @@ export const inventoryUpdateSchema = z.array(
 );
 
 /** Guarda varios cambios de stock y precio a la vez. Devuelve los slugs afectados (para refrescar la tienda). */
-export async function updateInventory(db: Db, updates: z.infer<typeof inventoryUpdateSchema>): Promise<string[]> {
+export async function updateInventory(db: Db, updates: z.infer<typeof inventoryUpdateSchema>, userId: string | null = null): Promise<string[]> {
   if (updates.length === 0) return [];
   return db.transaction(async (tx) => {
     for (const u of updates) {
       await tx
         .update(productVariants)
         .set({
-          stock: u.stock,
           priceCents: u.priceCents,
           compareAtPriceCents: u.compareAtPriceCents && u.compareAtPriceCents > u.priceCents ? u.compareAtPriceCents : null,
         })
         .where(eq(productVariants.id, u.variantId));
     }
+    await setStock(
+      tx,
+      updates.map((u) => ({ variantId: u.variantId, quantity: u.stock })),
+      { userId, note: "Editado en Inventario" },
+    );
     const rows = await tx
       .selectDistinct({ slug: products.slug })
       .from(productVariants)
