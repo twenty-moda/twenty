@@ -22,6 +22,11 @@ const display: CSSProperties = { fontFamily: "var(--font-big-shoulders), Impact,
 const sizeFontPx = (label: string, base: number) => (label.length <= 2 ? base : label.length === 3 ? base * 0.72 : base * 0.5);
 /** Los nombres largos bajan de tamaño antes de cortarse. */
 const nameFontPx = (name: string, base: number) => (name.length <= 14 ? base : name.length <= 19 ? base * 0.8 : base * 0.68);
+/** El nombre se corta con "…" (overflow oculto): con menos alto de línea que esto, la tilde de "ÁNGEL" queda afuera. */
+const nameStyle = (name: string, base: number, mm: (px: number) => string): CSSProperties => {
+  const size = nameFontPx(name, base);
+  return { ...display, fontWeight: 800, fontSize: mm(size), lineHeight: mm(size * 1.2) };
+};
 
 type LabelProps = { variant: PickerVariant; showPrice: boolean; format: LabelFormat };
 
@@ -63,7 +68,7 @@ function Urbana({ variant, showPrice, mm }: DesignProps) {
       <div className="flex shrink-0" style={{ height: mm(82), gap: mm(12) }}>
         <div className="flex min-w-0 flex-1 flex-col justify-between">
           <span style={{ ...display, fontWeight: 900, fontSize: mm(16), lineHeight: mm(16), letterSpacing: "0.32em" }}>TWENTY</span>
-          <span className="truncate uppercase" style={{ ...display, fontWeight: 800, fontSize: mm(nameFontPx(variant.productName, 36)), lineHeight: mm(34) }}>
+          <span className="truncate uppercase" style={nameStyle(variant.productName, 36, mm)}>
             {variant.productName}
           </span>
           <span className="truncate font-semibold uppercase" style={{ fontSize: mm(14), lineHeight: mm(16), letterSpacing: "0.12em" }}>
@@ -96,7 +101,7 @@ function Rebaja({ variant, showPrice, mm, sale }: DesignProps & { sale: number }
       <div className="flex min-h-0 flex-1 flex-col" style={{ padding: `${mm(8)} ${mm(14)}`, gap: mm(5) }}>
         <div className="flex shrink-0 items-end justify-between" style={{ gap: mm(10) }}>
           <div className="flex min-w-0 flex-col" style={{ gap: mm(2) }}>
-            <span className="truncate uppercase" style={{ ...display, fontWeight: 800, fontSize: mm(nameFontPx(variant.productName, 30)), lineHeight: mm(28) }}>
+            <span className="truncate uppercase" style={nameStyle(variant.productName, 30, mm)}>
               {variant.productName}
             </span>
             <span className="truncate font-semibold uppercase" style={{ fontSize: mm(14), lineHeight: mm(16), letterSpacing: "0.1em" }}>
@@ -138,7 +143,7 @@ function Colgante({ variant, showPrice, mm, sale }: DesignProps) {
       <div className="shrink-0 bg-black" style={{ height: mm(2) }} />
       <div className="flex shrink-0" style={{ height: mm(66), gap: mm(10) }}>
         <div className="flex min-w-0 flex-1 flex-col justify-end" style={{ gap: mm(2) }}>
-          <span className="line-clamp-2 uppercase" style={{ ...display, fontWeight: 800, fontSize: mm(nameFontPx(variant.productName, 30)), lineHeight: mm(28) }}>
+          <span className="truncate uppercase" style={nameStyle(variant.productName, 30, mm)}>
             {variant.productName}
           </span>
           <span className="truncate font-semibold uppercase" style={{ fontSize: mm(14), lineHeight: mm(16), letterSpacing: "0.12em" }}>
