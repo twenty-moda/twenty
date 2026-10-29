@@ -1,7 +1,7 @@
 "use client";
 
 import { ScanBarcode, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Combobox } from "@/components/admin/combobox";
 import { FormAlert } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
@@ -34,9 +34,16 @@ export function OperationForm({ warehouses, variants, initialKind }: { warehouse
   const [state, setState] = useState<ActionState>(idle);
   const [pending, startTransition] = useTransition();
 
-  const byId = new Map(variants.map((v) => [v.variantId, v]));
-  const byLabel = new Map(variants.map((v) => [variantLabel(v), v]));
-  const bySku = new Map(variants.map((v) => [v.sku.toUpperCase(), v]));
+  // Se arman una vez: con el lector cada lectura es una ráfaga de teclas.
+  const { byId, byLabel, bySku, options } = useMemo(
+    () => ({
+      byId: new Map(variants.map((v) => [v.variantId, v])),
+      byLabel: new Map(variants.map((v) => [variantLabel(v), v])),
+      bySku: new Map(variants.map((v) => [v.sku.toUpperCase(), v])),
+      options: variants.map((v) => ({ value: variantLabel(v) })),
+    }),
+    [variants],
+  );
   const source = kind === "ingreso" ? null : from;
   const units = lines.reduce((s, l) => s + l.quantity, 0);
 
@@ -122,7 +129,15 @@ export function OperationForm({ warehouses, variants, initialKind }: { warehouse
         <p className="mb-1.5 flex items-center gap-2 text-sm font-medium">
           <ScanBarcode className="size-4" aria-hidden /> Prendas
         </p>
-        <Combobox options={variants.map((v) => ({ value: variantLabel(v) }))} value={query} onChange={setQuery} onPick={pick} label="Buscar prenda o escanear el código" placeholder="Escanea el código o busca por nombre, color o SKU" />
+        <Combobox
+          options={options}
+          value={query}
+          onChange={setQuery}
+          onPick={pick}
+          maxResults={40}
+          label="Buscar prenda o escanear el código"
+          placeholder="Escanea el código o busca por nombre, color o SKU"
+        />
         <p className="mt-1.5 text-xs text-muted">Con el lector de códigos: cada lectura suma una unidad.</p>
       </div>
 

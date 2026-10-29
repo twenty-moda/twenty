@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown, Plus } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ColorSwatch } from "@/components/ui/color-swatch";
 import { inputClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
@@ -24,6 +24,8 @@ type ComboboxProps = {
   swatches?: boolean;
   /** Si lo escrito no está en la lista, se ofrece como opción con este texto ("Color nuevo: «X»"). */
   createLabel?: (value: string) => string;
+  /** Cuántas sugerencias se dibujan como máximo (listas largas, como todas las prendas del catálogo). */
+  maxResults?: number;
 };
 
 type Item = ComboOption & { create?: boolean };
@@ -33,7 +35,7 @@ type Item = ComboOption & { create?: boolean };
  * y en cada navegador se ve distinto). La lista va en la capa superior (popover) para que ninguna fila
  * ni tarjeta la tape, y se abre hacia arriba si abajo no hay espacio (el teclado del teléfono).
  */
-export function Combobox({ options, value, onChange, onPick, label, placeholder, name, className, swatches, createLabel }: ComboboxProps) {
+export function Combobox({ options, value, onChange, onPick, label, placeholder, name, className, swatches, createLabel, maxResults }: ComboboxProps) {
   const id = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -42,21 +44,26 @@ export function Combobox({ options, value, onChange, onPick, label, placeholder,
   const [query, setQuery] = useState<string | null>(null);
   const [active, setActive] = useState(-1);
 
+  // Se normaliza cada opción una vez y no en cada tecla (con el lector de códigos se escribe muy rápido).
+  const indexed = useMemo(() => options.map((option) => ({ option, slug: slugify(option.value) })), [options]);
   const q = query === null ? "" : slugify(query);
-  const matches = q
-    ? options
-        .filter((o) => slugify(o.value).includes(q))
-        .sort((a, b) => Number(slugify(b.value).startsWith(q)) - Number(slugify(a.value).startsWith(q)))
+  const all = q
+    ? indexed
+        .filter((o) => o.slug.includes(q))
+        .sort((a, b) => Number(b.slug.startsWith(q)) - Number(a.slug.startsWith(q)))
+        .map((o) => o.option)
     : options;
+  const matches = maxResults ? all.slice(0, maxResults) : all;
   const typed = value.trim();
-  const known = options.some((o) => slugify(o.value) === slugify(typed));
+  const typedSlug = slugify(typed);
+  const known = indexed.some((o) => o.slug === typedSlug);
   const items: Item[] = createLabel && typed && !known ? [...matches, { value: typed, create: true }] : matches;
   const current = slugify(value);
-  const chosen = swatches ? options.find((o) => slugify(o.value) === current) : undefined;
+  const chosen = swatches ? indexed.find((o) => o.slug === current)?.option : undefined;
 
   const show = () => {
     setQuery(null);
-    setActive(options.findIndex((o) => slugify(o.value) === current));
+    setActive(indexed.findIndex((o) => o.slug === current));
     setOpen(true);
   };
   const close = () => {

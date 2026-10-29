@@ -1,7 +1,7 @@
 "use client";
 
 import { Printer, ScanBarcode, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Combobox } from "@/components/admin/combobox";
 import { FormAlert } from "@/components/admin/form-controls";
@@ -19,6 +19,22 @@ const FORMATS = LABEL_FORMATS;
 const PREVIEW_LIMIT = 48;
 const variantLabel = (v: PickerVariant) => `${v.productName} · ${v.colorName} · ${v.sizeLabel} · ${v.sku}`;
 const productLabel = (name: string) => `${name} (todas las tallas y colores)`;
+
+/** Aparte y memorizada: escribir en el buscador no vuelve a dibujar los códigos de barras. */
+const Preview = memo(function Preview({ labels, showPrice, format, fontClass }: { labels: PickerVariant[]; showPrice: boolean; format: FormatKey; fontClass: string }) {
+  return (
+    <section aria-label="Vista previa">
+      <p className="mb-2 text-sm text-muted">Vista previa{labels.length > PREVIEW_LIMIT ? ` (las primeras ${PREVIEW_LIMIT} de ${labels.length})` : ""}</p>
+      <div className={cn("flex flex-wrap gap-3 rounded-2xl bg-raised p-4", fontClass)}>
+        {labels.slice(0, PREVIEW_LIMIT).map((v, i) => (
+          <div key={i} className="rounded-sm shadow-md">
+            <Label variant={v} showPrice={showPrice} format={format} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+});
 
 type LabelSheetProps = {
   variants: PickerVariant[];
@@ -38,14 +54,20 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
   const [state, setState] = useState<ActionState>(idle);
   const [printing, setPrinting] = useState(false);
 
-  const byId = new Map(variants.map((v) => [v.variantId, v]));
-  const byLabel = new Map(variants.map((v) => [variantLabel(v), v]));
-  const bySku = new Map(variants.map((v) => [v.sku.toUpperCase(), v]));
-  const products = new Map<string, PickerVariant[]>();
-  for (const v of variants) products.set(productLabel(v.productName), [...(products.get(productLabel(v.productName)) ?? []), v]);
-  const options = [...[...products.keys()].map((value) => ({ value })), ...variants.map((v) => ({ value: variantLabel(v) }))];
+  // Se arman una vez: con el lector cada lectura es una ráfaga de teclas y la página no puede rehacerlas en cada una.
+  const { byId, byLabel, bySku, products, options } = useMemo(() => {
+    const groups = new Map<string, PickerVariant[]>();
+    for (const v of variants) groups.set(productLabel(v.productName), [...(groups.get(productLabel(v.productName)) ?? []), v]);
+    return {
+      byId: new Map(variants.map((v) => [v.variantId, v])),
+      byLabel: new Map(variants.map((v) => [variantLabel(v), v])),
+      bySku: new Map(variants.map((v) => [v.sku.toUpperCase(), v])),
+      products: groups,
+      options: [...[...groups.keys()].map((value) => ({ value })), ...variants.map((v) => ({ value: variantLabel(v) }))],
+    };
+  }, [variants]);
 
-  const labels = lines.flatMap((l) => Array.from({ length: l.quantity }, () => byId.get(l.variantId)!));
+  const labels = useMemo(() => lines.flatMap((l) => Array.from({ length: l.quantity }, () => byId.get(l.variantId)!)), [lines, byId]);
   const f = FORMATS[format];
 
   // Se arma la hoja de impresión recién al imprimir (pueden ser cientos de códigos) y se quita al terminar.
@@ -95,7 +117,15 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
         <p className="mb-1.5 flex items-center gap-2 text-sm font-medium">
           <ScanBarcode className="size-4" aria-hidden /> Prendas
         </p>
-        <Combobox options={options} value={query} onChange={setQuery} onPick={pick} label="Buscar prenda o escanear el código" placeholder="Escanea el código o busca una prenda o producto" />
+        <Combobox
+          options={options}
+          value={query}
+          onChange={setQuery}
+          onPick={pick}
+          maxResults={40}
+          label="Buscar prenda o escanear el código"
+          placeholder="Escanea el código o busca una prenda o producto"
+        />
         <p className="mt-1.5 text-xs text-muted">Cada lectura suma una etiqueta. Si eliges un producto, entran todas sus tallas y colores.</p>
       </div>
 
@@ -182,20 +212,7 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
         </label>
       </div>
 
-      {labels.length ? (
-        <section aria-label="Vista previa">
-          <p className="mb-2 text-sm text-muted">
-            Vista previa{labels.length > PREVIEW_LIMIT ? ` (las primeras ${PREVIEW_LIMIT} de ${labels.length})` : ""}
-          </p>
-          <div className={cn("flex flex-wrap gap-3 rounded-2xl bg-raised p-4", fontClass)}>
-            {labels.slice(0, PREVIEW_LIMIT).map((v, i) => (
-              <div key={i} className="rounded-sm shadow-md">
-                <Label variant={v} showPrice={showPrice} format={format} />
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {labels.length ? <Preview labels={labels} showPrice={showPrice} format={format} fontClass={fontClass} /> : null}
 
       {printing
         ? createPortal(
