@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeftRight,
   BookOpenText,
   Boxes,
   ChartColumn,
@@ -19,6 +20,7 @@ import {
   Truck,
   UserCog,
   Users,
+  Warehouse,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -49,6 +51,13 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/admin/importar", label: "Carga masiva", icon: FileSpreadsheet },
       { href: "/admin/promociones", label: "Promociones", icon: Tag },
       { href: "/admin/categorias", label: "Categorías", icon: FolderTree },
+    ],
+  },
+  {
+    title: "Inventario",
+    items: [
+      { href: "/admin/movimientos", label: "Movimientos", icon: ArrowLeftRight },
+      { href: "/admin/almacenes", label: "Almacenes", icon: Warehouse },
     ],
   },
   {

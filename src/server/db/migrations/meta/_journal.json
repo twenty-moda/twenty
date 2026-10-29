@@ -120,6 +120,13 @@
       "when": 1793298442264,
       "tag": "0016_inventory",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793301659932,
+      "tag": "0017_stock-operations",
+      "breakpoints": true
     }
   ]
 }

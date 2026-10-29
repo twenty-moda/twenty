@@ -23,6 +23,9 @@ export type StockChange = {
   warehouseId?: string;
   /** Positivo = entra, negativo = sale. */
   quantity: number;
+  /** Si no, el de `MoveContext` (un traslado lleva la salida y la entrada en la misma llamada). */
+  type?: StockMovementType;
+  unitCostCents?: number | null;
 };
 
 export type MoveContext = {
@@ -45,14 +48,24 @@ export async function getOnlineWarehouseId(db: Conn): Promise<string> {
 }
 
 /** Junta los cambios repetidos y los ordena: dos operaciones a la vez bloquean las filas en el mismo orden. */
-function normalize(changes: StockChange[], online: string) {
-  const byKey = new Map<string, { variantId: string; warehouseId: string; quantity: number }>();
+function normalize(changes: StockChange[], online: string, ctx: MoveContext) {
+  type Normalized = { variantId: string; warehouseId: string; quantity: number; type: StockMovementType; unitCostCents: number | null };
+  const byKey = new Map<string, Normalized>();
   for (const c of changes) {
     const warehouseId = c.warehouseId ?? online;
-    const key = `${c.variantId}|${warehouseId}`;
+    const type = c.type ?? ctx.type;
+    const unitCostCents = c.unitCostCents ?? ctx.unitCostCents ?? null;
+    const key = `${c.variantId}|${warehouseId}|${type}`;
     const prev = byKey.get(key);
-    if (prev) prev.quantity += c.quantity;
-    else byKey.set(key, { variantId: c.variantId, warehouseId, quantity: c.quantity });
+    if (!prev) {
+      byKey.set(key, { variantId: c.variantId, warehouseId, quantity: c.quantity, type, unitCostCents });
+      continue;
+    }
+    // Dos ingresos de la misma prenda con distinto costo: queda el promedio ponderado.
+    if (prev.unitCostCents !== null && unitCostCents !== null && prev.quantity + c.quantity !== 0) {
+      prev.unitCostCents = Math.round((prev.unitCostCents * prev.quantity + unitCostCents * c.quantity) / (prev.quantity + c.quantity));
+    } else prev.unitCostCents ??= unitCostCents;
+    prev.quantity += c.quantity;
   }
   return [...byKey.values()]
     .filter((c) => c.quantity !== 0)
@@ -70,7 +83,7 @@ function normalize(changes: StockChange[], online: string) {
 export async function moveStock(tx: Tx, changes: StockChange[], ctx: MoveContext): Promise<StockBalance[]> {
   const online = await getOnlineWarehouseId(tx);
   const balances: StockBalance[] = [];
-  for (const c of normalize(changes, online)) {
+  for (const c of normalize(changes, online, ctx)) {
     let quantity: number;
     if (c.warehouseId === online) {
       const [row] = await tx
@@ -114,10 +127,10 @@ export async function moveStock(tx: Tx, changes: StockChange[], ctx: MoveContext
       .values({
         variantId: c.variantId,
         warehouseId: c.warehouseId,
-        type: ctx.type,
+        type: c.type,
         quantity: c.quantity,
         balanceAfter: quantity,
-        unitCostCents: ctx.unitCostCents ?? null,
+        unitCostCents: c.unitCostCents,
         orderId: ctx.orderId ?? null,
         userId: ctx.userId ?? null,
         note: ctx.note?.trim() || null,

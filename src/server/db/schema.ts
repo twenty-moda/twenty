@@ -263,6 +263,7 @@ export const stockMovements = pgTable(
     /** Costo unitario en céntimos (ingresos), para el kardex valorizado. */
     unitCostCents: integer(),
     orderId: uuid().references(() => orders.id, { onDelete: "set null" }),
+    operationId: uuid().references(() => stockOperations.id, { onDelete: "set null" }),
     userId: uuid().references(() => users.id, { onDelete: "set null" }),
     note: text(),
     createdAt: timestamps.createdAt,
@@ -271,8 +272,28 @@ export const stockMovements = pgTable(
     index("stock_movements_variant_idx").on(t.variantId, t.warehouseId, t.createdAt),
     index("stock_movements_created_idx").on(t.createdAt),
     index("stock_movements_order_idx").on(t.orderId),
+    index("stock_movements_operation_idx").on(t.operationId),
     check("stock_movements_quantity_non_zero", sql`${t.quantity} <> 0`),
   ],
+);
+
+export const stockOperationKind = pgEnum("stock_operation_kind", ["ingreso", "traslado", "salida"]);
+
+/** Lo que se registra desde Inventario → Movimientos: un ingreso, un traslado o una salida, con sus prendas en el kardex. */
+export const stockOperations = pgTable(
+  "stock_operations",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    /** Número visible ("Operación #12"). */
+    number: integer().notNull().unique().generatedAlwaysAsIdentity({ startWith: 1 }),
+    kind: stockOperationKind().notNull(),
+    fromWarehouseId: uuid().references(() => warehouses.id, { onDelete: "restrict" }),
+    toWarehouseId: uuid().references(() => warehouses.id, { onDelete: "restrict" }),
+    note: text(),
+    userId: uuid().references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [index("stock_operations_created_idx").on(t.createdAt)],
 );
 
 // ─── Promociones ─────────────────────────────────────────────────────────────
