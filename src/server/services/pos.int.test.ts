@@ -1,0 +1,141 @@
+import { randomUUID } from "node:crypto";
+import { and, eq, sql } from "drizzle-orm";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { Db } from "../db/client";
+
+// El cliente de BD lee DATABASE_URL: se apunta a la BD de tests antes de importarlo.
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+const { getDb, closeDb } = await import("../db/client");
+const schema = await import("../db/schema");
+const { getOnlineWarehouseId } = await import("./stock");
+const { addCashMovement, closeCashSession, getCashSession, getOpenSession, getPosSale, openCashSession, registerSale, voidSale } = await import("./pos");
+
+let db: Db;
+let store: string;
+const ids = { category: randomUUID(), product: randomUUID(), color: randomUUID(), size: randomUUID(), variant: randomUUID(), promo: randomUUID() };
+
+const sale = (overrides: Partial<Parameters<typeof registerSale>[1]> = {}) =>
+  registerSale(
+    db,
+    {
+      warehouseId: store,
+      documentType: "nota_venta",
+      customer: null,
+      lines: [{ variantId: ids.variant, quantity: 1 }],
+      manualDiscountCents: 0,
+      shippingCents: 0,
+      payments: [{ method: "efectivo", amountCents: 7000, receivedCents: 10000, reference: null }],
+      note: null,
+      ...overrides,
+    },
+    null,
+  );
+async function stock() {
+  const [v] = await db.select({ stock: schema.productVariants.stock }).from(schema.productVariants).where(eq(schema.productVariants.id, ids.variant));
+  return v.stock;
+}
+
+beforeAll(async () => {
+  db = getDb();
+  await db.execute(sql`TRUNCATE order_status_history, order_items, orders, customers, promotion_products, promotions, product_images, product_redirects,
+    product_variants, products, category_fits, categories, fits, colors, sizes CASCADE`);
+  store = await getOnlineWarehouseId(db);
+  await db.insert(schema.categories).values({ id: ids.category, slug: "pantalones", name: "Pantalones" });
+  await db.insert(schema.colors).values({ id: ids.color, slug: "negro", name: "Negro" });
+  await db.insert(schema.sizes).values({ id: ids.size, label: "30" });
+  await db.insert(schema.products).values({ id: ids.product, slug: "mom-jean", name: "Mom Jean", categoryId: ids.category, status: "active" });
+});
+
+beforeEach(async () => {
+  await db.execute(sql`TRUNCATE cash_sessions, document_series, promotion_products, promotions, product_variants RESTART IDENTITY CASCADE`);
+  await db.insert(schema.productVariants).values({ id: ids.variant, productId: ids.product, sku: "TMW-TEST", colorId: ids.color, sizeId: ids.size, priceCents: 7000, stock: 3 });
+  await openCashSession(db, { warehouseId: store, openingCents: 10000, userId: null });
+});
+
+afterAll(async () => {
+  await db.execute(sql`TRUNCATE cash_sessions, document_series, product_variants RESTART IDENTITY CASCADE`);
+  await closeDb();
+});
+
+describe("registerSale", () => {
+  it("cobra en efectivo con vuelto, numera NV05-1, descuenta el stock de la tienda y lo anota en el kardex", async () => {
+    const result = await sale();
+    expect(result).toMatchObject({ ok: true, series: "NV05", number: 1, totalCents: 7000, changeCents: 3000, productSlugs: ["mom-jean"] });
+    if (!result.ok) return;
+    expect(await stock()).toBe(2);
+    const detail = await getPosSale(db, result.saleId);
+    expect(detail?.payments.map((p) => [p.method, p.amountCents, p.receivedCents])).toEqual([["efectivo", 7000, 10000]]);
+    const [movement] = await db.select().from(schema.stockMovements).where(and(eq(schema.stockMovements.posSaleId, result.saleId), eq(schema.stockMovements.type, "venta_tienda")));
+    expect([movement.quantity, movement.balanceAfter, movement.warehouseId]).toEqual([-1, 2, store]);
+  });
+
+  it("aplica las mismas promos de la web (2 x S/ 100) y el descuento y el envío de la tienda", async () => {
+    await db.insert(schema.promotions).values({ id: ids.promo, name: "2 X 100", type: "bundle_price", quantity: 2, bundlePriceCents: 10000 });
+    await db.insert(schema.promotionProducts).values({ promotionId: ids.promo, productId: ids.product });
+    const result = await sale({
+      lines: [{ variantId: ids.variant, quantity: 2 }],
+      manualDiscountCents: 500,
+      shippingCents: 1000,
+      payments: [
+        { method: "yape", amountCents: 5000, receivedCents: null, reference: "778899" },
+        { method: "efectivo", amountCents: 5500, receivedCents: 5500, reference: null },
+      ],
+    });
+    expect(result).toMatchObject({ ok: true, totalCents: 10500, changeCents: 0 });
+    if (!result.ok) return;
+    const detail = await getPosSale(db, result.saleId);
+    expect([detail?.subtotalCents, detail?.promoDiscountCents, detail?.items[0].promotionName]).toEqual([14000, 4000, "2 X 100"]);
+  });
+
+  it("sin caja abierta no vende", async () => {
+    const session = await getOpenSession(db, store);
+    await closeCashSession(db, { sessionId: session!.id, countedCashCents: 10000, note: null, userId: null });
+    expect(await sale()).toEqual({ ok: false, message: "La caja de esta tienda está cerrada. Ábrela para vender." });
+  });
+
+  it("si no hay stock no vende nada ni gasta un número", async () => {
+    expect((await sale()).ok).toBe(true);
+    const failed = await sale({ lines: [{ variantId: ids.variant, quantity: 5 }], payments: [{ method: "tarjeta", amountCents: 35000, receivedCents: null, reference: null }] });
+    expect(failed).toEqual({ ok: false, message: "No hay stock de TMW-TEST en Tienda Gamarra. Revisa el inventario.", variantId: ids.variant });
+    expect(await stock()).toBe(2);
+    expect(await sale()).toMatchObject({ ok: true, number: 2 });
+  });
+
+  it("los pagos tienen que cuadrar con el total que calcula el servidor", async () => {
+    const result = await sale({ payments: [{ method: "tarjeta", amountCents: 6000, receivedCents: null, reference: null }] });
+    expect(result).toEqual({ ok: false, message: "Los pagos suman S/ 60 y el total es S/ 70." });
+    expect(await stock()).toBe(3);
+  });
+
+  it("5 ventas a la vez de la última unidad: solo 1 pasa y la numeración no salta", async () => {
+    await db.update(schema.productVariants).set({ stock: 1 }).where(eq(schema.productVariants.id, ids.variant));
+    const results = await Promise.all(Array.from({ length: 5 }, () => sale()));
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(await stock()).toBe(0);
+    await db.update(schema.productVariants).set({ stock: 1 }).where(eq(schema.productVariants.id, ids.variant));
+    expect(await sale()).toMatchObject({ ok: true, number: 2 });
+  });
+});
+
+describe("caja", () => {
+  it("no abre dos cajas en la misma tienda", async () => {
+    expect(await openCashSession(db, { warehouseId: store, openingCents: 0, userId: null })).toEqual({ ok: false, message: "Ya hay una caja abierta en esta tienda." });
+  });
+
+  it("anular devuelve el stock y la saca de los totales; el arqueo cuenta inicial + efectivo + ingresos − egresos", async () => {
+    const session = (await getOpenSession(db, store))!;
+    const kept = await sale();
+    const voided = await sale({ payments: [{ method: "plin", amountCents: 7000, receivedCents: null, reference: null }] });
+    if (!kept.ok || !voided.ok) throw new Error("venta");
+    expect(await voidSale(db, { saleId: voided.saleId, reason: "Se equivocó de talla", userId: null })).toEqual({ ok: true, productSlugs: ["mom-jean"] });
+    expect(await stock()).toBe(2);
+    await addCashMovement(db, session.id, { type: "ingreso", amountCents: 500, note: "Sencillo" }, null);
+    await addCashMovement(db, session.id, { type: "egreso", amountCents: 2000, note: "Pago de movilidad" }, null);
+
+    const closed = await closeCashSession(db, { sessionId: session.id, countedCashCents: 15500, note: "Cuadró", userId: null });
+    expect(closed).toEqual({ ok: true, expectedCashCents: 10000 + 7000 + 500 - 2000 });
+    const detail = await getCashSession(db, session.number);
+    expect([detail?.totals.salesCount, detail?.totals.voidedCount, detail?.totals.methods.plin, detail?.countedCashCents]).toEqual([1, 1, 0, 15500]);
+    expect(await voidSale(db, { saleId: kept.saleId, reason: "tarde", userId: null })).toMatchObject({ ok: false });
+  });
+});

@@ -30,6 +30,8 @@ export const gender = pgEnum("gender", ["hombre", "mujer", "unisex"]);
 export const promotionType = pgEnum("promotion_type", ["bundle_price"]);
 /** "single" = prenda con variantes propias; "outfit" = conjunto de varias prendas (ver outfit_pieces). */
 export const productKind = pgEnum("product_kind", ["single", "outfit"]);
+/** Documento de un cliente (pedidos web y ventas en tienda). */
+export const documentType = pgEnum("document_type", ["dni", "ce", "pasaporte", "ruc"]);
 
 // ─── Catálogo ────────────────────────────────────────────────────────────────
 
@@ -264,6 +266,7 @@ export const stockMovements = pgTable(
     unitCostCents: integer(),
     orderId: uuid().references(() => orders.id, { onDelete: "set null" }),
     operationId: uuid().references(() => stockOperations.id, { onDelete: "set null" }),
+    posSaleId: uuid().references(() => posSales.id, { onDelete: "set null" }),
     userId: uuid().references(() => users.id, { onDelete: "set null" }),
     note: text(),
     createdAt: timestamps.createdAt,
@@ -294,6 +297,158 @@ export const stockOperations = pgTable(
     createdAt: timestamps.createdAt,
   },
   (t) => [index("stock_operations_created_idx").on(t.createdAt)],
+);
+
+// ─── Tienda: punto de venta y caja ───────────────────────────────────────────
+
+export const posDocumentType = pgEnum("pos_document_type", ["nota_venta", "boleta", "factura"]);
+
+/** Series de cada tienda (NV05, B005, F005…). El correlativo sale de `next_number` en la transacción de la venta. */
+export const documentSeries = pgTable(
+  "document_series",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    warehouseId: uuid()
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    documentType: posDocumentType().notNull(),
+    series: text().notNull().unique(),
+    nextNumber: integer().notNull().default(1),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("document_series_warehouse_type_uq").on(t.warehouseId, t.documentType)],
+);
+
+/** Caja de una tienda: se abre con un monto inicial y se cierra con el arqueo. Una abierta por tienda a la vez. */
+export const cashSessions = pgTable(
+  "cash_sessions",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    number: integer().notNull().unique().generatedAlwaysAsIdentity({ startWith: 1 }),
+    warehouseId: uuid()
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    openingCents: integer().notNull(),
+    openedBy: uuid().references(() => users.id, { onDelete: "set null" }),
+    openedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    /** Al cerrar: el efectivo que debía haber y el que se contó. */
+    expectedCashCents: integer(),
+    countedCashCents: integer(),
+    closingNote: text(),
+    closedBy: uuid().references(() => users.id, { onDelete: "set null" }),
+    closedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("cash_sessions_one_open_uq").on(t.warehouseId).where(sql`${t.closedAt} is null`),
+    index("cash_sessions_opened_idx").on(t.openedAt),
+    check("cash_sessions_opening_non_negative", sql`${t.openingCents} >= 0`),
+  ],
+);
+
+export const cashMovementType = pgEnum("cash_movement_type", ["ingreso", "egreso"]);
+
+/** Efectivo que entra o sale de la caja sin ser una venta (sencillo, pago a un proveedor, retiro). */
+export const cashMovements = pgTable(
+  "cash_movements",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    sessionId: uuid()
+      .notNull()
+      .references(() => cashSessions.id, { onDelete: "cascade" }),
+    type: cashMovementType().notNull(),
+    amountCents: integer().notNull(),
+    note: text().notNull(),
+    userId: uuid().references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [index("cash_movements_session_idx").on(t.sessionId), check("cash_movements_amount_positive", sql`${t.amountCents} > 0`)],
+);
+
+export const posSaleStatus = pgEnum("pos_sale_status", ["pagada", "anulada"]);
+
+/** Venta en tienda. Los datos del cliente se copian: en tienda casi nunca hay email ni celular (los pide `customers`). */
+export const posSales = pgTable(
+  "pos_sales",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    documentType: posDocumentType().notNull(),
+    series: text().notNull(),
+    number: integer().notNull(),
+    warehouseId: uuid()
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    cashSessionId: uuid()
+      .notNull()
+      .references(() => cashSessions.id, { onDelete: "restrict" }),
+    sellerId: uuid().references(() => users.id, { onDelete: "set null" }),
+    customerDocumentType: documentType(),
+    customerDocumentNumber: text(),
+    customerName: text(),
+    /** Precio de lista de las prendas. */
+    subtotalCents: integer().notNull(),
+    /** Promos "N x S/" (las mismas de la web). */
+    promoDiscountCents: integer().notNull().default(0),
+    /** Descuento que da la tienda sobre el total. */
+    manualDiscountCents: integer().notNull().default(0),
+    /** Envío cobrado aparte (no es una prenda: no mueve stock). */
+    shippingCents: integer().notNull().default(0),
+    totalCents: integer().notNull(),
+    changeCents: integer().notNull().default(0),
+    status: posSaleStatus().notNull().default("pagada"),
+    note: text(),
+    voidedAt: timestamp({ withTimezone: true }),
+    voidedBy: uuid().references(() => users.id, { onDelete: "set null" }),
+    voidReason: text(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    uniqueIndex("pos_sales_series_number_uq").on(t.series, t.number),
+    index("pos_sales_session_idx").on(t.cashSessionId),
+    index("pos_sales_created_idx").on(t.createdAt),
+    check("pos_sales_total_non_negative", sql`${t.totalCents} >= 0`),
+  ],
+);
+
+export const posSaleItems = pgTable(
+  "pos_sale_items",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    saleId: uuid()
+      .notNull()
+      .references(() => posSales.id, { onDelete: "cascade" }),
+    variantId: uuid().references(() => productVariants.id, { onDelete: "set null" }),
+    productId: uuid().references(() => products.id, { onDelete: "set null" }),
+    sku: text().notNull(),
+    productName: text().notNull(),
+    colorName: text().notNull(),
+    sizeLabel: text().notNull(),
+    unitPriceCents: integer().notNull(),
+    quantity: integer().notNull(),
+    /** Parte de la promo "N x S/" que le toca a esta línea. */
+    discountCents: integer().notNull().default(0),
+    totalCents: integer().notNull(),
+    promotionName: text(),
+  },
+  (t) => [index("pos_sale_items_sale_idx").on(t.saleId), index("pos_sale_items_variant_idx").on(t.variantId), check("pos_sale_items_quantity_positive", sql`${t.quantity} > 0`)],
+);
+
+export const posPaymentMethod = pgEnum("pos_payment_method", ["efectivo", "yape", "plin", "tarjeta", "transferencia"]);
+
+/** Cómo se pagó: una venta puede pagarse con varios medios. En efectivo se guarda lo recibido (el vuelto sale de ahí). */
+export const posPayments = pgTable(
+  "pos_payments",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    saleId: uuid()
+      .notNull()
+      .references(() => posSales.id, { onDelete: "cascade" }),
+    method: posPaymentMethod().notNull(),
+    amountCents: integer().notNull(),
+    receivedCents: integer(),
+    /** N° de operación de Yape, Plin, la tarjeta o la transferencia. */
+    reference: text(),
+  },
+  (t) => [index("pos_payments_sale_idx").on(t.saleId), check("pos_payments_amount_positive", sql`${t.amountCents} > 0`)],
 );
 
 // ─── Promociones ─────────────────────────────────────────────────────────────
@@ -430,8 +585,6 @@ export const districts = pgTable(
 );
 
 // ─── Clientes y pedidos ──────────────────────────────────────────────────────
-
-export const documentType = pgEnum("document_type", ["dni", "ce", "pasaporte", "ruc"]);
 
 /** Cliente = quien compra (con o sin cuenta). Se identifica por email. */
 export const customers = pgTable(

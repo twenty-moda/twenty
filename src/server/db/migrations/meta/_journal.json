@@ -127,6 +127,13 @@
       "when": 1793301659932,
       "tag": "0017_stock-operations",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793313545201,
+      "tag": "0018_pos-and-cash",
+      "breakpoints": true
     }
   ]
 }

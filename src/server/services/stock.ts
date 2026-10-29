@@ -31,6 +31,7 @@ export type StockChange = {
 export type MoveContext = {
   type: StockMovementType;
   orderId?: string | null;
+  posSaleId?: string | null;
   userId?: string | null;
   note?: string | null;
   unitCostCents?: number | null;
@@ -132,6 +133,7 @@ export async function moveStock(tx: Tx, changes: StockChange[], ctx: MoveContext
         balanceAfter: quantity,
         unitCostCents: c.unitCostCents,
         orderId: ctx.orderId ?? null,
+        posSaleId: ctx.posSaleId ?? null,
         userId: ctx.userId ?? null,
         note: ctx.note?.trim() || null,
       })
