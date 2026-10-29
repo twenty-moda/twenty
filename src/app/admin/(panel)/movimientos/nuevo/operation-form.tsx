@@ -155,7 +155,7 @@ export function OperationForm({ warehouses, variants, initialKind }: { warehouse
                 </label>
                 {kind === "ingreso" ? (
                   <label className="flex items-center gap-2 text-sm" title="Costo por unidad (para el kardex valorizado)">
-                    <span className="text-muted">Costo S/</span>
+                    <span className="whitespace-nowrap text-muted">Costo S/</span>
                     <input
                       inputMode="decimal"
                       value={l.cost}
