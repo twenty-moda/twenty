@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/server/db/client";
-import { grantAdmin, revokeAdmin } from "@/server/services/accounts";
+import { grantPanelAccess, PANEL_ROLES, revokeAdmin } from "@/server/services/accounts";
 import { getSiteSettings } from "@/server/services/content";
 import { emailConfigured } from "@/server/services/email";
 import { sendAdminInvite } from "@/server/services/notifications";
@@ -13,17 +13,22 @@ import { failure, form, success, zodFailure, type ActionState } from "../../_lib
 const inviteSchema = z.object({
   name: z.string().trim().min(2, "Escribe su nombre").max(80),
   email: z.string().trim().toLowerCase().pipe(z.email("Revisa el correo")),
+  role: z.enum(PANEL_ROLES),
 });
 
 export async function addAdminAction(_: ActionState, fd: FormData): Promise<ActionState> {
   const admin = await requireAdmin();
-  const parsed = inviteSchema.safeParse({ name: form.text(fd, "name"), email: form.text(fd, "email") });
+  const parsed = inviteSchema.safeParse({ name: form.text(fd, "name"), email: form.text(fd, "email"), role: form.text(fd, "role") || "admin" });
   if (!parsed.success) return zodFailure(parsed.error);
 
   const db = getDb();
-  const user = await grantAdmin(db, parsed.data);
+  const result = await grantPanelAccess(db, parsed.data);
+  if (!result.ok) return failure(result.message);
+  const user = result.user;
   refresh();
-  if (user.alreadyAdmin) return success(`${user.email} ya tenía acceso al panel.`);
+  const roleLabel = parsed.data.role === "admin" ? "admin" : "vendedor (punto de venta y caja)";
+  if (result.previousRole === parsed.data.role) return success(`${user.email} ya tenía ese acceso.`);
+  if (result.previousRole === "admin" || result.previousRole === "vendedor") return success(`Listo: ${user.email} ahora es ${roleLabel}.`);
 
   const how = "Entra en /admin/login con su Google o con «Crear contraseña» usando ese correo.";
   if (!form.bool(fd, "notify") || !emailConfigured()) return success(`Listo: ${user.email} ya tiene acceso. ${how}`);

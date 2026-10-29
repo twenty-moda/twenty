@@ -4,13 +4,13 @@ import { refresh, revalidateTag } from "next/cache";
 import { cacheTags } from "@/lib/cache-tags";
 import { getDb } from "@/server/db/client";
 import { findCustomerByDocument, getPosSale, openCashSession, registerSale, saleInputSchema, type PosSaleDetail } from "@/server/services/pos";
-import { requireAdmin } from "../../_lib/auth";
+import { requireStaff } from "../../_lib/auth";
 import { failure, form, success, type ActionState } from "../../_lib/action-state";
 
 export async function openCashAction(warehouseId: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  const admin = await requireAdmin();
+  const user = await requireStaff();
   const openingCents = form.cents(fd, "opening") ?? 0;
-  const result = await openCashSession(getDb(), { warehouseId, openingCents, userId: admin.id });
+  const result = await openCashSession(getDb(), { warehouseId, openingCents, userId: user.id });
   if (!result.ok) return failure(result.message);
   refresh();
   return success(`Caja #${result.number} abierta.`);
@@ -19,11 +19,11 @@ export async function openCashAction(warehouseId: string, _: ActionState, fd: Fo
 export type SaleActionResult = { ok: true; sale: PosSaleDetail } | { ok: false; message: string; variantId?: string };
 
 export async function registerSaleAction(input: unknown): Promise<SaleActionResult> {
-  const admin = await requireAdmin();
+  const user = await requireStaff();
   const parsed = saleInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0].message };
   const db = getDb();
-  const result = await registerSale(db, parsed.data, admin.id);
+  const result = await registerSale(db, parsed.data, user.id);
   if (!result.ok) return result;
   // Igual que un pedido web: las fichas muestran el stock nuevo y el catálogo, si algo se agotó.
   for (const slug of result.productSlugs) revalidateTag(cacheTags.product(slug), "max");
@@ -34,6 +34,6 @@ export async function registerSaleAction(input: unknown): Promise<SaleActionResu
 }
 
 export async function findCustomerAction(documentNumber: string) {
-  await requireAdmin();
+  await requireStaff();
   return findCustomerByDocument(getDb(), documentNumber);
 }

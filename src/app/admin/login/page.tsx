@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { FirebaseSignIn } from "@/components/account/firebase-sign-in";
 import { Logo } from "@/components/store/logo";
 import { firebaseWebConfig } from "@/lib/firebase-config";
-import { getAdmin } from "../_lib/auth";
+import { getStaff } from "../_lib/auth";
 
 // El admin se arma en el servidor en cada visita (lee la sesión): no se exige navegación instantánea.
 export const instant = false;
@@ -32,6 +32,7 @@ export default function AdminLoginPage() {
 }
 
 async function RedirectIfLoggedIn({ children }: { children: React.ReactNode }) {
-  if (await getAdmin()) redirect("/admin");
+  const user = await getStaff();
+  if (user) redirect(user.role === "admin" ? "/admin" : "/admin/pos");
   return children;
 }

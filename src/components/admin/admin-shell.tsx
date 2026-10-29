@@ -36,7 +36,8 @@ import { Sheet } from "../ui/sheet";
 type Badge = "orders" | "messages" | "complaints";
 type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: Badge };
 
-const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
+/** `staff`: el grupo que también ve el vendedor (el resto es solo del admin). */
+const NAV_GROUPS: { title?: string; staff?: boolean; items: NavItem[] }[] = [
   { items: [{ href: "/admin", label: "Resumen", icon: LayoutDashboard }] },
   {
     title: "Ventas",
@@ -49,6 +50,7 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
   },
   {
     title: "Tienda",
+    staff: true,
     items: [
       { href: "/admin/pos", label: "Punto de venta", icon: ScanBarcode },
       { href: "/admin/caja", label: "Caja", icon: Banknote },
@@ -88,9 +90,11 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
   },
 ];
 const NAV = NAV_GROUPS.flatMap((g) => g.items);
+const STAFF_GROUPS = NAV_GROUPS.filter((g) => g.staff);
 
 type AdminShellProps = {
   user: { name: string; email: string };
+  role: "admin" | "vendedor";
   openOrders: number;
   /** Pendientes por sección (se muestran como número en el menú). */
   badges: Record<Badge, number>;
@@ -98,7 +102,7 @@ type AdminShellProps = {
   children: ReactNode;
 };
 
-export function AdminShell({ user, openOrders, badges, logout, children }: AdminShellProps) {
+export function AdminShell({ user, role, openOrders, badges, logout, children }: AdminShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const current = NAV.find((n) => (n.href === "/admin" ? pathname === "/admin" : pathname.startsWith(n.href)));
@@ -106,7 +110,7 @@ export function AdminShell({ user, openOrders, badges, logout, children }: Admin
   const nav = (onNavigate?: () => void) => (
     <nav aria-label="Panel" className="flex flex-1 flex-col">
       <div className="space-y-4 px-3">
-        {NAV_GROUPS.map((group, gi) => (
+        {(role === "admin" ? NAV_GROUPS : STAFF_GROUPS).map((group, gi) => (
           <div key={group.title ?? gi}>
             {group.title ? <p className="mb-1 px-3 text-[11px] font-semibold tracking-widest text-subtle uppercase">{group.title}</p> : null}
             <ul className="space-y-1">
@@ -164,7 +168,7 @@ export function AdminShell({ user, openOrders, badges, logout, children }: Admin
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[256px_minmax(0,1fr)]">
       <aside className="sticky top-0 hidden h-dvh flex-col overflow-y-auto border-r border-line bg-surface pt-5 lg:flex">
-        <Link href="/admin" className="mb-6 px-6">
+        <Link href={role === "admin" ? "/admin" : "/admin/pos"} className="mb-6 px-6">
           <Logo className="w-28" />
         </Link>
         {nav()}

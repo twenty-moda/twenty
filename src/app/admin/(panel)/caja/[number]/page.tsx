@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { AdminPage, Card, EmptyState } from "@/components/admin/ui";
 import { getDb } from "@/server/db/client";
 import { getCashSession, listPosSales } from "@/server/services/pos";
-import { requireAdmin } from "../../../_lib/auth";
+import { requireStaff } from "../../../_lib/auth";
 import { SalesList } from "../../ventas-tienda/sales-list";
 import { CashMovementsList, CashSummary } from "../cash-summary";
 
@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: PageProps<"/admin/caja/[numbe
 export const instant = false;
 
 export default async function CashSessionPage({ params }: PageProps<"/admin/caja/[number]">) {
-  await requireAdmin();
+  await requireStaff();
   const n = Number((await params).number);
   if (!Number.isInteger(n)) notFound();
   const db = getDb();

@@ -13,18 +13,33 @@ import { createSession, deleteSession, validateSession, type SessionUser } from 
 
 const SESSION_COOKIE = "twenty_session";
 
-export const getAdmin = cache(async (): Promise<SessionUser | null> => {
+/** Quien entra al panel: admin (todo) o vendedor (punto de venta, caja y ventas en tienda). */
+export const getStaff = cache(async (): Promise<SessionUser | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   // Todo lo que sigue (vencimiento de la sesión, datos del panel) depende de la hora actual: es por request.
   await connection();
   if (!token) return null;
   const user = await validateSession(getDb(), token, "admin");
+  return user?.role === "admin" || user?.role === "vendedor" ? user : null;
+});
+
+export const getAdmin = cache(async (): Promise<SessionUser | null> => {
+  const user = await getStaff();
   return user?.role === "admin" ? user : null;
 });
 
-export async function requireAdmin(): Promise<SessionUser> {
-  const user = await getAdmin();
+/** Páginas y acciones de la tienda (punto de venta, caja, ventas en tienda): admin o vendedor. */
+export async function requireStaff(): Promise<SessionUser> {
+  const user = await getStaff();
   if (!user) redirect("/admin/login");
+  return user;
+}
+
+/** Todo lo demás del panel. Un vendedor que llega aquí vuelve al punto de venta. */
+export async function requireAdmin(): Promise<SessionUser> {
+  const user = await getStaff();
+  if (!user) redirect("/admin/login");
+  if (user.role !== "admin") redirect("/admin/pos");
   return user;
 }
 

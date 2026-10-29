@@ -6,7 +6,7 @@ import { formatPrice } from "@/lib/money";
 import { getDb } from "@/server/db/client";
 import { listWarehouses } from "@/server/services/inventory";
 import { getCashSession, getOpenSession, listCashSessions } from "@/server/services/pos";
-import { requireAdmin } from "../../_lib/auth";
+import { requireStaff } from "../../_lib/auth";
 import { CashMovementForm, CloseCashForm } from "./cash-forms";
 import { CashMovementsList, CashSummary } from "./cash-summary";
 
@@ -15,7 +15,7 @@ export const instant = false;
 export const metadata: Metadata = { title: "Caja" };
 
 export default async function CashPage({ searchParams }: PageProps<"/admin/caja">) {
-  await requireAdmin();
+  await requireStaff();
   const page = Number((await searchParams).pagina) || 1;
   const db = getDb();
   const warehouses = (await listWarehouses(db)).filter((w) => w.isActive);

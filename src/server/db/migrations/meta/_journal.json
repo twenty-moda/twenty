@@ -134,6 +134,13 @@
       "when": 1793313545201,
       "tag": "0018_pos-and-cash",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793315008524,
+      "tag": "0019_vendedor-role",
+      "breakpoints": true
     }
   ]
 }

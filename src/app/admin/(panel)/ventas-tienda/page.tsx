@@ -3,7 +3,7 @@ import Link from "next/link";
 import { AdminPage, buttonClass, EmptyState, Pagination, SearchBox } from "@/components/admin/ui";
 import { getDb } from "@/server/db/client";
 import { listPosSales } from "@/server/services/pos";
-import { requireAdmin } from "../../_lib/auth";
+import { requireStaff } from "../../_lib/auth";
 import { SalesList } from "./sales-list";
 
 // Lista filtrada por la URL (búsqueda, página): se arma en el servidor en cada visita.
@@ -11,7 +11,7 @@ export const instant = false;
 export const metadata: Metadata = { title: "Ventas en tienda" };
 
 export default async function StoreSalesPage({ searchParams }: PageProps<"/admin/ventas-tienda">) {
-  await requireAdmin();
+  await requireStaff();
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : undefined;
   const page = Number(params.pagina) || 1;

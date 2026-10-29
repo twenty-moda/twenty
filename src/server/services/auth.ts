@@ -6,11 +6,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { sessions, users } from "../db/schema";
+import { sessions, users, type UserRole } from "../db/schema";
 
 export const SESSION_DAYS = 30;
 
-export type SessionUser = { id: string; name: string; email: string; role: "admin" | "customer" };
+export type SessionUser = { id: string; name: string; email: string; role: UserRole };
 /** "admin" = panel; "cuenta" = cuenta de cliente en la tienda. Cada cookie solo acepta sesiones de su tipo. */
 export type SessionScope = "admin" | "cuenta";
 

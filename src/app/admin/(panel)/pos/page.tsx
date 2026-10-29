@@ -5,7 +5,7 @@ import { getDb } from "@/server/db/client";
 import { getSiteSettings } from "@/server/services/content";
 import { listWarehouses } from "@/server/services/inventory";
 import { getOpenSession, listPosVariants } from "@/server/services/pos";
-import { requireAdmin } from "../../_lib/auth";
+import { requireStaff } from "../../_lib/auth";
 import { OpenCashForm } from "./open-cash-form";
 import { PosScreen } from "./pos-screen";
 
@@ -14,7 +14,7 @@ export const instant = false;
 export const metadata: Metadata = { title: "Punto de venta" };
 
 export default async function PosPage({ searchParams }: PageProps<"/admin/pos">) {
-  await requireAdmin();
+  await requireStaff();
   const { tienda } = await searchParams;
   const db = getDb();
   const warehouses = (await listWarehouses(db)).filter((w) => w.isActive);

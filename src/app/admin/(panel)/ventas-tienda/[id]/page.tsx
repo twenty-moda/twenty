@@ -8,7 +8,7 @@ import { formatDocNumber, POS_DOCUMENT_LABEL } from "@/lib/pos";
 import { getDb } from "@/server/db/client";
 import { getSiteSettings } from "@/server/services/content";
 import { getPosSale } from "@/server/services/pos";
-import { requireAdmin } from "../../../_lib/auth";
+import { requireStaff } from "../../../_lib/auth";
 import { ReprintButton, VoidSaleForm } from "./sale-actions";
 
 export const metadata: Metadata = { title: "Venta en tienda" };
@@ -18,7 +18,7 @@ export const instant = false;
 const UUID = /^[0-9a-f-]{36}$/i;
 
 export default async function StoreSalePage({ params }: PageProps<"/admin/ventas-tienda/[id]">) {
-  await requireAdmin();
+  const me = await requireStaff();
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const db = getDb();
@@ -49,8 +49,10 @@ export default async function StoreSalePage({ params }: PageProps<"/admin/ventas
             </Card>
           ) : sale.sessionClosedAt ? (
             <p className="text-sm text-muted">La caja de esta venta ya se cerró: ya no se puede anular. Un cambio o devolución se registra como una venta nueva o una salida de caja.</p>
-          ) : (
+          ) : me.role === "admin" ? (
             <VoidSaleForm saleId={sale.id} />
+          ) : (
+            <p className="text-sm text-muted">Para anular una venta, pídeselo a un admin.</p>
           )}
         </div>
         <div className={cn("w-fit rounded-lg bg-white py-2 shadow-lg", fontClass)}>

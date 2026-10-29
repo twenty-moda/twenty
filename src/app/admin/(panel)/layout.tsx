@@ -5,7 +5,7 @@ import { getDb } from "@/server/db/client";
 import { countPendingComplaints } from "@/server/services/complaints";
 import { countNewMessages } from "@/server/services/messages";
 import { countOrdersByStatus } from "@/server/services/orders";
-import { requireAdmin } from "../_lib/auth";
+import { requireStaff } from "../_lib/auth";
 import { logoutAction } from "../login/actions";
 
 // La sesión se lee dentro de <Suspense>: el marco del panel sale al instante y el contenido llega después.
@@ -18,13 +18,22 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
 }
 
 async function PanelShell({ children }: { children: React.ReactNode }) {
-  const admin = await requireAdmin();
+  const user = await requireStaff();
+  // El vendedor solo ve la tienda: no hacen falta los contadores de pedidos, mensajes y reclamos.
+  if (user.role !== "admin") {
+    return (
+      <AdminShell user={{ name: user.name, email: user.email }} role="vendedor" openOrders={0} badges={{ orders: 0, messages: 0, complaints: 0 }} logout={logoutAction}>
+        {children}
+      </AdminShell>
+    );
+  }
   const db = getDb();
   const [byStatus, messages, complaints] = await Promise.all([countOrdersByStatus(db), countNewMessages(db), countPendingComplaints(db)]);
   const openOrders = OPEN_STATUSES.filter((s) => s !== "enviado").reduce((sum, s) => sum + (byStatus[s] ?? 0), 0);
   return (
     <AdminShell
-      user={{ name: admin.name, email: admin.email }}
+      user={{ name: user.name, email: user.email }}
+      role="admin"
       openOrders={openOrders}
       badges={{ orders: openOrders, messages, complaints }}
       logout={logoutAction}

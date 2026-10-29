@@ -25,6 +25,23 @@ export function AddAdminForm({ emailEnabled }: { emailEnabled: boolean }) {
           <span className="mt-1.5 block text-xs text-muted">Si entrará con Google, el correo de su cuenta de Google.</span>
         </label>
       </div>
+      <fieldset className="space-y-2">
+        <legend className="mb-1.5 text-sm font-medium">Qué puede hacer</legend>
+        <label className="flex items-start gap-3 text-sm">
+          <input type="radio" name="role" value="admin" defaultChecked className="mt-0.5 size-5 accent-white" />
+          <span>
+            <span className="font-semibold">Admin</span>
+            <span className="block text-muted">Todo el panel: pedidos, productos, inventario, contenido y equipo. Recibe los avisos de pedidos.</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 text-sm">
+          <input type="radio" name="role" value="vendedor" className="mt-0.5 size-5 accent-white" />
+          <span>
+            <span className="font-semibold">Vendedor</span>
+            <span className="block text-muted">Solo el punto de venta, la caja y las ventas en tienda. No puede anular ventas.</span>
+          </span>
+        </label>
+      </fieldset>
       {emailEnabled ? <Toggle name="notify" defaultChecked label="Enviarle un correo con las instrucciones para entrar" /> : null}
       <FormAlert state={state} />
       <SubmitButton pendingLabel="Dando acceso…">Dar acceso al panel</SubmitButton>

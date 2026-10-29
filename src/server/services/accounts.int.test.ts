@@ -260,4 +260,22 @@ describe("equipo del panel", () => {
     expect(await accounts.revokeAdmin(db, c.id, c.id)).toMatchObject({ ok: false });
     expect((await accounts.listAdmins(db)).map((x) => x.email)).toEqual(["c@example.com"]);
   });
+
+  it("vendedor: entra al panel pero no cuenta como admin; al único admin no se le puede pasar a vendedor", async () => {
+    const admin = await accounts.grantAdmin(db, { email: "jefa@example.com", name: "Jefa" });
+    const seller = await accounts.grantPanelAccess(db, { email: "Vende@Example.com", name: "Vende", role: "vendedor" });
+    expect(seller).toMatchObject({ ok: true, previousRole: null, user: { email: "vende@example.com" } });
+    if (!seller.ok) return;
+
+    expect((await accounts.listTeam(db)).map((t) => [t.email, t.role])).toEqual([
+      ["jefa@example.com", "admin"],
+      ["vende@example.com", "vendedor"],
+    ]);
+    expect((await accounts.listAdmins(db)).map((a) => a.email)).toEqual(["jefa@example.com"]);
+    expect(await accounts.grantPanelAccess(db, { email: "jefa@example.com", name: "Jefa", role: "vendedor" })).toEqual({ ok: false, message: "Tiene que quedar al menos un admin." });
+
+    // Quitarle el acceso a un vendedor no depende de cuántos admins hay.
+    expect(await accounts.revokeAdmin(db, seller.user.id, admin.id)).toEqual({ ok: true, email: "vende@example.com" });
+    expect((await accounts.listTeam(db)).map((t) => t.email)).toEqual(["jefa@example.com"]);
+  });
 });

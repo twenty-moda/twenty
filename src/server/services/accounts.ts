@@ -4,11 +4,11 @@
  * reúne los pedidos hechos con ese email, los datos para el checkout (en `customers`, el mismo registro que llena
  * cada compra) y las direcciones guardadas.
  */
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { AddressInput, ProfileInput } from "@/lib/account-forms";
 import type { Courier } from "@/lib/couriers";
 import type { Db } from "../db/client";
-import { addresses, customers, districts, orderItems, orders, sessions, users } from "../db/schema";
+import { addresses, customers, districts, orderItems, orders, sessions, users, type UserRole } from "../db/schema";
 import type { FirebaseIdentity } from "./firebase-auth";
 import { ORDERS_ID } from "./orders";
 
@@ -25,7 +25,7 @@ export async function signInWithFirebase(
   db: Db,
   identity: FirebaseIdentity,
   { createIfMissing = true, now = new Date() }: { createIfMissing?: boolean; now?: Date } = {},
-): Promise<{ ok: true; userId: string; role: "admin" | "customer" } | { ok: false; reason: "inactive" | "not_found" }> {
+): Promise<{ ok: true; userId: string; role: UserRole } | { ok: false; reason: "inactive" | "not_found" }> {
   return db.transaction(async (tx) => {
     const [byUid] = await tx.select().from(users).where(eq(users.firebaseUid, identity.uid)).limit(1);
     const [byEmail] = byUid ? [] : await tx.select().from(users).where(eq(users.email, identity.email)).limit(1);
@@ -297,17 +297,42 @@ export async function linkCustomerToAccount(db: Db, user: AccountUser, orderEmai
  * admin. La persona entra en /admin/login con Google o creando su contraseña con ese correo (Firebase).
  */
 export async function grantAdmin(db: Db, input: { email: string; name: string }) {
-  const email = input.email.trim().toLowerCase();
-  const [before] = await db.select({ role: users.role }).from(users).where(eq(users.email, email)).limit(1);
-  const [user] = await db
-    .insert(users)
-    .values({ email, name: input.name.trim(), role: "admin" })
-    .onConflictDoUpdate({ target: users.email, set: { role: "admin", isActive: true, updatedAt: new Date() } })
-    .returning({ id: users.id, email: users.email, name: users.name });
-  return { ...user, alreadyAdmin: before?.role === "admin" };
+  const result = await grantPanelAccess(db, { ...input, role: "admin" });
+  if (!result.ok) throw new Error(result.message); // dar admin nunca deja el panel sin admins
+  return { ...result.user, alreadyAdmin: result.previousRole === "admin" };
 }
 
-/** Quienes pueden entrar al panel. */
+/** Roles que entran al panel: el admin ve todo; el vendedor, el punto de venta, la caja y las ventas en tienda. */
+export type PanelRole = Extract<UserRole, "admin" | "vendedor">;
+export const PANEL_ROLES: PanelRole[] = ["admin", "vendedor"];
+
+/**
+ * Da acceso al panel con un rol (crea la cuenta o cambia el de una que ya existía, también la de un cliente). Pasar
+ * a vendedor al único admin dejaría el panel sin nadie que lo maneje: no se permite.
+ */
+export async function grantPanelAccess(
+  db: Db,
+  input: { email: string; name: string; role: PanelRole },
+): Promise<{ ok: true; user: { id: string; email: string; name: string }; previousRole: UserRole | null } | { ok: false; message: string }> {
+  const email = input.email.trim().toLowerCase();
+  return db.transaction(async (tx) => {
+    const admins = await tx
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(and(eq(users.role, "admin"), eq(users.isActive, true)))
+      .for("update");
+    const [before] = await tx.select({ role: users.role }).from(users).where(eq(users.email, email)).limit(1);
+    if (input.role !== "admin" && before?.role === "admin" && admins.length <= 1) return { ok: false as const, message: "Tiene que quedar al menos un admin." };
+    const [user] = await tx
+      .insert(users)
+      .values({ email, name: input.name.trim(), role: input.role })
+      .onConflictDoUpdate({ target: users.email, set: { role: input.role, isActive: true, updatedAt: new Date() } })
+      .returning({ id: users.id, email: users.email, name: users.name });
+    return { ok: true as const, user, previousRole: before?.role ?? null };
+  });
+}
+
+/** Admins activos (reciben los avisos de pedidos). */
 export function listAdmins(db: Db) {
   return db
     .select({ id: users.id, name: users.name, email: users.email, lastLoginAt: users.lastLoginAt })
@@ -316,21 +341,30 @@ export function listAdmins(db: Db) {
     .orderBy(users.name);
 }
 
+/** Quienes entran al panel, con su rol. */
+export function listTeam(db: Db) {
+  return db
+    .select({ id: users.id, name: users.name, email: users.email, role: users.role, lastLoginAt: users.lastLoginAt })
+    .from(users)
+    .where(and(inArray(users.role, PANEL_ROLES), eq(users.isActive, true)))
+    .orderBy(users.role, users.name);
+}
+
 /**
- * Quita el acceso al panel: la cuenta sigue siendo de cliente en la tienda y sus sesiones del panel se cierran al
- * instante. No se puede quitar el acceso propio ni dejar el panel sin admins.
+ * Quita el acceso al panel (admin o vendedor): la cuenta sigue siendo de cliente en la tienda y sus sesiones del
+ * panel se cierran al instante. No se puede quitar el acceso propio ni dejar el panel sin admins.
  */
 export async function revokeAdmin(db: Db, userId: string, actorId: string): Promise<{ ok: true; email: string } | { ok: false; message: string }> {
   if (userId === actorId) return { ok: false, message: "No puedes quitarte el acceso a ti mismo: pídeselo a otro admin." };
   return db.transaction(async (tx) => {
-    const admins = await tx
-      .select({ id: users.id, email: users.email })
+    const team = await tx
+      .select({ id: users.id, email: users.email, role: users.role })
       .from(users)
-      .where(and(eq(users.role, "admin"), eq(users.isActive, true)))
+      .where(and(inArray(users.role, PANEL_ROLES), eq(users.isActive, true)))
       .for("update");
-    const target = admins.find((a) => a.id === userId);
+    const target = team.find((a) => a.id === userId);
     if (!target) return { ok: false as const, message: "Esa persona ya no tiene acceso al panel." };
-    if (admins.length <= 1) return { ok: false as const, message: "Tiene que quedar al menos un admin." };
+    if (target.role === "admin" && team.filter((a) => a.role === "admin").length <= 1) return { ok: false as const, message: "Tiene que quedar al menos un admin." };
     await tx.update(users).set({ role: "customer", updatedAt: new Date() }).where(eq(users.id, userId));
     await tx.delete(sessions).where(and(eq(sessions.userId, userId), eq(sessions.scope, "admin")));
     return { ok: true as const, email: target.email };

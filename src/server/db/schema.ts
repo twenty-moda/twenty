@@ -507,7 +507,9 @@ export const settings = pgTable("settings", {
 
 // ─── Usuarios y sesiones ─────────────────────────────────────────────────────
 
-export const userRole = pgEnum("user_role", ["admin", "customer"]);
+/** "vendedor" = equipo de la tienda: en el panel solo ve el punto de venta, la caja y las ventas en tienda. */
+export const userRole = pgEnum("user_role", ["admin", "customer", "vendedor"]);
+export type UserRole = (typeof userRole.enumValues)[number];
 
 export const users = pgTable("users", {
   id: uuid().primaryKey().defaultRandom(),
