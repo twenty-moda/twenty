@@ -30,7 +30,12 @@ export default async function LabelsPage({ searchParams }: PageProps<"/admin/eti
       }
       back={operation ? { href: `/admin/movimientos/${operation.number}`, label: `Operación #${operation.number}` } : undefined}
     >
-      <LabelSheet variants={variants} warehouses={warehouses.filter((w) => w.isActive).map(({ id, name }) => ({ id, name }))} initialLines={initialLines} />
+      <LabelSheet
+        variants={variants}
+        warehouses={warehouses.filter((w) => w.isActive).map(({ id, name }) => ({ id, name }))}
+        initialLines={initialLines}
+        initialWarehouseId={operation?.toWarehouseId ?? undefined}
+      />
     </AdminPage>
   );
 }

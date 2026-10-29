@@ -233,6 +233,7 @@ export async function getOperation(db: Db, number: number) {
       note: stockOperations.note,
       createdAt: stockOperations.createdAt,
       fromName: fromWarehouse.name,
+      toWarehouseId: stockOperations.toWarehouseId,
       toName: toWarehouse.name,
       userName: users.name,
     })

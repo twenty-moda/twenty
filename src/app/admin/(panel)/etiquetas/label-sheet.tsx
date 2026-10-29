@@ -50,12 +50,14 @@ function Label({ variant, showPrice, format }: { variant: PickerVariant; showPri
   );
 }
 
-export function LabelSheet({ variants, warehouses, initialLines }: { variants: PickerVariant[]; warehouses: Warehouse[]; initialLines: Line[] }) {
+type LabelSheetProps = { variants: PickerVariant[]; warehouses: Warehouse[]; initialLines: Line[]; initialWarehouseId?: string };
+
+export function LabelSheet({ variants, warehouses, initialLines, initialWarehouseId }: LabelSheetProps) {
   const [lines, setLines] = useState<Line[]>(initialLines);
   const [query, setQuery] = useState("");
   const [format, setFormat] = useState<FormatKey>("50x25");
   const [showPrice, setShowPrice] = useState(true);
-  const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id ?? "");
+  const [warehouseId, setWarehouseId] = useState(warehouses.find((w) => w.id === initialWarehouseId)?.id ?? warehouses[0]?.id ?? "");
   const [state, setState] = useState<ActionState>(idle);
   const [printing, setPrinting] = useState(false);
 
