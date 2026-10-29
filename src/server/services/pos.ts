@@ -260,7 +260,7 @@ export const saleInputSchema = z.object({
 export type SaleInput = z.infer<typeof saleInputSchema>;
 
 export type RegisterSaleResult =
-  | { ok: true; saleId: string; series: string; number: number; totalCents: number; changeCents: number; productSlugs: string[] }
+  | { ok: true; saleId: string; series: string; number: number; totalCents: number; changeCents: number; productSlugs: string[]; soldOut: boolean }
   | (Fail & { variantId?: string });
 
 /**
@@ -363,7 +363,7 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
           reference: p.reference?.trim() || null,
         })),
       );
-      await moveStock(
+      const balances = await moveStock(
         tx,
         variantIds.map((id) => ({ variantId: id, warehouseId: input.warehouseId, quantity: -quantities.get(id)! })),
         { type: "venta_tienda", posSaleId: sale.id, userId: sellerId },
@@ -375,7 +375,9 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
         number,
         totalCents: total.totalCents,
         changeCents: settled.changeCents,
+        // Si vende del stock de la web, la tienda online tiene que mostrar lo que queda (como un pedido web).
         productSlugs: warehouse.sellsOnline ? [...new Set(rows.map((r) => r.productSlug))] : [],
+        soldOut: warehouse.sellsOnline && balances.some((b) => b.quantity === 0),
       };
     });
   } catch (error) {

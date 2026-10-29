@@ -508,17 +508,17 @@ html:has(.whatsapp-float) .footer-credit {
   }
 }
 
-/* Etiquetas con código de barras (admin/etiquetas): al imprimir sale solo la hoja de etiquetas, en blanco y negro. */
+/* Hojas que se imprimen solas desde el panel (etiquetas, ticket del POS: components/admin/print-sheet.tsx). */
 @media print {
-  body:has(> .print-labels) {
+  body:has(> .print-sheet) {
     background: #fff;
   }
-  body:has(> .print-labels) > :not(.print-labels) {
+  body:has(> .print-sheet) > :not(.print-sheet) {
     display: none !important;
   }
   /* El bloque de la talla y la banda de rebaja son fondos negros: sin esto Chrome no los imprime. */
-  .print-labels,
-  .print-labels * {
+  .print-sheet,
+  .print-sheet * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }

@@ -1,10 +1,10 @@
 "use client";
 
 import { Printer, ScanBarcode, Trash2 } from "lucide-react";
-import { memo, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { memo, useMemo, useState } from "react";
 import { Combobox } from "@/components/admin/combobox";
 import { FormAlert } from "@/components/admin/form-controls";
+import { PrintSheet, usePrintSheet } from "@/components/admin/print-sheet";
 import { buttonClass } from "@/components/admin/ui";
 import { Field, inputCompactClass, selectClass, SelectWrap } from "@/components/ui/form";
 import { failure, idle, type ActionState } from "@/lib/action-state";
@@ -52,7 +52,8 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
   const [showPrice, setShowPrice] = useState(true);
   const [warehouseId, setWarehouseId] = useState(warehouses.find((w) => w.id === initialWarehouseId)?.id ?? warehouses[0]?.id ?? "");
   const [state, setState] = useState<ActionState>(idle);
-  const [printing, setPrinting] = useState(false);
+  // La hoja se arma recién al imprimir (pueden ser cientos de códigos) y se quita al terminar.
+  const { printing, print } = usePrintSheet();
 
   // Se arman una vez: con el lector cada lectura es una ráfaga de teclas y la página no puede rehacerlas en cada una.
   const { byId, byLabel, bySku, products, options } = useMemo(() => {
@@ -69,20 +70,6 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
 
   const labels = useMemo(() => lines.flatMap((l) => Array.from({ length: l.quantity }, () => byId.get(l.variantId)!)), [lines, byId]);
   const f = FORMATS[format];
-
-  // Se arma la hoja de impresión recién al imprimir (pueden ser cientos de códigos) y se quita al terminar.
-  useEffect(() => {
-    if (!printing) return;
-    const done = () => setPrinting(false);
-    window.addEventListener("afterprint", done);
-    let cancelled = false;
-    // Con las fuentes listas: si no, la térmica imprime la tipografía de respaldo.
-    document.fonts.ready.then(() => requestAnimationFrame(() => !cancelled && window.print()));
-    return () => {
-      cancelled = true;
-      window.removeEventListener("afterprint", done);
-    };
-  }, [printing]);
 
   const add = (items: PickerVariant[], quantity: (v: PickerVariant) => number) =>
     setLines((ls) => {
@@ -214,33 +201,29 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
 
       {labels.length ? <Preview labels={labels} showPrice={showPrice} format={format} fontClass={fontClass} /> : null}
 
-      {printing
-        ? createPortal(
-            <div className={cn("print-labels", fontClass)}>
-              <style>{f.perSheet === 1 ? `@page { size: ${f.width}mm ${f.height}mm; margin: 0 }` : "@page { size: A4; margin: 0 }"}</style>
-              {f.perSheet === 1 ? (
-                labels.map((v, i) => (
-                  <div key={i} style={{ breakAfter: "page" }}>
-                    <Label variant={v} showPrice={showPrice} format={format} />
-                  </div>
-                ))
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: `repeat(${f.columns}, ${f.width}mm)` }}>
-                  {labels.map((v, i) => (
-                    <div key={i} style={(i + 1) % f.perSheet === 0 ? { breakAfter: "page" } : undefined}>
-                      <Label variant={v} showPrice={showPrice} format={format} />
-                    </div>
-                  ))}
+      {printing ? (
+        <PrintSheet page={f.perSheet === 1 ? `@page { size: ${f.width}mm ${f.height}mm; margin: 0 }` : "@page { size: A4; margin: 0 }"} className={fontClass}>
+          {f.perSheet === 1 ? (
+            labels.map((v, i) => (
+              <div key={i} style={{ breakAfter: "page" }}>
+                <Label variant={v} showPrice={showPrice} format={format} />
+              </div>
+            ))
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${f.columns}, ${f.width}mm)` }}>
+              {labels.map((v, i) => (
+                <div key={i} style={(i + 1) % f.perSheet === 0 ? { breakAfter: "page" } : undefined}>
+                  <Label variant={v} showPrice={showPrice} format={format} />
                 </div>
-              )}
-            </div>,
-            document.body,
-          )
-        : null}
+              ))}
+            </div>
+          )}
+        </PrintSheet>
+      ) : null}
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-ink/95 px-4 pt-3 backdrop-blur-md pb-safe lg:left-64">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">
-          <button type="button" onClick={() => setPrinting(true)} disabled={labels.length === 0 || printing} className={buttonClass("primary")}>
+          <button type="button" onClick={print} disabled={labels.length === 0 || printing} className={buttonClass("primary")}>
             <Printer className="size-4" aria-hidden />
             {labels.length ? `Imprimir ${labels.length} ${labels.length === 1 ? "etiqueta" : "etiquetas"}` : "Agrega prendas"}
           </button>

@@ -2,6 +2,7 @@
 
 import {
   ArrowLeftRight,
+  Banknote,
   Barcode,
   BookOpenText,
   Boxes,
@@ -15,6 +16,8 @@ import {
   LogOut,
   Menu,
   Newspaper,
+  ReceiptText,
+  ScanBarcode,
   Shirt,
   ShoppingBag,
   Tag,
@@ -42,6 +45,14 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/admin/clientes", label: "Clientes", icon: Users },
       { href: "/admin/mensajes", label: "Mensajes", icon: Inbox, badge: "messages" },
       { href: "/admin/reclamos", label: "Libro de Reclamaciones", icon: BookOpenText, badge: "complaints" },
+    ],
+  },
+  {
+    title: "Tienda",
+    items: [
+      { href: "/admin/pos", label: "Punto de venta", icon: ScanBarcode },
+      { href: "/admin/caja", label: "Caja", icon: Banknote },
+      { href: "/admin/ventas-tienda", label: "Ventas en tienda", icon: ReceiptText },
     ],
   },
   {
