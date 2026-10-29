@@ -2,6 +2,7 @@
 
 import {
   ArrowLeftRight,
+  Barcode,
   BookOpenText,
   Boxes,
   ChartColumn,
@@ -57,6 +58,7 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
     title: "Inventario",
     items: [
       { href: "/admin/movimientos", label: "Movimientos", icon: ArrowLeftRight },
+      { href: "/admin/etiquetas", label: "Etiquetas", icon: Barcode },
       { href: "/admin/almacenes", label: "Almacenes", icon: Warehouse },
     ],
   },

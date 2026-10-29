@@ -1,7 +1,8 @@
+import { Barcode } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminPage, Badge, Card, formatDateTime } from "@/components/admin/ui";
+import { AdminPage, Badge, buttonClass, Card, formatDateTime } from "@/components/admin/ui";
 import { cn } from "@/lib/cn";
 import { formatUnits, MOVEMENT_LABEL, OPERATION_LABEL } from "@/lib/inventory";
 import { formatPrice } from "@/lib/money";
@@ -41,6 +42,13 @@ export default async function OperationPage({ params }: PageProps<"/admin/movimi
       ]
         .filter(Boolean)
         .join(" · ")}
+      actions={
+        operation.kind === "salida" ? undefined : (
+          <Link href={`/admin/etiquetas?operacion=${operation.number}`} className={buttonClass("secondary")}>
+            <Barcode className="size-4" aria-hidden /> Imprimir etiquetas
+          </Link>
+        )
+      }
     >
       <div className="space-y-4">
         <Card>

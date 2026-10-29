@@ -65,7 +65,9 @@ export async function saveWarehouse(db: Db, id: string | null, input: z.infer<ty
 export type PickerVariant = {
   variantId: string;
   sku: string;
+  productId: string;
   productName: string;
+  priceCents: number;
   colorName: string;
   sizeLabel: string;
   isActive: boolean;
@@ -79,7 +81,9 @@ export async function listPickerVariants(db: Db): Promise<PickerVariant[]> {
       .select({
         variantId: productVariants.id,
         sku: productVariants.sku,
+        productId: products.id,
         productName: products.name,
+        priceCents: productVariants.priceCents,
         colorName: colors.name,
         sizeLabel: sizes.label,
         isActive: productVariants.isActive,
@@ -242,6 +246,7 @@ export async function getOperation(db: Db, number: number) {
   const lines = await db
     .select({
       id: stockMovements.id,
+      variantId: stockMovements.variantId,
       sku: productVariants.sku,
       productId: products.id,
       productName: products.name,

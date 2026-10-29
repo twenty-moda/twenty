@@ -507,3 +507,13 @@ html:has(.whatsapp-float) .footer-credit {
     animation: none !important;
   }
 }
+
+/* Etiquetas con código de barras (admin/etiquetas): al imprimir sale solo la hoja de etiquetas, en blanco y negro. */
+@media print {
+  body:has(> .print-labels) {
+    background: #fff;
+  }
+  body:has(> .print-labels) > :not(.print-labels) {
+    display: none !important;
+  }
+}
