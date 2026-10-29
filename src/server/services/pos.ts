@@ -2,7 +2,7 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
-import { PAYMENT_METHODS, saleTotal, settlePayments, type PaymentMethod } from "@/lib/pos";
+import { checkCustomer, PAYMENT_METHODS, saleTotal, settlePayments, type PaymentMethod } from "@/lib/pos";
 import { priceLines, type PricedPromotion } from "@/lib/pricing";
 import type { Db } from "../db/client";
 import {
@@ -25,6 +25,7 @@ import {
 import { activePromotionsByProduct } from "./catalog";
 import { listPickerVariants, type PickerVariant } from "./inventory";
 import { InsufficientStockError, moveStock } from "./stock";
+import { salePayload, SunatApiError, type SunatClient } from "./sunat";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Conn = Db | Tx;
@@ -230,12 +231,13 @@ export async function listPosVariants(db: Db, warehouseId: string): Promise<PosV
 
 export const saleInputSchema = z.object({
   warehouseId: z.uuid(),
-  documentType: z.enum(["nota_venta"]),
+  documentType: z.enum(posDocumentType.enumValues),
   customer: z
     .object({
       documentType: z.enum(documentType.enumValues).nullable(),
       documentNumber: z.string().trim().max(20).nullable(),
-      name: z.string().trim().max(120).nullable(),
+      name: z.string().trim().max(200).nullable(),
+      address: z.string().trim().max(200).nullable().optional(),
     })
     .nullable(),
   lines: z
@@ -298,10 +300,12 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
   if (!total.ok) return total;
   const settled = settlePayments(total.totalCents, input.payments);
   if (!settled.ok) return settled;
+  const customer = input.customer?.documentNumber || input.customer?.name ? input.customer : null;
+  const customerProblem = checkCustomer(input.documentType, total.totalCents, customer);
+  if (customerProblem) return { ok: false, message: customerProblem };
 
   const [warehouse] = await db.select({ name: warehouses.name, sellsOnline: warehouses.sellsOnline }).from(warehouses).where(eq(warehouses.id, input.warehouseId));
   if (!warehouse) return { ok: false, message: "Esa tienda no existe." };
-  const customer = input.customer?.documentNumber || input.customer?.name ? input.customer : null;
 
   try {
     return await db.transaction(async (tx) => {
@@ -325,6 +329,9 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
           customerDocumentType: customer?.documentNumber ? customer.documentType : null,
           customerDocumentNumber: customer?.documentNumber || null,
           customerName: customer?.name || null,
+          customerAddress: customer?.address || null,
+          // Boleta y factura salen a SUNAT después de guardar la venta (sendToSunat): hasta la respuesta, pendiente.
+          sunatStatus: input.documentType === "nota_venta" ? null : "pendiente",
           subtotalCents: pricing.subtotalCents,
           promoDiscountCents: pricing.discountCents,
           manualDiscountCents: input.manualDiscountCents,
@@ -387,10 +394,68 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
   }
 }
 
-/** Anula una venta de la caja abierta: el stock vuelve a la tienda y sale de los totales de la caja. */
-export async function voidSale(db: Db, input: { saleId: string; reason: string; userId: string | null }): Promise<{ ok: true; productSlugs: string[] } | Fail> {
+export type SunatSendResult = { status: "pendiente" | "aceptado" | "rechazado"; message: string | null };
+
+/**
+ * Manda a SUNAT la boleta o factura de una venta ya guardada (y la reintenta si quedó pendiente). La venta no depende
+ * de SUNAT: si la API no responde, queda pendiente con el motivo y se reintenta desde la venta. Va con
+ * `Idempotency-Key` = id de la venta, así un reintento nunca saca un segundo comprobante.
+ */
+export async function sendToSunat(db: Db, saleId: string, client: SunatClient | null): Promise<SunatSendResult> {
+  const sale = await getPosSale(db, saleId);
+  if (!sale?.sunatStatus) throw new Error("Esa venta no lleva boleta ni factura");
+  if (sale.sunatStatus === "aceptado" || sale.status === "anulada") return { status: sale.sunatStatus, message: sale.sunatMessage };
+  if (!client) {
+    const message = "Falta conectar la API de SUNAT (MATHYU_SUNAT_API_KEY): el comprobante queda pendiente.";
+    await db.update(posSales).set({ sunatMessage: message }).where(eq(posSales.id, sale.id));
+    return { status: "pendiente", message };
+  }
+  try {
+    const result = await client.emit(salePayload(sale), sale.id);
+    await db
+      .update(posSales)
+      .set({
+        sunatStatus: result.status,
+        sunatCode: result.code,
+        sunatMessage: result.message,
+        sunatHash: result.hash,
+        sunatTicketUrl: result.ticketUrl,
+        sunatPdfUrl: result.pdfUrl,
+        sunatXmlUrl: result.xmlUrl,
+        sunatCdrUrl: result.cdrUrl,
+        sunatSentAt: new Date(),
+      })
+      .where(eq(posSales.id, sale.id));
+    return { status: result.status, message: result.message };
+  } catch (error) {
+    // La API respondió con un error (datos que SUNAT no acepta): se guarda el motivo. Sin respuesta: se reintenta.
+    const message = error instanceof SunatApiError ? error.message : "No hubo respuesta de SUNAT: se puede reintentar desde la venta.";
+    if (!(error instanceof SunatApiError)) console.warn("[sunat] sin respuesta al emitir", sale.series, sale.number, error instanceof Error ? error.message : error);
+    await db.update(posSales).set({ sunatMessage: message, sunatSentAt: new Date() }).where(eq(posSales.id, sale.id));
+    return { status: "pendiente", message };
+  }
+}
+
+/**
+ * Anula una venta de la caja abierta: el stock vuelve a la tienda y sale de los totales de la caja. Si su boleta o
+ * factura ya fue aceptada, primero se le pide la baja a SUNAT (si la API la rechaza, no se anula nada).
+ */
+export async function voidSale(db: Db, input: { saleId: string; reason: string; userId: string | null }, client: SunatClient | null = null): Promise<{ ok: true; productSlugs: string[] } | Fail> {
   const reason = input.reason.trim();
   if (reason.length < 3) return { ok: false, message: "Escribe por qué se anula." };
+  const [current] = await db.select().from(posSales).where(eq(posSales.id, input.saleId)).limit(1);
+  if (current?.status === "pagada" && current.documentType !== "nota_venta") {
+    if (current.sunatStatus === "pendiente") return { ok: false, message: "El comprobante todavía no tiene respuesta de SUNAT: reintenta el envío antes de anular." };
+    if (current.sunatStatus === "aceptado") {
+      if (!client) return { ok: false, message: "Falta conectar la API de SUNAT para dar de baja el comprobante." };
+      try {
+        const baja = await client.voidDocument({ documento: current.documentType, serie: current.series, numero: current.number, motivo: reason.slice(0, 100) });
+        await db.update(posSales).set({ sunatVoidStatus: baja.status }).where(eq(posSales.id, current.id));
+      } catch (error) {
+        return { ok: false, message: error instanceof SunatApiError ? `SUNAT no aceptó la baja: ${error.message}` : "No hubo respuesta de SUNAT para la baja: inténtalo de nuevo." };
+      }
+    }
+  }
   return db.transaction(async (tx) => {
     const [sale] = await tx.select().from(posSales).where(eq(posSales.id, input.saleId)).for("update");
     if (!sale) return { ok: false as const, message: "La venta no existe." };
@@ -454,6 +519,7 @@ export async function listPosSales(db: Db, { q, sessionId, page = 1 }: { q?: str
         customerDocumentNumber: posSales.customerDocumentNumber,
         totalCents: posSales.totalCents,
         status: posSales.status,
+        sunatStatus: posSales.sunatStatus,
         sellerName: seller.name,
         warehouseCode: warehouses.code,
         methods: sql<string>`(select string_agg(distinct p.method::text, ',') from ${posPayments} p where p.sale_id = ${SALES_ID})`,

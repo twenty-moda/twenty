@@ -2,22 +2,23 @@
 
 import { Minus, Plus, Printer, ScanBarcode, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { Combobox } from "@/components/admin/combobox";
 import { FormAlert } from "@/components/admin/form-controls";
 import { PrintSheet, usePrintSheet } from "@/components/admin/print-sheet";
 import { PosTicket, TICKET_PAGE, type TicketCompany } from "@/components/admin/pos-ticket";
 import { Badge, buttonClass } from "@/components/admin/ui";
-import { Field, inputCompactClass, selectClass, SelectWrap } from "@/components/ui/form";
+import { Field, inputCompactClass, Segmented, selectClass, SelectWrap } from "@/components/ui/form";
 import { Sheet } from "@/components/ui/sheet";
 import { failure, idle, type ActionState } from "@/lib/action-state";
 import { cn } from "@/lib/cn";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL } from "@/lib/order-status";
-import { formatDocNumber, PAYMENT_LABEL, PAYMENT_METHODS, saleTotal, settlePayments, type PaymentMethod } from "@/lib/pos";
+import { checkCustomer, formatDocNumber, PAYMENT_LABEL, PAYMENT_METHODS, POS_DOCUMENT_LABEL, saleTotal, settlePayments, type PaymentMethod, type PosDocumentType } from "@/lib/pos";
 import { priceLines } from "@/lib/pricing";
 import type { PosSaleDetail, PosVariant } from "@/server/services/pos";
-import { findCustomerAction, registerSaleAction } from "./actions";
+import { SunatStatus } from "../ventas-tienda/sunat-status";
+import { findCustomerAction, lookupRucAction, registerSaleAction } from "./actions";
 
 type Line = { variantId: string; quantity: number };
 type PaymentDraft = { method: PaymentMethod; amount: string; received: string; reference: string };
@@ -32,6 +33,19 @@ const cents = (value: string) => {
 };
 const soles = (c: number) => String(c / 100);
 const QUICK_CASH = [2000, 5000, 10000, 20000];
+const DOC_KEY = "twenty-pos-documento";
+const subscribeStorage = (onChange: () => void) => {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+};
+const readSavedDocType = (): PosDocumentType | null => {
+  try {
+    const saved = localStorage.getItem(DOC_KEY);
+    return saved === "nota_venta" || saved === "boleta" || saved === "factura" ? saved : null;
+  } catch {
+    return null;
+  }
+};
 
 type PosScreenProps = {
   warehouse: { id: string; name: string };
@@ -45,7 +59,11 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
   const [lines, setLines] = useState<Line[]>([]);
   const [query, setQuery] = useState("");
   const [chooser, setChooser] = useState<string | null>(null);
-  const [customer, setCustomer] = useState<{ documentType: DocType; documentNumber: string; name: string }>({ documentType: "dni", documentNumber: "", name: "" });
+  // Cada caja recuerda el último documento que usó (preferencia del equipo; sin localStorage, boleta).
+  const savedDocType = useSyncExternalStore(subscribeStorage, readSavedDocType, () => null);
+  const [pickedDocType, setPickedDocType] = useState<PosDocumentType | null>(null);
+  const docType = pickedDocType ?? savedDocType ?? "boleta";
+  const [customer, setCustomer] = useState<{ documentType: DocType; documentNumber: string; name: string; address: string }>({ documentType: "dni", documentNumber: "", name: "", address: "" });
   const [discount, setDiscount] = useState("");
   const [shipping, setShipping] = useState("");
   const [payOpen, setPayOpen] = useState(false);
@@ -54,6 +72,15 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
   const [done, setDone] = useState<PosSaleDetail | null>(null);
   const [pending, startTransition] = useTransition();
   const { printing, print } = usePrintSheet();
+
+  const chooseDocType = (next: PosDocumentType) => {
+    setPickedDocType(next);
+    try {
+      localStorage.setItem(DOC_KEY, next);
+    } catch {
+      // Sin localStorage (modo privado): solo no se recuerda.
+    }
+  };
 
   // Se arman una vez: con el lector cada lectura es una ráfaga de teclas.
   const { byId, byLabel, bySku, products, options } = useMemo(() => {
@@ -78,6 +105,17 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
   const total = saleTotal({ itemsTotalCents: pricing.totalCents, manualDiscountCents, shippingCents });
   const totalCents = total.ok ? total.totalCents : pricing.totalCents;
   const units = lines.reduce((s, l) => s + l.quantity, 0);
+  // La factura siempre va a un RUC; boleta y nota de venta, al documento elegido.
+  const saleCustomer =
+    customer.documentNumber.trim() || customer.name.trim()
+      ? {
+          documentType: docType === "factura" ? ("ruc" as const) : customer.documentType,
+          documentNumber: customer.documentNumber.trim() || null,
+          name: customer.name.trim() || null,
+          address: docType === "factura" ? customer.address.trim() || null : null,
+        }
+      : null;
+  const customerProblem = lines.length ? checkCustomer(docType, totalCents, saleCustomer) : null;
 
   const add = (v: PosVariant) => {
     const inCart = lines.find((l) => l.variantId === v.variantId)?.quantity ?? 0;
@@ -105,6 +143,12 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
 
   const lookup = () =>
     startTransition(async () => {
+      if (docType === "factura") {
+        const company = await lookupRucAction(customer.documentNumber.trim());
+        if (company) setCustomer((c) => ({ ...c, name: company.name, address: company.address ?? c.address }));
+        else setState(failure("No encontramos ese RUC: escribe la razón social."));
+        return;
+      }
       const found = await findCustomerAction(customer.documentNumber);
       if (found?.name) setCustomer((c) => ({ ...c, documentType: found.documentType ?? c.documentType, name: found.name ?? c.name }));
       else setState(failure("No encontramos ese documento en ventas anteriores: escribe el nombre."));
@@ -112,6 +156,7 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
 
   const openPayment = () => {
     if (!total.ok) return setState(failure(total.message));
+    if (customerProblem) return setState(failure(customerProblem));
     setState(idle);
     setPayments([{ method: "efectivo", amount: soles(totalCents), received: "", reference: "" }]);
     setPayOpen(true);
@@ -125,8 +170,8 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
     startTransition(async () => {
       const result = await registerSaleAction({
         warehouseId: warehouse.id,
-        documentType: "nota_venta",
-        customer: customer.documentNumber.trim() || customer.name.trim() ? { documentType: customer.documentType, documentNumber: customer.documentNumber.trim() || null, name: customer.name.trim() || null } : null,
+        documentType: docType,
+        customer: saleCustomer,
         lines,
         manualDiscountCents,
         shippingCents,
@@ -142,25 +187,31 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
   const reset = () => {
     setDone(null);
     setLines([]);
-    setCustomer({ documentType: "dni", documentNumber: "", name: "" });
+    setCustomer({ documentType: "dni", documentNumber: "", name: "", address: "" });
     setDiscount("");
     setShipping("");
     setChooser(null);
   };
 
   if (done) {
+    // Boleta o factura: el comprobante que vale es el de SUNAT (PDF de la API, con QR y hash). La nota de venta usa el
+    // ticket de TWENTY.
+    const electronic = done.documentType !== "nota_venta";
     return (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto]">
         <div className="space-y-4">
-          <p className="text-sm text-muted">Venta registrada</p>
+          <p className="text-sm text-muted">{POS_DOCUMENT_LABEL[done.documentType]} registrada</p>
           <h2 className="text-3xl font-extrabold tracking-tight">
             {formatDocNumber(done.series, done.number)} · {formatPrice(done.totalCents)}
           </h2>
           {done.changeCents ? <p className="text-2xl font-bold text-warning">Vuelto: {formatPrice(done.changeCents)}</p> : null}
+          {electronic ? <SunatStatus sale={done} onUpdate={setDone} /> : null}
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={print} disabled={printing} className={buttonClass("primary")} autoFocus>
-              <Printer className="size-4" aria-hidden /> Imprimir ticket
-            </button>
+            {electronic ? null : (
+              <button type="button" onClick={print} disabled={printing} className={buttonClass("primary")} autoFocus>
+                <Printer className="size-4" aria-hidden /> Imprimir ticket
+              </button>
+            )}
             <button type="button" onClick={reset} className={buttonClass("secondary")}>
               Nueva venta
             </button>
@@ -169,9 +220,11 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
             </Link>
           </div>
         </div>
-        <div className={cn("w-fit rounded-lg bg-white py-2 shadow-lg", fontClass)}>
-          <PosTicket sale={done} company={company} />
-        </div>
+        {electronic ? null : (
+          <div className={cn("w-fit rounded-lg bg-white py-2 shadow-lg", fontClass)}>
+            <PosTicket sale={done} company={company} />
+          </div>
+        )}
         {printing ? (
           <PrintSheet page={TICKET_PAGE} className={fontClass}>
             <PosTicket sale={done} company={company} />
@@ -277,38 +330,65 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
       </div>
 
       <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+        <Segmented
+          label="Documento"
+          value={docType}
+          onChange={chooseDocType}
+          options={[
+            { value: "boleta", label: "Boleta" },
+            { value: "factura", label: "Factura" },
+            { value: "nota_venta", label: "Nota de venta" },
+          ]}
+        />
         <section className="space-y-3 rounded-2xl border border-line p-4">
           <h2 className="text-sm font-semibold">
-            Cliente <span className="font-normal text-subtle">(opcional)</span>
+            {docType === "factura" ? (
+              "Cliente (RUC)"
+            ) : (
+              <>
+                Cliente <span className="font-normal text-subtle">{docType === "boleta" ? "(desde S/ 700 es obligatorio)" : "(opcional)"}</span>
+              </>
+            )}
           </h2>
           <div className="flex gap-2">
-            <SelectWrap>
-              <select
-                aria-label="Tipo de documento"
-                value={customer.documentType}
-                onChange={(e) => setCustomer((c) => ({ ...c, documentType: e.target.value as DocType }))}
-                className={cn(selectClass, "h-11 w-28 text-sm")}
-              >
-                {Object.entries(DOCUMENT_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </SelectWrap>
+            {docType === "factura" ? null : (
+              <SelectWrap>
+                <select
+                  aria-label="Tipo de documento"
+                  value={customer.documentType}
+                  onChange={(e) => setCustomer((c) => ({ ...c, documentType: e.target.value as DocType }))}
+                  className={cn(selectClass, "h-11 w-28 text-sm")}
+                >
+                  {Object.entries(DOCUMENT_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </SelectWrap>
+            )}
             <input
               inputMode="numeric"
-              aria-label="Número de documento"
+              aria-label={docType === "factura" ? "RUC" : "Número de documento"}
               value={customer.documentNumber}
               onChange={(e) => setCustomer((c) => ({ ...c, documentNumber: e.target.value }))}
-              placeholder="Número"
+              placeholder={docType === "factura" ? "RUC (11 dígitos)" : "Número"}
               className={cn(inputCompactClass, "min-w-0 flex-1")}
             />
             <button type="button" aria-label="Buscar el nombre" disabled={pending || customer.documentNumber.trim().length < 8} onClick={lookup} className={buttonClass("secondary", "sm")}>
               <Search className="size-4" aria-hidden />
             </button>
           </div>
-          <input aria-label="Nombre del cliente" value={customer.name} onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))} placeholder="Nombre" className={inputCompactClass} />
+          <input
+            aria-label={docType === "factura" ? "Razón social" : "Nombre del cliente"}
+            value={customer.name}
+            onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
+            placeholder={docType === "factura" ? "Razón social" : "Nombre"}
+            className={inputCompactClass}
+          />
+          {docType === "factura" ? (
+            <input aria-label="Dirección fiscal" value={customer.address} onChange={(e) => setCustomer((c) => ({ ...c, address: e.target.value }))} placeholder="Dirección fiscal" className={inputCompactClass} />
+          ) : null}
         </section>
 
         <section className="space-y-2 rounded-2xl border border-line p-4 text-sm">
@@ -353,7 +433,8 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
             </div>
           </dl>
           {!total.ok ? <p className="text-danger">{total.message}</p> : null}
-          <button type="button" onClick={openPayment} disabled={lines.length === 0 || !total.ok} className={cn(buttonClass("primary"), "mt-2 h-14 w-full text-base")}>
+          {customerProblem ? <p className="text-warning">{customerProblem}</p> : null}
+          <button type="button" onClick={openPayment} disabled={lines.length === 0 || !total.ok || !!customerProblem} className={cn(buttonClass("primary"), "mt-2 h-14 w-full text-base")}>
             Cobrar {lines.length ? formatPrice(totalCents) : ""}
           </button>
           <p className="text-center text-xs text-subtle">

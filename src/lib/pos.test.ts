@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDocNumber, saleTotal, settlePayments } from "./pos";
+import { checkCustomer, formatDocNumber, saleTotal, settlePayments } from "./pos";
 
 describe("saleTotal", () => {
   it("prendas − descuento + envío", () => {
@@ -29,6 +29,21 @@ describe("settlePayments", () => {
   });
   it("el efectivo recibido no puede ser menos que el monto", () => {
     expect(settlePayments(9900, [{ method: "efectivo", amountCents: 9900, receivedCents: 5000, reference: null }]).ok).toBe(false);
+  });
+});
+
+describe("checkCustomer", () => {
+  const dni = { documentType: "dni" as const, documentNumber: "75413811", name: "Ana Torres" };
+  it("factura: RUC y razón social", () => {
+    expect(checkCustomer("factura", 10000, dni)).toBe("Para una factura hace falta el RUC y la razón social del cliente.");
+    expect(checkCustomer("factura", 10000, { documentType: "ruc", documentNumber: "20612934020", name: "MULTIVENTA PERUANO S.A.C." })).toBeNull();
+    expect(checkCustomer("factura", 10000, { documentType: "ruc", documentNumber: "30612934020", name: "X" })).toMatch(/RUC tiene 11 dígitos/);
+  });
+  it("boleta: sin cliente hasta S/ 699.99; desde S/ 700, documento y nombre", () => {
+    expect(checkCustomer("boleta", 69999, null)).toBeNull();
+    expect(checkCustomer("boleta", 70000, null)).toBe("Una boleta desde S/ 700 lleva el documento y el nombre del cliente.");
+    expect(checkCustomer("boleta", 70000, dni)).toBeNull();
+    expect(checkCustomer("boleta", 100, { ...dni, documentNumber: "1234" })).toBe("El DNI tiene 8 dígitos.");
   });
 });
 

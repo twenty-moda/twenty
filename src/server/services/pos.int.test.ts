@@ -8,7 +8,8 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
 const { getOnlineWarehouseId } = await import("./stock");
-const { addCashMovement, closeCashSession, getCashSession, getOpenSession, getPosSale, openCashSession, registerSale, voidSale } = await import("./pos");
+const { addCashMovement, closeCashSession, getCashSession, getOpenSession, getPosSale, openCashSession, registerSale, sendToSunat, voidSale } = await import("./pos");
+type SunatClient = import("./sunat").SunatClient;
 
 let db: Db;
 let store: string;
@@ -114,6 +115,85 @@ describe("registerSale", () => {
     expect(await stock()).toBe(0);
     await db.update(schema.productVariants).set({ stock: 1 }).where(eq(schema.productVariants.id, ids.variant));
     expect(await sale()).toMatchObject({ ok: true, number: 2 });
+  });
+});
+
+describe("boleta y factura (SUNAT)", () => {
+  type Emitted = { payload: Record<string, unknown>; key: string };
+  const fakeSunat = (emitImpl?: SunatClient["emit"]) => {
+    const calls = { emit: [] as Emitted[], void: [] as unknown[] };
+    const client: SunatClient = {
+      emit: async (payload, key) => {
+        calls.emit.push({ payload, key });
+        if (emitImpl) return emitImpl(payload, key);
+        return { status: "aceptado", code: "0", message: "La Boleta numero B005-1, ha sido aceptada", hash: "h=", ticketUrl: "https://api/t.pdf", pdfUrl: "https://api/a4.pdf", xmlUrl: "https://api/x.xml", cdrUrl: "https://api/r.xml" };
+      },
+      voidDocument: async (input) => {
+        calls.void.push(input);
+        return { status: "PENDIENTE", message: null };
+      },
+      lookupRuc: async () => null,
+    };
+    return { client, calls };
+  };
+
+  it("la boleta se guarda pendiente, sale a SUNAT con la Idempotency-Key de la venta y queda aceptada con sus enlaces", async () => {
+    const result = await sale({ documentType: "boleta" });
+    expect(result).toMatchObject({ ok: true, series: "B005", number: 1 });
+    if (!result.ok) return;
+    expect((await getPosSale(db, result.saleId))?.sunatStatus).toBe("pendiente");
+
+    const { client, calls } = fakeSunat();
+    expect(await sendToSunat(db, result.saleId, client)).toEqual({ status: "aceptado", message: "La Boleta numero B005-1, ha sido aceptada" });
+    expect(calls.emit).toHaveLength(1);
+    expect(calls.emit[0].key).toBe(result.saleId);
+    expect(calls.emit[0].payload).toMatchObject({ documento: "boleta", serie: "B005", numero: 1, cliente_tipo_de_documento: "-", total: "70.00" });
+    const detail = await getPosSale(db, result.saleId);
+    expect([detail?.sunatStatus, detail?.sunatTicketUrl, detail?.sunatHash]).toEqual(["aceptado", "https://api/t.pdf", "h="]);
+    // Ya aceptada: no se vuelve a mandar.
+    await sendToSunat(db, result.saleId, client);
+    expect(calls.emit).toHaveLength(1);
+  });
+
+  it("si SUNAT no responde queda pendiente con el motivo y el reintento usa la misma clave", async () => {
+    const result = await sale({ documentType: "boleta" });
+    if (!result.ok) throw new Error("venta");
+    const down = fakeSunat(async () => {
+      throw new TypeError("fetch failed");
+    });
+    expect(await sendToSunat(db, result.saleId, down.client)).toEqual({ status: "pendiente", message: "No hubo respuesta de SUNAT: se puede reintentar desde la venta." });
+    const up = fakeSunat();
+    expect((await sendToSunat(db, result.saleId, up.client)).status).toBe("aceptado");
+    expect([down.calls.emit[0].key, up.calls.emit[0].key]).toEqual([result.saleId, result.saleId]);
+    // Sin la API configurada, la venta no se pierde: queda pendiente.
+    const other = await sale({ documentType: "boleta" });
+    if (!other.ok) throw new Error("venta");
+    expect((await sendToSunat(db, other.saleId, null)).status).toBe("pendiente");
+  });
+
+  it("factura sin RUC y boleta desde S/ 700 sin cliente no se emiten", async () => {
+    expect(await sale({ documentType: "factura" })).toEqual({ ok: false, message: "Para una factura hace falta el RUC y la razón social del cliente." });
+    await db.update(schema.productVariants).set({ priceCents: 70000 }).where(eq(schema.productVariants.id, ids.variant));
+    const big = await sale({ documentType: "boleta", payments: [{ method: "tarjeta", amountCents: 70000, receivedCents: null, reference: null }] });
+    expect(big).toEqual({ ok: false, message: "Una boleta desde S/ 700 lleva el documento y el nombre del cliente." });
+    expect(await stock()).toBe(3);
+  });
+
+  it("anular una boleta aceptada pide la baja a SUNAT; una pendiente no se anula hasta tener respuesta", async () => {
+    const accepted = await sale({ documentType: "boleta" });
+    const pending = await sale({ documentType: "boleta" });
+    if (!accepted.ok || !pending.ok) throw new Error("venta");
+    const { client, calls } = fakeSunat();
+    await sendToSunat(db, accepted.saleId, client);
+
+    expect(await voidSale(db, { saleId: pending.saleId, reason: "Error de talla", userId: null }, client)).toEqual({
+      ok: false,
+      message: "El comprobante todavía no tiene respuesta de SUNAT: reintenta el envío antes de anular.",
+    });
+    expect((await voidSale(db, { saleId: accepted.saleId, reason: "Error de talla", userId: null }, client)).ok).toBe(true);
+    expect(calls.void).toEqual([{ documento: "boleta", serie: "B005", numero: 1, motivo: "Error de talla" }]);
+    const detail = await getPosSale(db, accepted.saleId);
+    expect([detail?.status, detail?.sunatVoidStatus]).toEqual(["anulada", "PENDIENTE"]);
   });
 });
 

@@ -9,6 +9,7 @@ import { getDb } from "@/server/db/client";
 import { getSiteSettings } from "@/server/services/content";
 import { getPosSale } from "@/server/services/pos";
 import { requireStaff } from "../../../_lib/auth";
+import { SunatStatus } from "../sunat-status";
 import { ReprintButton, VoidSaleForm } from "./sale-actions";
 
 export const metadata: Metadata = { title: "Venta en tienda" };
@@ -26,16 +27,19 @@ export default async function StoreSalePage({ params }: PageProps<"/admin/ventas
   if (!sale) notFound();
   const company = { legalName: settings.company.legalName, ruc: settings.company.ruc };
   const fontClass = `${displayFont.variable} ${monoFont.variable}`;
+  const electronic = sale.documentType !== "nota_venta";
 
   return (
     <AdminPage
       title={`${POS_DOCUMENT_LABEL[sale.documentType]} ${formatDocNumber(sale.series, sale.number)}`}
       back={{ href: "/admin/ventas-tienda", label: "Ventas en tienda" }}
       description={`${sale.warehouseName} · Caja #${sale.sessionNumber} · ${formatDateTime(sale.createdAt)}`}
-      actions={<ReprintButton sale={sale} company={company} fontClass={fontClass} />}
+      // Boleta o factura: el comprobante que se imprime es el de SUNAT (en SunatStatus). Nota de venta: el ticket de TWENTY.
+      actions={electronic ? undefined : <ReprintButton sale={sale} company={company} fontClass={fontClass} />}
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto]">
         <div className="space-y-4">
+          {electronic ? <SunatStatus sale={sale} /> : null}
           {sale.status === "anulada" ? (
             <Card>
               <Badge tone="danger">Anulada</Badge>
@@ -50,14 +54,19 @@ export default async function StoreSalePage({ params }: PageProps<"/admin/ventas
           ) : sale.sessionClosedAt ? (
             <p className="text-sm text-muted">La caja de esta venta ya se cerró: ya no se puede anular. Un cambio o devolución se registra como una venta nueva o una salida de caja.</p>
           ) : me.role === "admin" ? (
-            <VoidSaleForm saleId={sale.id} />
+            <>
+              {sale.sunatStatus === "aceptado" ? <p className="text-sm text-muted">Al anular se le pide a SUNAT la baja del comprobante.</p> : null}
+              <VoidSaleForm saleId={sale.id} />
+            </>
           ) : (
             <p className="text-sm text-muted">Para anular una venta, pídeselo a un admin.</p>
           )}
         </div>
-        <div className={cn("w-fit rounded-lg bg-white py-2 shadow-lg", fontClass)}>
-          <PosTicket sale={sale} company={company} />
-        </div>
+        {electronic ? null : (
+          <div className={cn("w-fit rounded-lg bg-white py-2 shadow-lg", fontClass)}>
+            <PosTicket sale={sale} company={company} />
+          </div>
+        )}
       </div>
     </AdminPage>
   );

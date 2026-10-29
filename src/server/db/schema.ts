@@ -365,6 +365,8 @@ export const cashMovements = pgTable(
 );
 
 export const posSaleStatus = pgEnum("pos_sale_status", ["pagada", "anulada"]);
+/** Boleta o factura en SUNAT (por la API de Mathyu's Solutions). La nota de venta no va a SUNAT. */
+export const posSunatStatus = pgEnum("pos_sunat_status", ["pendiente", "aceptado", "rechazado"]);
 
 /** Venta en tienda. Los datos del cliente se copian: en tienda casi nunca hay email ni celular (los pide `customers`). */
 export const posSales = pgTable(
@@ -384,6 +386,22 @@ export const posSales = pgTable(
     customerDocumentType: documentType(),
     customerDocumentNumber: text(),
     customerName: text(),
+    /** Dirección fiscal (factura). */
+    customerAddress: text(),
+    /** Solo boleta y factura: null = nota de venta. "pendiente" = aún sin respuesta de SUNAT (se reintenta). */
+    sunatStatus: posSunatStatus(),
+    sunatCode: text(),
+    sunatMessage: text(),
+    /** Valor resumen (hash de la firma) que va impreso. */
+    sunatHash: text(),
+    /** Enlaces de la API: ticket de 80 mm y A4 en PDF, XML firmado y CDR. */
+    sunatTicketUrl: text(),
+    sunatPdfUrl: text(),
+    sunatXmlUrl: text(),
+    sunatCdrUrl: text(),
+    sunatSentAt: timestamp({ withTimezone: true }),
+    /** Al anular una boleta o factura aceptada: estado de la baja en SUNAT (PENDIENTE hasta que SUNAT la procesa). */
+    sunatVoidStatus: text(),
     /** Precio de lista de las prendas. */
     subtotalCents: integer().notNull(),
     /** Promos "N x S/" (las mismas de la web). */
