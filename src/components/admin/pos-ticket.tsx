@@ -3,7 +3,6 @@ import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL } from "@/lib/order-status";
 import { formatDocNumber, PAYMENT_LABEL, POS_DOCUMENT_LABEL } from "@/lib/pos";
 import type { PosSaleDetail } from "@/server/services/pos";
-import { formatDateTime } from "./ui";
 
 export type TicketCompany = { legalName: string; ruc: string };
 
@@ -11,6 +10,8 @@ export type TicketCompany = { legalName: string; ruc: string };
 export const TICKET_PAGE = "@page { size: 80mm 297mm; margin: 0 }";
 
 const display: CSSProperties = { fontFamily: "var(--font-big-shoulders), Impact, 'Arial Narrow', sans-serif" };
+/** Fecha completa (con año) en hora de Lima: "29/10/2026 17:56". */
+const ticketDate = new Intl.DateTimeFormat("es-PE", { timeZone: "America/Lima", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const rule = <div style={{ borderTop: "0.3mm dashed #000", margin: "2mm 0" }} />;
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
@@ -38,7 +39,7 @@ export function PosTicket({ sale, company }: { sale: PosSaleDetail; company: Tic
       <div style={{ textAlign: "center" }}>
         <div style={{ ...display, fontWeight: 800, fontSize: "4.6mm", textTransform: "uppercase", letterSpacing: "0.08em" }}>{POS_DOCUMENT_LABEL[sale.documentType]}</div>
         <div style={{ fontWeight: 700, fontSize: "3.4mm" }}>{formatDocNumber(sale.series, sale.number)}</div>
-        <div>{formatDateTime(sale.createdAt)}</div>
+        <div>{ticketDate.format(new Date(sale.createdAt)).replace(",", "")}</div>
         {sale.sellerName ? <div>Atendió: {sale.sellerName}</div> : null}
       </div>
       {sale.customerName || sale.customerDocumentNumber ? (

@@ -7,7 +7,6 @@ import { getDb } from "@/server/db/client";
 import { listWarehouses } from "@/server/services/inventory";
 import { getCashSession, getOpenSession, listCashSessions } from "@/server/services/pos";
 import { requireAdmin } from "../../_lib/auth";
-import { OpenCashForm } from "../pos/open-cash-form";
 import { CashMovementForm, CloseCashForm } from "./cash-forms";
 import { CashMovementsList, CashSummary } from "./cash-summary";
 
@@ -61,7 +60,14 @@ export default async function CashPage({ searchParams }: PageProps<"/admin/caja"
               </div>
             </Card>
           ) : (
-            <OpenCashForm key={warehouse.id} warehouseId={warehouse.id} warehouseName={warehouse.name} />
+            <div key={warehouse.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line px-5 py-4 text-sm">
+              <span>
+                <span className="font-semibold">{warehouse.name}</span> <span className="text-muted">· caja cerrada</span>
+              </span>
+              <Link href={`/admin/pos?tienda=${warehouse.id}`} className={buttonClass("secondary", "sm")}>
+                Abrir caja
+              </Link>
+            </div>
           ),
         )}
 

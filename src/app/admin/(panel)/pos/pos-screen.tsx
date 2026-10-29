@@ -369,8 +369,9 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
         open={payOpen}
         onClose={() => setPayOpen(false)}
         title={`Cobrar ${formatPrice(totalCents)}`}
+        side="bottom"
         footer={
-          <div className="space-y-3">
+          <div className="space-y-3 pb-3">
             <FormAlert state={state} />
             <button type="button" onClick={charge} disabled={pending || !settled.ok} className={cn(buttonClass("primary"), "h-14 w-full text-base")}>
               {pending ? "Cobrando…" : settled.ok ? `Cobrar ${formatPrice(totalCents)}` : paidCents < totalCents ? `Falta ${formatPrice(totalCents - paidCents)}` : "Revisa los pagos"}
@@ -378,7 +379,7 @@ export function PosScreen({ warehouse, session, variants, company, fontClass }: 
           </div>
         }
       >
-        <div className="space-y-4">
+        <div className="space-y-4 p-4">
           {payments.map((p, i) => (
             <div key={i} className="space-y-3 rounded-2xl border border-line p-4">
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Medio de pago">
