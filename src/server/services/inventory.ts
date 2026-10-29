@@ -68,6 +68,8 @@ export type PickerVariant = {
   productId: string;
   productName: string;
   priceCents: number;
+  /** Precio anterior (tachado) si la prenda está rebajada. */
+  compareAtPriceCents: number | null;
   colorName: string;
   sizeLabel: string;
   isActive: boolean;
@@ -84,6 +86,7 @@ export async function listPickerVariants(db: Db): Promise<PickerVariant[]> {
         productId: products.id,
         productName: products.name,
         priceCents: productVariants.priceCents,
+        compareAtPriceCents: productVariants.compareAtPriceCents,
         colorName: colors.name,
         sizeLabel: sizes.label,
         isActive: productVariants.isActive,

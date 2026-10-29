@@ -3,56 +3,33 @@
 import { Printer, ScanBarcode, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Barcode } from "@/components/admin/barcode";
 import { Combobox } from "@/components/admin/combobox";
 import { FormAlert } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
 import { Field, inputCompactClass, selectClass, SelectWrap } from "@/components/ui/form";
 import { failure, idle, type ActionState } from "@/lib/action-state";
 import { cn } from "@/lib/cn";
-import { formatPrice } from "@/lib/money";
 import type { PickerVariant } from "@/server/services/inventory";
+import { LABEL_FORMATS, LabelView as Label, type LabelFormat as FormatKey } from "./label-designs";
 
 type Warehouse = { id: string; name: string };
 type Line = { variantId: string; quantity: number };
 
-/** Medidas en mm. Los rollos imprimen una etiqueta por página; la hoja A4 va en grilla (adhesivos de 24). */
-const FORMATS = {
-  "50x25": { label: "Rollo 50 × 25 mm", width: 50, height: 25, perSheet: 1, columns: 1 },
-  "40x30": { label: "Rollo 40 × 30 mm", width: 40, height: 30, perSheet: 1, columns: 1 },
-  a4: { label: "Hoja A4 · 24 etiquetas de 70 × 37 mm", width: 70, height: 37.125, perSheet: 24, columns: 3 },
-} as const;
-type FormatKey = keyof typeof FORMATS;
-
+const FORMATS = LABEL_FORMATS;
 const PREVIEW_LIMIT = 48;
 const variantLabel = (v: PickerVariant) => `${v.productName} · ${v.colorName} · ${v.sizeLabel} · ${v.sku}`;
 const productLabel = (name: string) => `${name} (todas las tallas y colores)`;
 
-function Label({ variant, showPrice, format }: { variant: PickerVariant; showPrice: boolean; format: FormatKey }) {
-  const f = FORMATS[format];
-  return (
-    <div
-      className="flex flex-col overflow-hidden bg-white text-black"
-      style={{ width: `${f.width}mm`, height: `${f.height}mm`, padding: "1.5mm 2.5mm", breakInside: "avoid" }}
-    >
-      <div className="flex items-baseline justify-between gap-1 leading-tight" style={{ fontSize: "2.6mm" }}>
-        <span className="truncate font-bold uppercase">{variant.productName}</span>
-        {showPrice ? <span className="shrink-0 font-bold">{formatPrice(variant.priceCents)}</span> : null}
-      </div>
-      <div className="truncate leading-tight" style={{ fontSize: "2.3mm" }}>
-        {variant.colorName} · Talla {variant.sizeLabel}
-      </div>
-      <Barcode value={variant.sku} className="mt-[0.8mm] w-full flex-1" />
-      <div className="text-center font-mono leading-none tracking-wider" style={{ fontSize: "2.3mm", marginTop: "0.6mm" }}>
-        {variant.sku}
-      </div>
-    </div>
-  );
-}
+type LabelSheetProps = {
+  variants: PickerVariant[];
+  warehouses: Warehouse[];
+  initialLines: Line[];
+  initialWarehouseId?: string;
+  /** Clases de next/font (Big Shoulders e IBM Plex Mono): la hoja de impresión vive fuera de la página y las necesita. */
+  fontClass: string;
+};
 
-type LabelSheetProps = { variants: PickerVariant[]; warehouses: Warehouse[]; initialLines: Line[]; initialWarehouseId?: string };
-
-export function LabelSheet({ variants, warehouses, initialLines, initialWarehouseId }: LabelSheetProps) {
+export function LabelSheet({ variants, warehouses, initialLines, initialWarehouseId, fontClass }: LabelSheetProps) {
   const [lines, setLines] = useState<Line[]>(initialLines);
   const [query, setQuery] = useState("");
   const [format, setFormat] = useState<FormatKey>("50x25");
@@ -76,9 +53,11 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
     if (!printing) return;
     const done = () => setPrinting(false);
     window.addEventListener("afterprint", done);
-    const id = requestAnimationFrame(() => window.print());
+    let cancelled = false;
+    // Con las fuentes listas: si no, la térmica imprime la tipografía de respaldo.
+    document.fonts.ready.then(() => requestAnimationFrame(() => !cancelled && window.print()));
     return () => {
-      cancelAnimationFrame(id);
+      cancelled = true;
       window.removeEventListener("afterprint", done);
     };
   }, [printing]);
@@ -208,7 +187,7 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
           <p className="mb-2 text-sm text-muted">
             Vista previa{labels.length > PREVIEW_LIMIT ? ` (las primeras ${PREVIEW_LIMIT} de ${labels.length})` : ""}
           </p>
-          <div className="flex flex-wrap gap-3 rounded-2xl bg-raised p-4">
+          <div className={cn("flex flex-wrap gap-3 rounded-2xl bg-raised p-4", fontClass)}>
             {labels.slice(0, PREVIEW_LIMIT).map((v, i) => (
               <div key={i} className="rounded-sm shadow-md">
                 <Label variant={v} showPrice={showPrice} format={format} />
@@ -220,7 +199,7 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
 
       {printing
         ? createPortal(
-            <div className="print-labels">
+            <div className={cn("print-labels", fontClass)}>
               <style>{f.perSheet === 1 ? `@page { size: ${f.width}mm ${f.height}mm; margin: 0 }` : "@page { size: A4; margin: 0 }"}</style>
               {f.perSheet === 1 ? (
                 labels.map((v, i) => (

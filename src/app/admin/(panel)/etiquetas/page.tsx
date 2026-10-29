@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { displayFont, monoFont } from "@/components/home/fonts";
 import { AdminPage } from "@/components/admin/ui";
 import { getDb } from "@/server/db/client";
 import { getOperation, listPickerVariants, listWarehouses } from "@/server/services/inventory";
@@ -35,6 +36,7 @@ export default async function LabelsPage({ searchParams }: PageProps<"/admin/eti
         warehouses={warehouses.filter((w) => w.isActive).map(({ id, name }) => ({ id, name }))}
         initialLines={initialLines}
         initialWarehouseId={operation?.toWarehouseId ?? undefined}
+        fontClass={`${displayFont.variable} ${monoFont.variable}`}
       />
     </AdminPage>
   );

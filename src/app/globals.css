@@ -516,4 +516,10 @@ html:has(.whatsapp-float) .footer-credit {
   body:has(> .print-labels) > :not(.print-labels) {
     display: none !important;
   }
+  /* El bloque de la talla y la banda de rebaja son fondos negros: sin esto Chrome no los imprime. */
+  .print-labels,
+  .print-labels * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }
