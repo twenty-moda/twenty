@@ -83,6 +83,8 @@ export function CloseCashForm({ sessionId, number, expectedCashCents }: { sessio
   const countedCents = byHand ? typedCents : countedFromBills;
   const diff = countedCents === null ? null : countedCents - expectedCashCents;
   const setCount = (d: number, value: number) => setCounts((c) => ({ ...c, [d]: Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0) }));
+  // Sobre el valor más nuevo: dos toques seguidos suman dos.
+  const bump = (d: number, delta: number) => setCounts((c) => ({ ...c, [d]: Math.max(0, (c[d] ?? 0) + delta) }));
 
   return (
     <form action={action} className="space-y-4">
@@ -113,7 +115,7 @@ export function CloseCashForm({ sessionId, number, expectedCashCents }: { sessio
                   <span className="block text-sm font-bold whitespace-nowrap">{label}</span>
                   <span className="block font-mono text-[10px] tracking-wider text-subtle uppercase">{d >= 1000 ? "Billete" : "Moneda"}</span>
                 </span>
-                <button type="button" aria-label={`Uno menos de ${label}`} onClick={() => setCount(d, (counts[d] ?? 0) - 1)} className="grid size-10 place-items-center rounded-lg border border-line bg-surface">
+                <button type="button" aria-label={`Uno menos de ${label}`} onClick={() => bump(d, -1)} className="grid size-10 place-items-center rounded-lg border border-line bg-surface">
                   <Minus className="size-4" aria-hidden />
                 </button>
                 <input
@@ -124,7 +126,7 @@ export function CloseCashForm({ sessionId, number, expectedCashCents }: { sessio
                   onChange={(e) => setCount(d, Number(e.target.value))}
                   className="h-10 w-12 rounded-lg border border-line bg-surface text-center font-bold tabular-nums outline-none focus:border-white"
                 />
-                <button type="button" aria-label={`Uno más de ${label}`} onClick={() => setCount(d, (counts[d] ?? 0) + 1)} className="grid size-10 place-items-center rounded-lg border border-line bg-surface">
+                <button type="button" aria-label={`Uno más de ${label}`} onClick={() => bump(d, 1)} className="grid size-10 place-items-center rounded-lg border border-line bg-surface">
                   <Plus className="size-4" aria-hidden />
                 </button>
                 <span className="min-w-20 flex-1 text-right text-sm whitespace-nowrap text-muted tabular-nums">{counts[d] ? formatPrice(d * counts[d]) : ""}</span>
