@@ -313,7 +313,9 @@ function StockCard({ stock }: { stock: Awaited<ReturnType<typeof getStockValuati
                 <td className="py-2">{w.name}</td>
                 <td className="py-2 text-right tabular-nums">{formatCount(w.units)}</td>
                 <td className="py-2 text-right tabular-nums">{formatPrice(w.priceCents)}</td>
-                <td className="py-2 text-right tabular-nums">{w.units - w.unitsWithoutCost ? formatPrice(w.costCents) : "—"}</td>
+                <td className="py-2 text-right tabular-nums">
+                  <CostCell {...w} />
+                </td>
               </tr>
             ))}
             {stock.length > 1 ? (
@@ -321,7 +323,9 @@ function StockCard({ stock }: { stock: Awaited<ReturnType<typeof getStockValuati
                 <td className="py-2">Total</td>
                 <td className="py-2 text-right tabular-nums">{formatCount(total.units)}</td>
                 <td className="py-2 text-right tabular-nums">{formatPrice(total.priceCents)}</td>
-                <td className="py-2 text-right tabular-nums">{total.units - total.unitsWithoutCost ? formatPrice(total.costCents) : "—"}</td>
+                <td className="py-2 text-right tabular-nums">
+                  <CostCell {...total} />
+                </td>
               </tr>
             ) : null}
           </tbody>
@@ -332,5 +336,21 @@ function StockCard({ stock }: { stock: Awaited<ReturnType<typeof getStockValuati
         {total.unitsWithoutCost ? ` ${plural(total.unitsWithoutCost, "prenda todavía no tiene", "prendas todavía no tienen")} costo y no suman en esa columna.` : ""}
       </p>
     </Card>
+  );
+}
+
+/** El costo cubre solo las prendas que entraron con costo: si no son todas, se dice cuántas. */
+function CostCell({ units, costCents, unitsWithoutCost }: { units: number; costCents: number; unitsWithoutCost: number }) {
+  const withCost = units - unitsWithoutCost;
+  if (!withCost) return "—";
+  return (
+    <>
+      {formatPrice(costCents)}
+      {unitsWithoutCost ? (
+        <span className="block text-xs font-normal text-subtle">
+          {formatCount(withCost)} de {formatCount(units)} prendas
+        </span>
+      ) : null}
+    </>
   );
 }

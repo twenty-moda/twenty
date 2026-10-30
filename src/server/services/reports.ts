@@ -249,7 +249,8 @@ export async function getSalesLedger(db: Db, range: ReportRange) {
         manualDiscountCents: posSales.manualDiscountCents,
         shippingCents: posSales.shippingCents,
         totalCents: posSales.totalCents,
-        methods: sql<string | null>`(select string_agg(distinct p.method::text, ',') from ${posPayments} p where p.sale_id = ${posSales.id})`,
+        // Calificado a mano: dentro de la subconsulta, un "id" suelto sería el del pago.
+        methods: sql<string | null>`(select string_agg(distinct p.method::text, ',') from ${posPayments} p where p.sale_id = ${sql.raw(`"pos_sales"."id"`)})`,
       })
       .from(posSales)
       .where(inRange(posSales.createdAt, range)),

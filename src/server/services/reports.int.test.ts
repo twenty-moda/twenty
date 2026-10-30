@@ -123,13 +123,13 @@ describe("getSalesReport", () => {
 describe("getSalesLedger", () => {
   it("valor de venta e IGV como en SUNAT, anuladas en cero y devoluciones en negativo", async () => {
     const rows = await getSalesLedger(db, today());
-    expect(rows.map((r) => [r.document, r.number, r.reference, r.baseCents, r.igvCents, r.totalCents, r.status])).toEqual([
-      ["boleta", "B005-1", null, 15941, 2869, 18810, "pagada"],
-      ["nota_venta", "NV05-1", null, null, null, 0, "anulada"],
-      ["nota_venta", "NV05-2", null, null, null, 9900, "pagada"],
-      ["nota_credito", "BC05-1", "B005-1", -7970, -1435, -9405, "devuelta"],
-      ["pedido_web", "#1001", null, null, null, 15000, "pagada"],
-      ["devolucion_web", "#1001", "#1001", null, null, -2000, "devuelta"],
+    expect(rows.map((r) => [r.document, r.number, r.reference, r.payment, r.baseCents, r.igvCents, r.totalCents, r.status])).toEqual([
+      ["boleta", "B005-1", null, "efectivo", 15941, 2869, 18810, "pagada"],
+      ["nota_venta", "NV05-1", null, "yape", null, null, 0, "anulada"],
+      ["nota_venta", "NV05-2", null, "efectivo", null, null, 9900, "pagada"],
+      ["nota_credito", "BC05-1", "B005-1", "efectivo", -7970, -1435, -9405, "devuelta"],
+      ["pedido_web", "#1001", null, "tarjeta", null, null, 15000, "pagada"],
+      ["devolucion_web", "#1001", "#1001", null, null, null, -2000, "devuelta"],
     ]);
   });
 });
