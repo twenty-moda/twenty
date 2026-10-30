@@ -629,3 +629,18 @@ export async function findCustomerByDocument(db: Db, documentNumber: string) {
   const [fromWeb] = await db.select({ documentType: customers.documentType, name: customers.name }).from(customers).where(eq(customers.documentNumber, doc)).limit(1);
   return fromWeb ?? null;
 }
+
+/** Boletas, facturas y notas de crédito sin respuesta de SUNAT o rechazadas: el menú avisa cuántas hay. */
+export async function countSunatIssues(db: Db) {
+  const [[sales], [returns]] = await Promise.all([
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(posSales)
+      .where(and(eq(posSales.status, "pagada"), inArray(posSales.sunatStatus, ["pendiente", "rechazado"]))),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(posReturns)
+      .where(inArray(posReturns.sunatStatus, ["pendiente", "rechazado"])),
+  ]);
+  return sales.n + returns.n;
+}

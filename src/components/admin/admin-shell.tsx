@@ -34,10 +34,13 @@ import { cn } from "@/lib/cn";
 import { Logo } from "../store/logo";
 import { Sheet } from "../ui/sheet";
 
-type Badge = "orders" | "messages" | "complaints";
+type Badge = "orders" | "messages" | "complaints" | "sunat";
 type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: Badge };
 
-/** `staff`: el grupo que también ve el vendedor (el resto es solo del admin). */
+/**
+ * `staff`: el grupo que también ve el vendedor (el resto es solo del admin). El punto de venta no va en la lista: es el
+ * botón «Vender» de arriba, y en él no se ve el menú (modo caja).
+ */
 const NAV_GROUPS: { title?: string; staff?: boolean; items: NavItem[] }[] = [
   {
     items: [
@@ -46,7 +49,24 @@ const NAV_GROUPS: { title?: string; staff?: boolean; items: NavItem[] }[] = [
     ],
   },
   {
-    title: "Ventas",
+    title: "Tienda",
+    staff: true,
+    items: [
+      { href: "/admin/caja", label: "Caja", icon: Banknote },
+      { href: "/admin/ventas-tienda", label: "Ventas en tienda", icon: ReceiptText, badge: "sunat" },
+    ],
+  },
+  {
+    title: "Inventario",
+    items: [
+      { href: "/admin/stock", label: "Stock por talla", icon: Boxes },
+      { href: "/admin/movimientos", label: "Ingresos y traslados", icon: ArrowLeftRight },
+      { href: "/admin/etiquetas", label: "Etiquetas", icon: Barcode },
+      { href: "/admin/almacenes", label: "Almacenes", icon: Warehouse },
+    ],
+  },
+  {
+    title: "Web",
     items: [
       { href: "/admin/pedidos", label: "Pedidos", icon: ShoppingBag, badge: "orders" },
       { href: "/admin/clientes", label: "Clientes", icon: Users },
@@ -55,34 +75,17 @@ const NAV_GROUPS: { title?: string; staff?: boolean; items: NavItem[] }[] = [
     ],
   },
   {
-    title: "Tienda",
-    staff: true,
-    items: [
-      { href: "/admin/pos", label: "Punto de venta", icon: ScanBarcode },
-      { href: "/admin/caja", label: "Caja", icon: Banknote },
-      { href: "/admin/ventas-tienda", label: "Ventas en tienda", icon: ReceiptText },
-    ],
-  },
-  {
     title: "Catálogo",
     items: [
       { href: "/admin/productos", label: "Productos", icon: Shirt },
-      { href: "/admin/inventario", label: "Stock y precios", icon: Boxes },
+      { href: "/admin/inventario", label: "Precios y stock web", icon: Tag },
       { href: "/admin/importar", label: "Carga masiva", icon: FileSpreadsheet },
       { href: "/admin/promociones", label: "Promociones", icon: Tag },
       { href: "/admin/categorias", label: "Categorías", icon: FolderTree },
     ],
   },
   {
-    title: "Inventario",
-    items: [
-      { href: "/admin/movimientos", label: "Movimientos", icon: ArrowLeftRight },
-      { href: "/admin/etiquetas", label: "Etiquetas", icon: Barcode },
-      { href: "/admin/almacenes", label: "Almacenes", icon: Warehouse },
-    ],
-  },
-  {
-    title: "Web",
+    title: "Contenido",
     items: [
       { href: "/admin/visitas", label: "Visitas", icon: ChartColumn },
       { href: "/admin/blog", label: "Blog", icon: Newspaper },
@@ -112,10 +115,15 @@ export function AdminShell({ user, role, openOrders, badges, logout, children }:
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const current = NAV.find((n) => (n.href === "/admin" ? pathname === "/admin" : pathname.startsWith(n.href)));
+  // Modo caja: el punto de venta ocupa toda la pantalla y trae su propia barra (tienda, caja, salir).
+  if (pathname === "/admin/pos") return <main className="min-h-dvh min-w-0">{children}</main>;
 
   const nav = (onNavigate?: () => void) => (
     <nav aria-label="Panel" className="flex flex-1 flex-col">
       <div className="space-y-4 px-3">
+        <Link href="/admin/pos" onClick={onNavigate} className="flex h-12 items-center justify-center gap-2 rounded-full bg-white font-extrabold text-black transition hover:bg-white/85">
+          <ScanBarcode className="size-5" aria-hidden /> Vender
+        </Link>
         {(role === "admin" ? NAV_GROUPS : STAFF_GROUPS).map((group, gi) => (
           <div key={group.title ?? gi}>
             {group.title ? <p className="mb-1 px-3 text-[11px] font-semibold tracking-widest text-subtle uppercase">{group.title}</p> : null}

@@ -71,7 +71,11 @@ export type PickerVariant = {
   /** Precio anterior (tachado) si la prenda está rebajada. */
   compareAtPriceCents: number | null;
   colorName: string;
+  /** Aproximado, para el punto de color (los lavados de jean no llevan). */
+  colorHex: string | null;
   sizeLabel: string;
+  /** Orden de la talla (28, 30, 32… o S, M, L). */
+  sizePosition: number;
   isActive: boolean;
   /** Stock por almacén (id → unidades). */
   levels: Record<string, number>;
@@ -88,7 +92,9 @@ export async function listPickerVariants(db: Db): Promise<PickerVariant[]> {
         priceCents: productVariants.priceCents,
         compareAtPriceCents: productVariants.compareAtPriceCents,
         colorName: colors.name,
+        colorHex: colors.hex,
         sizeLabel: sizes.label,
+        sizePosition: sizes.position,
         isActive: productVariants.isActive,
       })
       .from(productVariants)

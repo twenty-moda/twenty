@@ -5,6 +5,7 @@ import { getDb } from "@/server/db/client";
 import { countPendingComplaints } from "@/server/services/complaints";
 import { countNewMessages } from "@/server/services/messages";
 import { countOrdersByStatus } from "@/server/services/orders";
+import { countSunatIssues } from "@/server/services/pos";
 import { requireStaff } from "../_lib/auth";
 import { logoutAction } from "../login/actions";
 
@@ -19,23 +20,24 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
 
 async function PanelShell({ children }: { children: React.ReactNode }) {
   const user = await requireStaff();
+  const db = getDb();
   // El vendedor solo ve la tienda: no hacen falta los contadores de pedidos, mensajes y reclamos.
   if (user.role !== "admin") {
+    const sunat = await countSunatIssues(db);
     return (
-      <AdminShell user={{ name: user.name, email: user.email }} role="vendedor" openOrders={0} badges={{ orders: 0, messages: 0, complaints: 0 }} logout={logoutAction}>
+      <AdminShell user={{ name: user.name, email: user.email }} role="vendedor" openOrders={0} badges={{ orders: 0, messages: 0, complaints: 0, sunat }} logout={logoutAction}>
         {children}
       </AdminShell>
     );
   }
-  const db = getDb();
-  const [byStatus, messages, complaints] = await Promise.all([countOrdersByStatus(db), countNewMessages(db), countPendingComplaints(db)]);
+  const [byStatus, messages, complaints, sunat] = await Promise.all([countOrdersByStatus(db), countNewMessages(db), countPendingComplaints(db), countSunatIssues(db)]);
   const openOrders = OPEN_STATUSES.filter((s) => s !== "enviado").reduce((sum, s) => sum + (byStatus[s] ?? 0), 0);
   return (
     <AdminShell
       user={{ name: user.name, email: user.email }}
       role="admin"
       openOrders={openOrders}
-      badges={{ orders: openOrders, messages, complaints }}
+      badges={{ orders: openOrders, messages, complaints, sunat }}
       logout={logoutAction}
     >
       {children}
