@@ -1,5 +1,5 @@
 /** Punto de venta y caja de la tienda: abrir y cerrar caja, vender, anular. El stock se mueve en `stock.ts`. */
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { checkCustomer, PAYMENT_METHODS, saleTotal, settlePayments, type PaymentMethod } from "@/lib/pos";
@@ -434,6 +434,23 @@ export async function sendToSunat(db: Db, saleId: string, client: SunatClient | 
     await db.update(posSales).set({ sunatMessage: message, sunatSentAt: new Date() }).where(eq(posSales.id, sale.id));
     return { status: "pendiente", message };
   }
+}
+
+/**
+ * Reintenta las boletas y facturas que quedaron pendientes (SUNAT o la API no respondieron), de la más antigua a la
+ * más nueva. Lo corren el POS después de cada venta y el cron diario: SUNAT da unos días para recibirlas.
+ */
+export async function retryPendingSunat(db: Db, client: SunatClient | null, { limit = 20, skip }: { limit?: number; skip?: string } = {}) {
+  if (!client) return { checked: 0, accepted: 0 };
+  const pending = await db
+    .select({ id: posSales.id })
+    .from(posSales)
+    .where(and(eq(posSales.sunatStatus, "pendiente"), eq(posSales.status, "pagada"), skip ? ne(posSales.id, skip) : undefined))
+    .orderBy(asc(posSales.createdAt))
+    .limit(limit);
+  let accepted = 0;
+  for (const { id } of pending) if ((await sendToSunat(db, id, client)).status === "aceptado") accepted++;
+  return { checked: pending.length, accepted };
 }
 
 /**

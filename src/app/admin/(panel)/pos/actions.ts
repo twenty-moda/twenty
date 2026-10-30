@@ -1,9 +1,10 @@
 "use server";
 
 import { refresh, revalidateTag } from "next/cache";
+import { after } from "next/server";
 import { cacheTags } from "@/lib/cache-tags";
 import { getDb } from "@/server/db/client";
-import { findCustomerByDocument, getPosSale, openCashSession, registerSale, saleInputSchema, sendToSunat, type PosSaleDetail } from "@/server/services/pos";
+import { findCustomerByDocument, getPosSale, openCashSession, registerSale, retryPendingSunat, saleInputSchema, sendToSunat, type PosSaleDetail } from "@/server/services/pos";
 import { sunatFromEnv } from "@/server/services/sunat";
 import { requireStaff } from "../../_lib/auth";
 import { failure, form, success, type ActionState } from "../../_lib/action-state";
@@ -31,6 +32,8 @@ export async function registerSaleAction(input: unknown): Promise<SaleActionResu
   if (result.soldOut) revalidateTag(cacheTags.catalog, "max");
   // Boleta o factura: sale a SUNAT ya mismo (la venta quedó guardada aunque SUNAT no responda).
   if (parsed.data.documentType !== "nota_venta") await sendToSunat(db, result.saleId, sunatFromEnv());
+  // Después de responder: reintenta las que quedaron pendientes antes (si SUNAT estuvo caído un rato).
+  after(() => retryPendingSunat(getDb(), sunatFromEnv(), { limit: 5, skip: result.saleId }));
   // El POS vuelve a leer el stock de la tienda para la venta siguiente.
   refresh();
   return { ok: true, sale: (await getPosSale(db, result.saleId))! };

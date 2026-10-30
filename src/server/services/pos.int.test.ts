@@ -8,7 +8,7 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
 const { getOnlineWarehouseId } = await import("./stock");
-const { addCashMovement, closeCashSession, getCashSession, getOpenSession, getPosSale, openCashSession, registerSale, sendToSunat, voidSale } = await import("./pos");
+const { addCashMovement, closeCashSession, getCashSession, getOpenSession, getPosSale, openCashSession, registerSale, retryPendingSunat, sendToSunat, voidSale } = await import("./pos");
 type SunatClient = import("./sunat").SunatClient;
 
 let db: Db;
@@ -169,6 +169,18 @@ describe("boleta y factura (SUNAT)", () => {
     const other = await sale({ documentType: "boleta" });
     if (!other.ok) throw new Error("venta");
     expect((await sendToSunat(db, other.saleId, null)).status).toBe("pendiente");
+  });
+
+  it("las pendientes se reintentan solas (después de una venta y en el cron), de la más antigua a la más nueva", async () => {
+    const a = await sale({ documentType: "boleta" });
+    const b = await sale({ documentType: "boleta" });
+    if (!a.ok || !b.ok) throw new Error("venta");
+    expect(await retryPendingSunat(db, null)).toEqual({ checked: 0, accepted: 0 });
+    const { client, calls } = fakeSunat();
+    expect(await retryPendingSunat(db, client, { skip: b.saleId })).toEqual({ checked: 1, accepted: 1 });
+    expect(await retryPendingSunat(db, client)).toEqual({ checked: 1, accepted: 1 });
+    expect(calls.emit.map((c) => c.key)).toEqual([a.saleId, b.saleId]);
+    expect(await retryPendingSunat(db, client)).toEqual({ checked: 0, accepted: 0 });
   });
 
   it("factura sin RUC y boleta desde S/ 700 sin cliente no se emiten", async () => {
