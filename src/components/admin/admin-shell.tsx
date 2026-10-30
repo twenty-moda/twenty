@@ -7,6 +7,7 @@ import {
   BookOpenText,
   Boxes,
   ChartColumn,
+  ChartNoAxesCombined,
   ExternalLink,
   FileSpreadsheet,
   FolderTree,
@@ -38,7 +39,12 @@ type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badg
 
 /** `staff`: el grupo que también ve el vendedor (el resto es solo del admin). */
 const NAV_GROUPS: { title?: string; staff?: boolean; items: NavItem[] }[] = [
-  { items: [{ href: "/admin", label: "Resumen", icon: LayoutDashboard }] },
+  {
+    items: [
+      { href: "/admin", label: "Resumen", icon: LayoutDashboard },
+      { href: "/admin/reportes", label: "Reportes", icon: ChartNoAxesCombined },
+    ],
+  },
   {
     title: "Ventas",
     items: [

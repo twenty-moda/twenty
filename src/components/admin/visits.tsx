@@ -9,7 +9,7 @@ const shortDayFormat = new Intl.DateTimeFormat("es-PE", { timeZone: "America/Lim
 const hourFormat = new Intl.DateTimeFormat("es-PE", { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
 /** Tope del eje: un número redondo (1, 2, 5, 10, 15, 20, 50…) igual o mayor que el máximo. */
-function axisMax(max: number) {
+export function axisMax(max: number) {
   if (max <= 2) return 2;
   const power = 10 ** Math.floor(Math.log10(max));
   const step = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((m) => Number.isInteger(m * power) && m * power >= max) ?? 10;
@@ -105,14 +105,25 @@ type BarRow = { key: string; label: ReactNode; value: number; /** El "Others" de
  * Lista con barra proporcional a la fila más alta (todas de un mismo tono: es cantidad, no categorías). Muestra las
  * primeras `visible` y el resto queda en «Ver las otras N».
  */
-export function BarList({ rows, visible = 10, empty = "Sin datos en estas fechas." }: { rows: BarRow[]; visible?: number; empty?: string }) {
+export function BarList({
+  rows,
+  visible = 10,
+  empty = "Sin datos en estas fechas.",
+  format = formatCount,
+}: {
+  rows: BarRow[];
+  visible?: number;
+  empty?: string;
+  /** Cómo se escribe el valor (por defecto, una cantidad). */
+  format?: (value: number) => string;
+}) {
   if (!rows.length) return <p className="text-sm text-muted">{empty}</p>;
   const max = Math.max(1, ...rows.filter((r) => !r.others).map((r) => r.value));
   const item = (r: BarRow) => (
     <li key={r.key} className="py-1.5">
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="min-w-0 flex-1">{r.label}</span>
-        <span className="shrink-0 text-muted tabular-nums">{formatCount(r.value)}</span>
+        <span className="shrink-0 text-muted tabular-nums">{format(r.value)}</span>
       </div>
       <div className="mt-1.5 h-1.5 rounded-full bg-raised">
         <div className="h-full rounded-full bg-white/70" style={{ width: `${Math.min(100, (r.value / max) * 100)}%` }} />

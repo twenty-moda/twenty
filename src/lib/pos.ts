@@ -42,7 +42,18 @@ export function returnAmount(line: { netCents: number; soldQty: number; returned
   return Math.round((line.netCents * quantity) / line.soldQty);
 }
 
-export type ReturnLine = { saleItemId: string; netCents: number; soldQty: number; returnedQty: number; returnedCents: number };
+/**
+ * Valor de venta e IGV de un comprobante, como los calcula la API de SUNAT: por línea, el valor es el precio con IGV
+ * ÷ 1.18 redondeado y el IGV la diferencia. `lineCents`: lo cobrado por cada línea (prendas ya con su parte del
+ * descuento, y el envío como una línea más).
+ */
+export function igvSplit(lineCents: number[]): { baseCents: number; igvCents: number } {
+  const totalCents = lineCents.reduce((s, c) => s + c, 0);
+  const baseCents = lineCents.reduce((s, c) => s + Math.round((c * 100) / 118), 0);
+  return { baseCents, igvCents: totalCents - baseCents };
+}
+
+export type ReturnLine ={ saleItemId: string; netCents: number; soldQty: number; returnedQty: number; returnedCents: number };
 
 /** Cada línea de la venta con lo pagado y lo que ya se devolvió. Los ítems van en el orden de la boleta. */
 export function returnLines(
