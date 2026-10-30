@@ -103,13 +103,14 @@ export function CloseCashForm({ sessionId, number, expectedCashCents }: { sessio
           {(a11y) => <input {...a11y} inputMode="decimal" value={typed} onChange={(e) => setTyped(e.target.value)} className={cn(inputCompactClass, "tabular-nums")} />}
         </Field>
       ) : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        // Una sola columna y anchos fijos: al contar, el subtotal no mueve los botones de una fila a otra.
+        <div className="grid grid-cols-1 gap-1.5 2xl:grid-cols-2">
           {DENOMINATIONS.map((d) => {
             const label = denominationLabel(d);
             return (
-              <div key={d} className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2">
-                <span className="w-16">
-                  <span className="block text-sm font-bold">{label}</span>
+              <div key={d} className="flex items-center gap-2 rounded-xl bg-raised px-3 py-1.5">
+                <span className="w-16 shrink-0">
+                  <span className="block text-sm font-bold whitespace-nowrap">{label}</span>
                   <span className="block font-mono text-[10px] tracking-wider text-subtle uppercase">{d >= 1000 ? "Billete" : "Moneda"}</span>
                 </span>
                 <button type="button" aria-label={`Uno menos de ${label}`} onClick={() => setCount(d, (counts[d] ?? 0) - 1)} className="grid size-10 place-items-center rounded-lg border border-line bg-surface">
@@ -126,7 +127,7 @@ export function CloseCashForm({ sessionId, number, expectedCashCents }: { sessio
                 <button type="button" aria-label={`Uno más de ${label}`} onClick={() => setCount(d, (counts[d] ?? 0) + 1)} className="grid size-10 place-items-center rounded-lg border border-line bg-surface">
                   <Plus className="size-4" aria-hidden />
                 </button>
-                <span className="flex-1 text-right text-sm text-muted tabular-nums">{counts[d] ? formatPrice(d * counts[d]) : ""}</span>
+                <span className="min-w-20 flex-1 text-right text-sm whitespace-nowrap text-muted tabular-nums">{counts[d] ? formatPrice(d * counts[d]) : ""}</span>
               </div>
             );
           })}

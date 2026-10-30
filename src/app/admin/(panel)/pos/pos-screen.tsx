@@ -593,7 +593,7 @@ export function PosScreen({ warehouse, variants, company, fontClass }: PosScreen
             </button>
           </div>
 
-          {!mixed && method === "efectivo" ? (
+          {!mixed && method === "efectivo" && lines.length ? (
             <div className="space-y-2">
               <p className="text-sm text-muted">¿Con cuánto paga?</p>
               <div className="grid grid-cols-4 gap-2">
