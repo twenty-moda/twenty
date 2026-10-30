@@ -6,10 +6,22 @@ import type { ActionState } from "@/app/admin/_lib/action-state";
 import { cn } from "@/lib/cn";
 import { buttonClass } from "./ui";
 
-export function SubmitButton({ children, pendingLabel = "Guardando…", variant = "primary", className }: { children: React.ReactNode; pendingLabel?: string; variant?: "primary" | "secondary" | "danger"; className?: string }) {
+export function SubmitButton({
+  children,
+  pendingLabel = "Guardando…",
+  variant = "primary",
+  className,
+  disabled,
+}: {
+  children: React.ReactNode;
+  pendingLabel?: string;
+  variant?: "primary" | "secondary" | "danger";
+  className?: string;
+  disabled?: boolean;
+}) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending} className={cn(buttonClass(variant), className)}>
+    <button type="submit" disabled={pending || disabled} className={cn(buttonClass(variant), className)}>
       {pending ? pendingLabel : children}
     </button>
   );

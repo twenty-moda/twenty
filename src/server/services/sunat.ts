@@ -6,8 +6,7 @@
  * Cada venta se manda con su número (lo pone nuestra serie) y con `Idempotency-Key` = id de la venta: si se corta la
  * conexión y se reintenta, la API devuelve el mismo comprobante y no emite otro.
  */
-import { allocateOutfitPrice } from "@/lib/outfits";
-import type { PosDocumentType } from "@/lib/pos";
+import { netLineTotals, type PosDocumentType } from "@/lib/pos";
 
 export type SunatResult = {
   status: "pendiente" | "aceptado" | "rechazado";
@@ -136,21 +135,11 @@ export function unitPrice(cents: number, quantity: number): string {
  */
 export function salePayload(sale: PayloadSale): Record<string, unknown> {
   if (sale.documentType === "nota_venta") throw new Error("Una nota de venta no va a SUNAT");
-  const itemsTotal = sale.items.reduce((s, i) => s + i.totalCents, 0);
-  const net = allocateOutfitPrice(
-    itemsTotal - sale.manualDiscountCents,
+  const net = netLineTotals(
     sale.items.map((i) => i.totalCents),
+    sale.manualDiscountCents,
   );
-  const identified = !!(sale.customerDocumentType && sale.customerDocumentNumber);
-  const items: Record<string, unknown>[] = sale.items.map((item, i) => ({
-    unidad_de_medida: "NIU",
-    codigo_interno: item.sku,
-    descripcion: `${item.productName} ${item.colorName} T${item.sizeLabel}`.toUpperCase().slice(0, 500),
-    cantidad: String(item.quantity),
-    precio_unitario: unitPrice(net[i], item.quantity),
-    porcentaje_igv: "18",
-    codigo_tipo_afectacion_igv: "10",
-  }));
+  const items = sale.items.map((item, i) => garment(item, net[i]));
   if (sale.shippingCents > 0) {
     items.push({ unidad_de_medida: "ZZ", codigo_interno: "ENVIO", descripcion: "SERVICIO DE ENVÍO", cantidad: "1", precio_unitario: unitPrice(sale.shippingCents, 1), porcentaje_igv: "18", codigo_tipo_afectacion_igv: "10" });
   }
@@ -161,11 +150,64 @@ export function salePayload(sale: PayloadSale): Record<string, unknown> {
     fecha_de_emision: limaDate.format(sale.createdAt),
     moneda: "PEN",
     tipo_operacion: "0101",
+    ...customerFields(sale),
+    items,
+    total: (sale.totalCents / 100).toFixed(2),
+  };
+}
+
+type Garment = { sku: string; productName: string; colorName: string; sizeLabel: string; quantity: number };
+
+/** Una prenda a precio con IGV: `cents` es lo pagado por todas sus unidades. */
+function garment(item: Garment, cents: number): Record<string, unknown> {
+  return {
+    unidad_de_medida: "NIU",
+    codigo_interno: item.sku,
+    descripcion: `${item.productName} ${item.colorName} T${item.sizeLabel}`.toUpperCase().slice(0, 500),
+    cantidad: String(item.quantity),
+    precio_unitario: unitPrice(cents, item.quantity),
+    porcentaje_igv: "18",
+    codigo_tipo_afectacion_igv: "10",
+  };
+}
+
+/** El cliente de la venta; sin documento, "CLIENTES VARIOS" (lo que admite SUNAT en una boleta). */
+function customerFields(sale: Pick<PayloadSale, "customerDocumentType" | "customerDocumentNumber" | "customerName" | "customerAddress">) {
+  const identified = !!(sale.customerDocumentType && sale.customerDocumentNumber);
+  return {
     cliente_tipo_de_documento: identified ? SUNAT_DOCUMENT_TYPE[sale.customerDocumentType!] : "-",
     cliente_numero_de_documento: identified ? sale.customerDocumentNumber : "-",
     cliente_denominacion: (sale.customerName?.trim() || "CLIENTES VARIOS").toUpperCase(),
     ...(sale.customerAddress ? { cliente_direccion: sale.customerAddress } : {}),
-    items,
-    total: (sale.totalCents / 100).toFixed(2),
+  };
+}
+
+export type PayloadReturn = {
+  series: string;
+  number: number;
+  createdAt: Date;
+  /** Catálogo 09: 06 devolución total, 07 devolución por ítem. */
+  reasonCode: string;
+  reason: string;
+  refundCents: number;
+  sale: Pick<PayloadSale, "series" | "number" | "customerDocumentType" | "customerDocumentNumber" | "customerName" | "customerAddress"> & { documentType: "boleta" | "factura" };
+  items: (Garment & { amountCents: number })[];
+};
+
+/** Nota de crédito de una devolución: las prendas devueltas a lo que se pagó por ellas, contra la boleta o factura. */
+export function creditNotePayload(ret: PayloadReturn): Record<string, unknown> {
+  return {
+    documento: "nota_credito",
+    serie: ret.series,
+    numero: ret.number,
+    fecha_de_emision: limaDate.format(ret.createdAt),
+    moneda: "PEN",
+    tipo_operacion: "0101",
+    documento_afectado: { documento: ret.sale.documentType, serie: ret.sale.series, numero: ret.sale.number },
+    nota_credito_codigo_tipo: ret.reasonCode,
+    nota_credito_motivo: ret.reason.slice(0, 250),
+    ...customerFields(ret.sale),
+    items: ret.items.map((item) => garment(item, item.amountCents)),
+    total: (ret.refundCents / 100).toFixed(2),
   };
 }

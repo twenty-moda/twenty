@@ -2,7 +2,7 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
-import { checkCustomer, PAYMENT_METHODS, saleTotal, settlePayments, type PaymentMethod } from "@/lib/pos";
+import { checkCustomer, PAYMENT_METHODS, SALE_DOCUMENT_TYPES, saleTotal, settlePayments, type PaymentMethod } from "@/lib/pos";
 import { priceLines, type PricedPromotion } from "@/lib/pricing";
 import type { Db } from "../db/client";
 import {
@@ -14,6 +14,7 @@ import {
   documentType,
   posDocumentType,
   posPayments,
+  posReturns,
   posSaleItems,
   posSales,
   products,
@@ -34,7 +35,7 @@ type Fail = { ok: false; message: string };
 // ─── Series ──────────────────────────────────────────────────────────────────
 
 type DocumentType = (typeof posDocumentType.enumValues)[number];
-const SERIES_PREFIX: Record<DocumentType, string> = { nota_venta: "NV", boleta: "B", factura: "F" };
+const SERIES_PREFIX: Record<DocumentType, string> = { nota_venta: "NV", boleta: "B", factura: "F", nota_credito_boleta: "BC", nota_credito_factura: "FC" };
 /** Las series empiezan en 05: Insaga usa 03 (Gamarra) y 04 (San Juan de Miraflores), y un comprobante no puede repetir serie y número. */
 const FIRST_SERIES = 5;
 
@@ -42,7 +43,7 @@ const FIRST_SERIES = 5;
  * Toma el siguiente número de la serie de la tienda. Es un UPDATE dentro de la transacción de la venta: si la venta
  * falla, el número vuelve (no quedan huecos), y dos ventas a la vez se ordenan solas. La primera venta crea la serie.
  */
-async function takeNumber(tx: Tx, warehouseId: string, type: DocumentType): Promise<{ series: string; number: number }> {
+export async function takeNumber(tx: Tx, warehouseId: string, type: DocumentType): Promise<{ series: string; number: number }> {
   const [taken] = await tx
     .update(documentSeries)
     .set({ nextNumber: sql`${documentSeries.nextNumber} + 1`, updatedAt: new Date() })
@@ -101,9 +102,9 @@ export async function addCashMovement(db: Db, sessionId: string, input: z.infer<
   });
 }
 
-/** Totales de la caja: ventas por medio de pago, ingresos, egresos y el efectivo que debería haber. */
+/** Totales de la caja: ventas por medio de pago, devoluciones, ingresos, egresos y el efectivo que debería haber. */
 export async function getSessionTotals(db: Conn, sessionId: string) {
-  const [byMethod, [sales], movements] = await Promise.all([
+  const [byMethod, [sales], movements, refunds] = await Promise.all([
     db
       .select({ method: posPayments.method, cents: sql<number>`coalesce(sum(${posPayments.amountCents}), 0)::int` })
       .from(posPayments)
@@ -123,16 +124,35 @@ export async function getSessionTotals(db: Conn, sessionId: string) {
       .from(cashMovements)
       .where(eq(cashMovements.sessionId, sessionId))
       .groupBy(cashMovements.type),
+    // Devoluciones pagadas desde esta caja (de ventas de esta caja o de otras).
+    db
+      .select({ method: posReturns.refundMethod, cents: sql<number>`coalesce(sum(${posReturns.refundCents}), 0)::int`, count: sql<number>`count(*)::int` })
+      .from(posReturns)
+      .where(eq(posReturns.cashSessionId, sessionId))
+      .groupBy(posReturns.refundMethod),
   ]);
-  const methods = Object.fromEntries(PAYMENT_METHODS.map((m) => [m, byMethod.find((r) => r.method === m)?.cents ?? 0])) as Record<PaymentMethod, number>;
+  const perMethod = (rows: { method: PaymentMethod; cents: number }[]) =>
+    Object.fromEntries(PAYMENT_METHODS.map((m) => [m, rows.find((r) => r.method === m)?.cents ?? 0])) as Record<PaymentMethod, number>;
+  const methods = perMethod(byMethod);
+  const refundsByMethod = perMethod(refunds);
   const ingresosCents = movements.find((m) => m.type === "ingreso")?.cents ?? 0;
   const egresosCents = movements.find((m) => m.type === "egreso")?.cents ?? 0;
-  return { salesCount: sales.count, voidedCount: sales.voided, salesCents: sales.totalCents, methods, ingresosCents, egresosCents };
+  return {
+    salesCount: sales.count,
+    voidedCount: sales.voided,
+    salesCents: sales.totalCents,
+    methods,
+    refundsCount: refunds.reduce((s, r) => s + r.count, 0),
+    refundsCents: refunds.reduce((s, r) => s + r.cents, 0),
+    refundsByMethod,
+    ingresosCents,
+    egresosCents,
+  };
 }
 
-/** Efectivo que debería haber: lo inicial + lo cobrado en efectivo (sin el vuelto) + ingresos − egresos. */
+/** Efectivo que debería haber: lo inicial + lo cobrado en efectivo (sin el vuelto) − lo devuelto en efectivo + ingresos − egresos. */
 export const expectedCash = (openingCents: number, totals: Awaited<ReturnType<typeof getSessionTotals>>) =>
-  openingCents + totals.methods.efectivo + totals.ingresosCents - totals.egresosCents;
+  openingCents + totals.methods.efectivo - totals.refundsByMethod.efectivo + totals.ingresosCents - totals.egresosCents;
 
 export async function closeCashSession(db: Db, input: { sessionId: string; countedCashCents: number; note: string | null; userId: string | null }): Promise<{ ok: true; expectedCashCents: number } | Fail> {
   if (!Number.isInteger(input.countedCashCents) || input.countedCashCents < 0) return { ok: false, message: "El efectivo contado no es válido." };
@@ -231,7 +251,7 @@ export async function listPosVariants(db: Db, warehouseId: string): Promise<PosV
 
 export const saleInputSchema = z.object({
   warehouseId: z.uuid(),
-  documentType: z.enum(posDocumentType.enumValues),
+  documentType: z.enum(SALE_DOCUMENT_TYPES),
   customer: z
     .object({
       documentType: z.enum(documentType.enumValues).nullable(),
@@ -403,18 +423,30 @@ export type SunatSendResult = { status: "pendiente" | "aceptado" | "rechazado"; 
  */
 export async function sendToSunat(db: Db, saleId: string, client: SunatClient | null): Promise<SunatSendResult> {
   const sale = await getPosSale(db, saleId);
-  if (!sale?.sunatStatus) throw new Error("Esa venta no lleva boleta ni factura");
+  const documentType = sale?.documentType;
+  if (!sale?.sunatStatus || (documentType !== "boleta" && documentType !== "factura")) throw new Error("Esa venta no lleva boleta ni factura");
   if (sale.sunatStatus === "aceptado" || sale.status === "anulada") return { status: sale.sunatStatus, message: sale.sunatMessage };
+  const sent = await emitDocument(client, salePayload({ ...sale, documentType }), sale.id, `${sale.series}-${sale.number}`);
+  await db.update(posSales).set(sent.fields).where(eq(posSales.id, sale.id));
+  return { status: sent.status, message: sent.message };
+}
+
+/**
+ * Emite un comprobante y devuelve lo que se guarda: las columnas `sunat*` se llaman igual en la venta y en la
+ * devolución. Si la API responde con un error (datos que SUNAT no acepta), queda el motivo; si no responde, queda
+ * pendiente para reintentar.
+ */
+export async function emitDocument(client: SunatClient | null, payload: Record<string, unknown>, idempotencyKey: string, label: string) {
   if (!client) {
     const message = "Falta conectar la API de SUNAT (MATHYU_SUNAT_API_KEY): el comprobante queda pendiente.";
-    await db.update(posSales).set({ sunatMessage: message }).where(eq(posSales.id, sale.id));
-    return { status: "pendiente", message };
+    return { status: "pendiente" as const, message, fields: { sunatMessage: message } };
   }
   try {
-    const result = await client.emit(salePayload(sale), sale.id);
-    await db
-      .update(posSales)
-      .set({
+    const result = await client.emit(payload, idempotencyKey);
+    return {
+      status: result.status,
+      message: result.message,
+      fields: {
         sunatStatus: result.status,
         sunatCode: result.code,
         sunatMessage: result.message,
@@ -424,15 +456,12 @@ export async function sendToSunat(db: Db, saleId: string, client: SunatClient | 
         sunatXmlUrl: result.xmlUrl,
         sunatCdrUrl: result.cdrUrl,
         sunatSentAt: new Date(),
-      })
-      .where(eq(posSales.id, sale.id));
-    return { status: result.status, message: result.message };
+      },
+    };
   } catch (error) {
-    // La API respondió con un error (datos que SUNAT no acepta): se guarda el motivo. Sin respuesta: se reintenta.
-    const message = error instanceof SunatApiError ? error.message : "No hubo respuesta de SUNAT: se puede reintentar desde la venta.";
-    if (!(error instanceof SunatApiError)) console.warn("[sunat] sin respuesta al emitir", sale.series, sale.number, error instanceof Error ? error.message : error);
-    await db.update(posSales).set({ sunatMessage: message, sunatSentAt: new Date() }).where(eq(posSales.id, sale.id));
-    return { status: "pendiente", message };
+    const message = error instanceof SunatApiError ? error.message : "No hubo respuesta de SUNAT: se puede reintentar.";
+    if (!(error instanceof SunatApiError)) console.warn("[sunat] sin respuesta al emitir", label, error instanceof Error ? error.message : error);
+    return { status: "pendiente" as const, message, fields: { sunatMessage: message, sunatSentAt: new Date() } };
   }
 }
 
@@ -461,7 +490,10 @@ export async function voidSale(db: Db, input: { saleId: string; reason: string; 
   const reason = input.reason.trim();
   if (reason.length < 3) return { ok: false, message: "Escribe por qué se anula." };
   const [current] = await db.select().from(posSales).where(eq(posSales.id, input.saleId)).limit(1);
-  if (current?.status === "pagada" && current.documentType !== "nota_venta") {
+  // Con devoluciones, anular devolvería esas prendas dos veces al stock: se devuelve lo que falta.
+  const [{ returns }] = await db.select({ returns: sql<number>`count(*)::int` }).from(posReturns).where(eq(posReturns.saleId, input.saleId));
+  if (returns > 0) return { ok: false, message: "Esta venta ya tiene devoluciones: en vez de anularla, devuelve las prendas que faltan." };
+  if (current?.status === "pagada" && (current.documentType === "boleta" || current.documentType === "factura")) {
     if (current.sunatStatus === "pendiente") return { ok: false, message: "El comprobante todavía no tiene respuesta de SUNAT: reintenta el envío antes de anular." };
     if (current.sunatStatus === "aceptado") {
       if (!client) return { ok: false, message: "Falta conectar la API de SUNAT para dar de baja el comprobante." };

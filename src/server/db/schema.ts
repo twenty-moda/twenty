@@ -245,6 +245,7 @@ export const stockMovementType = pgEnum("stock_movement_type", [
   "ajuste",
   "conteo",
   "devolucion_proveedor",
+  "devolucion_cliente",
 ]);
 
 /** Kardex: cada cambio de stock de una variante en un almacén, con el saldo que dejó. */
@@ -301,7 +302,8 @@ export const stockOperations = pgTable(
 
 // ─── Tienda: punto de venta y caja ───────────────────────────────────────────
 
-export const posDocumentType = pgEnum("pos_document_type", ["nota_venta", "boleta", "factura"]);
+/** Las notas de crédito tienen su propia serie por tienda: BC05 (de boletas) y FC05 (de facturas). */
+export const posDocumentType = pgEnum("pos_document_type", ["nota_venta", "boleta", "factura", "nota_credito_boleta", "nota_credito_factura"]);
 
 /** Series de cada tienda (NV05, B005, F005…). El correlativo sale de `next_number` en la transacción de la venta. */
 export const documentSeries = pgTable(
@@ -467,6 +469,70 @@ export const posPayments = pgTable(
     reference: text(),
   },
   (t) => [index("pos_payments_sale_idx").on(t.saleId), check("pos_payments_amount_positive", sql`${t.amountCents} > 0`)],
+);
+
+/**
+ * Devolución de prendas de una venta en tienda (cambio de talla, fallas): el stock vuelve a la tienda, el dinero sale
+ * de la caja abierta y, si la venta fue boleta o factura, va una nota de crédito a SUNAT. Una venta puede tener varias.
+ */
+export const posReturns = pgTable(
+  "pos_returns",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    number: integer().notNull().unique().generatedAlwaysAsIdentity({ startWith: 1 }),
+    saleId: uuid()
+      .notNull()
+      .references(() => posSales.id, { onDelete: "restrict" }),
+    warehouseId: uuid()
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    /** La caja abierta de la que salió el dinero (no la de la venta, que puede estar cerrada). */
+    cashSessionId: uuid()
+      .notNull()
+      .references(() => cashSessions.id, { onDelete: "restrict" }),
+    userId: uuid().references(() => users.id, { onDelete: "set null" }),
+    /** Catálogo 09 de SUNAT: 01 anulación de la operación, 06 devolución total, 07 devolución por ítem. */
+    reasonCode: text().notNull(),
+    reason: text().notNull(),
+    refundMethod: posPaymentMethod().notNull(),
+    refundCents: integer().notNull(),
+    /** Nota de crédito (solo si la venta fue boleta o factura). */
+    creditNoteSeries: text(),
+    creditNoteNumber: integer(),
+    sunatStatus: posSunatStatus(),
+    sunatCode: text(),
+    sunatMessage: text(),
+    sunatHash: text(),
+    sunatTicketUrl: text(),
+    sunatPdfUrl: text(),
+    sunatXmlUrl: text(),
+    sunatCdrUrl: text(),
+    sunatSentAt: timestamp({ withTimezone: true }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    index("pos_returns_sale_idx").on(t.saleId),
+    index("pos_returns_session_idx").on(t.cashSessionId),
+    uniqueIndex("pos_returns_credit_note_uq").on(t.creditNoteSeries, t.creditNoteNumber),
+    check("pos_returns_refund_non_negative", sql`${t.refundCents} >= 0`),
+  ],
+);
+
+export const posReturnItems = pgTable(
+  "pos_return_items",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    returnId: uuid()
+      .notNull()
+      .references(() => posReturns.id, { onDelete: "cascade" }),
+    saleItemId: uuid()
+      .notNull()
+      .references(() => posSaleItems.id, { onDelete: "restrict" }),
+    quantity: integer().notNull(),
+    /** Lo que se devuelve por estas unidades: lo pagado por ellas (con su parte de la promo y del descuento). */
+    amountCents: integer().notNull(),
+  },
+  (t) => [index("pos_return_items_return_idx").on(t.returnId), index("pos_return_items_sale_item_idx").on(t.saleItemId), check("pos_return_items_quantity_positive", sql`${t.quantity} > 0`)],
 );
 
 // ─── Promociones ─────────────────────────────────────────────────────────────

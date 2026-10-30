@@ -1,5 +1,6 @@
 /** Punto de venta: medios de pago, documentos y las cuentas de cobro (las usan la pantalla y el servidor). */
 import { formatPrice } from "./money";
+import { allocateOutfitPrice } from "./outfits";
 
 export const PAYMENT_METHODS = ["efectivo", "yape", "plin", "tarjeta", "transferencia"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
@@ -12,8 +13,58 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   transferencia: "Transferencia",
 };
 
-export const POS_DOCUMENT_LABEL = { nota_venta: "Nota de venta", boleta: "Boleta", factura: "Factura" } as const;
-export type PosDocumentType = keyof typeof POS_DOCUMENT_LABEL;
+export const SALE_DOCUMENT_TYPES = ["nota_venta", "boleta", "factura"] as const;
+/** Lo que se emite al vender (las notas de crédito salen de una devolución). */
+export type PosDocumentType = (typeof SALE_DOCUMENT_TYPES)[number];
+export const POS_DOCUMENT_LABEL = {
+  nota_venta: "Nota de venta",
+  boleta: "Boleta",
+  factura: "Factura",
+  nota_credito_boleta: "Nota de crédito",
+  nota_credito_factura: "Nota de crédito",
+} as const;
+
+/**
+ * Lo que se pagó por cada línea de una venta: su total (ya con la promo) menos su parte del descuento de la tienda,
+ * repartido en proporción. La boleta y las devoluciones usan este mismo reparto, así cuadran entre sí.
+ */
+export function netLineTotals(lineTotalsCents: number[], manualDiscountCents: number): number[] {
+  const total = lineTotalsCents.reduce((s, c) => s + c, 0);
+  return allocateOutfitPrice(total - manualDiscountCents, lineTotalsCents);
+}
+
+/**
+ * Cuánto se devuelve por `quantity` unidades de una línea: lo pagado por ellas, en proporción. La devolución que se
+ * lleva las últimas unidades se lleva también el resto de los céntimos: nunca se devuelve más de lo que se pagó.
+ */
+export function returnAmount(line: { netCents: number; soldQty: number; returnedQty: number; returnedCents: number }, quantity: number): number {
+  if (line.returnedQty + quantity >= line.soldQty) return line.netCents - line.returnedCents;
+  return Math.round((line.netCents * quantity) / line.soldQty);
+}
+
+export type ReturnLine = { saleItemId: string; netCents: number; soldQty: number; returnedQty: number; returnedCents: number };
+
+/** Cada línea de la venta con lo pagado y lo que ya se devolvió. Los ítems van en el orden de la boleta. */
+export function returnLines(
+  items: { id: string; quantity: number; totalCents: number }[],
+  manualDiscountCents: number,
+  returned: { saleItemId: string; quantity: number; amountCents: number }[],
+): ReturnLine[] {
+  const net = netLineTotals(
+    items.map((i) => i.totalCents),
+    manualDiscountCents,
+  );
+  return items.map((item, i) => {
+    const prior = returned.filter((r) => r.saleItemId === item.id);
+    return {
+      saleItemId: item.id,
+      netCents: net[i],
+      soldQty: item.quantity,
+      returnedQty: prior.reduce((s, r) => s + r.quantity, 0),
+      returnedCents: prior.reduce((s, r) => s + r.amountCents, 0),
+    };
+  });
+}
 
 /** "NV05-123", como en Insaga y en SUNAT (serie-correlativo). */
 export const formatDocNumber = (series: string, number: number) => `${series}-${number}`;

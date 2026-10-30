@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkCustomer, formatDocNumber, saleTotal, settlePayments } from "./pos";
+import { checkCustomer, formatDocNumber, netLineTotals, returnAmount, saleTotal, settlePayments } from "./pos";
 
 describe("saleTotal", () => {
   it("prendas − descuento + envío", () => {
@@ -44,6 +44,21 @@ describe("checkCustomer", () => {
     expect(checkCustomer("boleta", 70000, null)).toBe("Una boleta desde S/ 700 lleva el documento y el nombre del cliente.");
     expect(checkCustomer("boleta", 70000, dni)).toBeNull();
     expect(checkCustomer("boleta", 100, { ...dni, documentNumber: "1234" })).toBe("El DNI tiene 8 dígitos.");
+  });
+});
+
+describe("devoluciones", () => {
+  it("el descuento de la tienda se reparte entre las líneas en proporción", () => {
+    expect(netLineTotals([9900, 7000], 1690)).toEqual([8910, 6300]);
+    expect(netLineTotals([10000], 0)).toEqual([10000]);
+  });
+  it("devolver de a una unidad nunca devuelve más de lo pagado: la última se lleva el resto", () => {
+    const line = { netCents: 10000, soldQty: 3, returnedQty: 0, returnedCents: 0 };
+    const first = returnAmount(line, 1);
+    const second = returnAmount({ ...line, returnedQty: 1, returnedCents: first }, 1);
+    const third = returnAmount({ ...line, returnedQty: 2, returnedCents: first + second }, 1);
+    expect([first, second, third]).toEqual([3333, 3333, 3334]);
+    expect(first + second + third).toBe(10000);
   });
 });
 

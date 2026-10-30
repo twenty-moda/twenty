@@ -30,6 +30,7 @@ export const MOVEMENT_TYPES = [
   "ajuste",
   "conteo",
   "devolucion_proveedor",
+  "devolucion_cliente",
 ] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
@@ -45,6 +46,7 @@ export const MOVEMENT_LABEL: Record<MovementType, string> = {
   ajuste: "Ajuste",
   conteo: "Conteo",
   devolucion_proveedor: "Devolución a proveedor",
+  devolucion_cliente: "Devolución de cliente",
 };
 
 export const formatUnits = (n: number) => `${n} ${Math.abs(n) === 1 ? "unidad" : "unidades"}`;

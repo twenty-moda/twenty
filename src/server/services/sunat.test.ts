@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { salePayload, sunatClient, SunatApiError, unitPrice, type PayloadSale } from "./sunat";
+import { creditNotePayload, salePayload, sunatClient, SunatApiError, unitPrice, type PayloadSale } from "./sunat";
 
 const sale = (over: Partial<PayloadSale> = {}): PayloadSale => ({
   documentType: "boleta",
@@ -60,6 +60,32 @@ describe("salePayload", () => {
   it("factura: RUC, razón social y dirección", () => {
     const p = salePayload(sale({ documentType: "factura", series: "F005", customerDocumentType: "ruc", customerDocumentNumber: "20612934020", customerName: "Multiventa Peruano S.A.C.", customerAddress: "Jr. Antonio Bazo 1288" }));
     expect(p).toMatchObject({ documento: "factura", cliente_tipo_de_documento: "6", cliente_numero_de_documento: "20612934020", cliente_denominacion: "MULTIVENTA PERUANO S.A.C.", cliente_direccion: "Jr. Antonio Bazo 1288" });
+  });
+});
+
+describe("creditNotePayload", () => {
+  it("nota de crédito por las prendas devueltas, contra la boleta", () => {
+    const p = creditNotePayload({
+      series: "BC05",
+      number: 1,
+      createdAt: new Date("2026-10-30T15:00:00Z"),
+      reasonCode: "07",
+      reason: "Cambio de talla",
+      refundCents: 3333,
+      sale: { documentType: "boleta", series: "B005", number: 12, customerDocumentType: null, customerDocumentNumber: null, customerName: null, customerAddress: null },
+      items: [{ sku: "TMW-0010", productName: "Polo Oversize", colorName: "Negro", sizeLabel: "M", quantity: 1, amountCents: 3333 }],
+    });
+    expect(p).toMatchObject({
+      documento: "nota_credito",
+      serie: "BC05",
+      numero: 1,
+      documento_afectado: { documento: "boleta", serie: "B005", numero: 12 },
+      nota_credito_codigo_tipo: "07",
+      nota_credito_motivo: "Cambio de talla",
+      cliente_tipo_de_documento: "-",
+      total: "33.33",
+    });
+    expect(p.items).toEqual([expect.objectContaining({ codigo_interno: "TMW-0010", cantidad: "1", precio_unitario: "33.33" })]);
   });
 });
 

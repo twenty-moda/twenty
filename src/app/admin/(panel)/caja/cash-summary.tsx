@@ -33,6 +33,14 @@ export function CashSummary({ session }: { session: Session }) {
             <dd className="tabular-nums">{totals.voidedCount}</dd>
           </div>
         ) : null}
+        {totals.refundsCount ? (
+          <div className="flex justify-between">
+            <dt className="text-muted">Devoluciones</dt>
+            <dd className="tabular-nums">
+              {totals.refundsCount} · −{formatPrice(totals.refundsCents)}
+            </dd>
+          </div>
+        ) : null}
       </dl>
       <dl className="space-y-1.5 text-sm">
         <div className="flex justify-between">
@@ -43,6 +51,12 @@ export function CashSummary({ session }: { session: Session }) {
           <dt className="text-muted">+ Ventas en efectivo</dt>
           <dd className="tabular-nums">{formatPrice(totals.methods.efectivo)}</dd>
         </div>
+        {totals.refundsByMethod.efectivo ? (
+          <div className="flex justify-between">
+            <dt className="text-muted">− Devoluciones en efectivo</dt>
+            <dd className="tabular-nums">{formatPrice(totals.refundsByMethod.efectivo)}</dd>
+          </div>
+        ) : null}
         <div className="flex justify-between">
           <dt className="text-muted">+ Ingresos</dt>
           <dd className="tabular-nums">{formatPrice(totals.ingresosCents)}</dd>
