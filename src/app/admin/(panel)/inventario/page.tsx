@@ -7,7 +7,7 @@ import { requireAdmin } from "../../_lib/auth";
 import { InventoryEditor } from "./inventory-editor";
 
 export const instant = false;
-export const metadata: Metadata = { title: "Stock y precios" };
+export const metadata: Metadata = { title: "Precios y stock web" };
 
 export default async function InventoryPage({ searchParams }: PageProps<"/admin/inventario">) {
   await requireAdmin();
@@ -18,7 +18,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/admin/
 
   return (
     <AdminPage
-      title="Stock y precios"
+      title="Precios y stock web"
       description="Cambia varias prendas y guarda todo junto. Para cambios grandes, descarga el Excel, edítalo y súbelo en Carga masiva."
       actions={
         <a href="/admin/importar/catalogo.xlsx" className={buttonClass("secondary")}>
