@@ -213,7 +213,8 @@ export async function getRefundOptions(db: Db, order: OrderDetail, paymentRows: 
       name: i.outfitName ? `${i.productName} (de ${i.outfitName})` : i.productName,
       detail: `${i.colorName} · Talla ${i.sizeLabel} · ${i.sku}`,
       quantity: i.quantity,
-      totalCents: i.totalCents,
+      // Lo pagado: con su parte de la promo y del cupón.
+      totalCents: i.totalCents - i.couponDiscountCents,
       available: i.quantity - (done.get(i.id) ?? 0),
       /** Stock actual en la tienda (null si la variante ya no existe). */
       stock: stock.find((s) => s.id === i.variantId)?.stock ?? null,

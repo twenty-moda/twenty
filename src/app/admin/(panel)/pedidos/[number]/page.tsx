@@ -232,6 +232,12 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
                   <dd>-{formatPrice(p.discountCents)}</dd>
                 </div>
               ))}
+              {order.couponDiscountCents ? (
+                <div className="flex justify-between text-success">
+                  <dt>Cupón {order.couponCode}</dt>
+                  <dd>-{formatPrice(order.couponDiscountCents)}</dd>
+                </div>
+              ) : null}
               <div className="flex justify-between">
                 <dt className="text-muted">Envío</dt>
                 <dd>{order.shippingCents ? formatPrice(order.shippingCents) : order.paymentOnDelivery ? "Paga al recoger" : "Gratis"}</dd>

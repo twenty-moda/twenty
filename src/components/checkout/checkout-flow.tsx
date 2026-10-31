@@ -1,17 +1,18 @@
 "use client";
 
-import { ArrowLeft, Check, ChevronDown, CreditCard, MapPin, Package, Smartphone, Store, Truck, UserRound } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, CreditCard, MapPin, Package, Smartphone, Store, TicketPercent, Truck, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
-import { placeOrderAction } from "@/app/(store)/checkout/actions";
+import { checkCouponAction, placeOrderAction } from "@/app/(store)/checkout/actions";
 import { getCheckoutAccountAction, type CheckoutAccount } from "@/app/(store)/cuenta/actions";
 import { addressSummary } from "@/lib/account-forms";
 import { AGENCY_NAME_MAX, agencyLabel, COURIER_NAME, methodCourier, type Courier } from "@/lib/couriers";
 import { cartTotals, lineItem, type CartLine } from "@/lib/cart";
 import { checkoutSchema, fieldErrors, normalizePhone, type CheckoutFieldErrors, type CheckoutInput } from "@/lib/checkout-schema";
 import { cn } from "@/lib/cn";
+import { COUPON_CODE_MAX, couponDiscount, couponLabel, minimumError, normalizeCouponCode, type CouponRule } from "@/lib/coupons";
 import { formatPrice } from "@/lib/money";
 import { priceLines, type PricingResult } from "@/lib/pricing";
 import type { ShippingKind, ShippingMethodInfo } from "@/lib/shipping";
@@ -75,7 +76,7 @@ const KIND_ICON: Record<ShippingKind, typeof Truck> = { lima_delivery: Truck, ag
 const STEP_FIELDS: Record<Step, (keyof CheckoutFieldErrors)[]> = {
   1: ["shippingMethod"],
   2: ["name", "phone", "email", "documentNumber", "ubigeo", "address", "agencyName"],
-  3: ["invoiceType", "ruc", "businessName", "paymentMethod", "note"],
+  3: ["couponCode", "invoiceType", "ruc", "businessName", "paymentMethod", "note"],
 };
 
 export function CheckoutFlow({ methods, limaDistricts, store, payments }: CheckoutFlowProps) {
@@ -97,6 +98,11 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
   // Shalom y Olva: la agencia se elige de la lista real. Si la lista de un courier no carga, se escribe como texto.
   const [listDown, setListDown] = useState<Partial<Record<Courier, boolean>>>({});
   const markListDown = useCallback((c: Courier) => setListDown((d) => ({ ...d, [c]: true })), []);
+  // Cupón: el servidor dice si vale y devuelve su regla; el descuento se calcula aquí con el mismo cálculo del servidor.
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [couponText, setCouponText] = useState("");
+  const [coupon, setCoupon] = useState<CouponRule | null>(null);
+  const [checkingCoupon, startCouponCheck] = useTransition();
 
   useEffect(() => {
     let active = true;
@@ -136,8 +142,29 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     [lines],
   );
   const shippingCents = method?.kind === "lima_delivery" ? (limaDistrict?.priceCents ?? 0) : 0;
-  const totalCents = pricing.totalCents + shippingCents;
+  const couponCents = coupon ? couponDiscount(coupon, pricing.totalCents) : 0;
+  const totalCents = pricing.totalCents - couponCents + shippingCents;
   const { units } = cartTotals(lines);
+
+  const applyCoupon = () => {
+    const code = normalizeCouponCode(couponText);
+    if (!code) return;
+    startCouponCheck(async () => {
+      const result = await checkCouponAction({
+        code,
+        productsTotalCents: pricing.totalCents,
+        email: form.email || undefined,
+        documentNumber: form.documentNumber || undefined,
+      });
+      if (result.ok) setCoupon(result.coupon);
+      setErrors((e) => ({ ...e, couponCode: result.ok ? undefined : result.message }));
+    });
+  };
+  const removeCoupon = () => {
+    setCoupon(null);
+    setCouponText("");
+    setErrors((e) => ({ ...e, couponCode: undefined }));
+  };
 
   const courier = method ? methodCourier(method) : null;
   /** Courier cuya lista de agencias se muestra (null = la agencia se escribe). */
@@ -190,6 +217,8 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     agencyId: agencyPicker ? form.agencyId || undefined : undefined,
     paymentMethod: form.paymentMethod || undefined,
     note: form.note,
+    // Si el carrito ya no llega al mínimo del cupón, no se manda (el aviso queda junto al cupón).
+    couponCode: coupon && couponCents ? coupon.code : undefined,
     saveAddress: canSaveAddress && saveAddress,
     items: lines.map(lineItem),
   });
@@ -250,6 +279,12 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
         return;
       }
       setErrors(result.errors);
+      // El cupón dejó de valer (se acabaron los usos, venció…): se quita y queda escrito con el motivo.
+      if (result.errors.couponCode && coupon) {
+        setCouponText(coupon.code);
+        setCoupon(null);
+        setCouponOpen(true);
+      }
       const errorStep = ([1, 2, 3] as Step[]).find((s) => STEP_FIELDS[s].some((k) => result.errors[k]));
       if (errorStep) goTo(errorStep);
     });
@@ -322,7 +357,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
         </ol>
 
         <MobileSummary units={units} totalCents={totalCents}>
-          <OrderSummary lines={lines} pricing={pricing} shippingLabel={shippingLabel} totalCents={totalCents} />
+          <OrderSummary lines={lines} pricing={pricing} coupon={coupon && couponCents ? { code: coupon.code, cents: couponCents } : null} shippingLabel={shippingLabel} totalCents={totalCents} />
         </MobileSummary>
 
         {errors.form ? (
@@ -657,6 +692,61 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
 
           {step === 3 ? (
             <div className="space-y-8">
+              <section aria-label="Cupón de descuento">
+                {coupon ? (
+                  <div className="flex items-center gap-3 rounded-2xl border border-line p-4">
+                    <TicketPercent className={cn("size-5 shrink-0", couponCents ? "text-success" : "text-muted")} aria-hidden />
+                    <span className="min-w-0 flex-1 text-sm">
+                      <span className="block font-semibold break-all">Cupón {coupon.code}</span>
+                      <span className={cn("block", couponCents ? "text-success" : "text-warning")}>
+                        {couponCents ? `${couponLabel(coupon)} de descuento: -${formatPrice(couponCents)}` : minimumError(coupon.minSubtotalCents)}
+                      </span>
+                    </span>
+                    <button type="button" onClick={removeCoupon} className="min-h-10 shrink-0 text-sm underline underline-offset-4">
+                      Quitar
+                    </button>
+                  </div>
+                ) : couponOpen ? (
+                  <Field label="Cupón de descuento" error={errors.couponCode}>
+                    {(p) => (
+                      <div className="flex gap-2">
+                        <input
+                          {...p}
+                          value={couponText}
+                          onChange={(e) => {
+                            setCouponText(e.target.value.toUpperCase());
+                            setErrors((x) => ({ ...x, couponCode: undefined }));
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            e.preventDefault();
+                            applyCoupon();
+                          }}
+                          autoComplete="off"
+                          autoCapitalize="characters"
+                          spellCheck={false}
+                          maxLength={COUPON_CODE_MAX}
+                          placeholder="Escribe tu código"
+                          className={cn(inputClass, "min-w-0")}
+                        />
+                        <button
+                          type="button"
+                          onClick={applyCoupon}
+                          disabled={checkingCoupon || !couponText.trim()}
+                          className="h-12 shrink-0 rounded-full border border-white px-5 text-sm font-semibold uppercase disabled:opacity-50"
+                        >
+                          {checkingCoupon ? "Revisando…" : "Aplicar"}
+                        </button>
+                      </div>
+                    )}
+                  </Field>
+                ) : (
+                  <button type="button" onClick={() => setCouponOpen(true)} className="flex min-h-10 items-center gap-2 text-sm underline underline-offset-4">
+                    <TicketPercent className="size-4" aria-hidden /> ¿Tienes un cupón de descuento?
+                  </button>
+                )}
+              </section>
+
               <section aria-labelledby="paso-pago" className="space-y-3">
                 <h2 id="paso-pago" className="text-lg font-bold">
                   ¿Cómo quieres pagar?
@@ -759,7 +849,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
         <div className="sticky top-20 rounded-2xl bg-raised p-5">
           <h2 className="text-sm font-bold tracking-widest uppercase">Tu pedido</h2>
           <div className="mt-4">
-            <OrderSummary lines={lines} pricing={pricing} shippingLabel={shippingLabel} totalCents={totalCents} />
+            <OrderSummary lines={lines} pricing={pricing} coupon={coupon && couponCents ? { code: coupon.code, cents: couponCents } : null} shippingLabel={shippingLabel} totalCents={totalCents} />
           </div>
         </div>
       </aside>
@@ -781,11 +871,13 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
 function OrderSummary({
   lines,
   pricing,
+  coupon,
   shippingLabel,
   totalCents,
 }: {
   lines: CartLine[];
   pricing: PricingResult;
+  coupon: { code: string; cents: number } | null;
   shippingLabel: string;
   totalCents: number;
 }) {
@@ -821,6 +913,12 @@ function OrderSummary({
               <dd>-{formatPrice(p.discountCents)}</dd>
             </div>
           ))}
+        {coupon ? (
+          <div className="flex justify-between text-success">
+            <dt>Cupón {coupon.code}</dt>
+            <dd>-{formatPrice(coupon.cents)}</dd>
+          </div>
+        ) : null}
         <div className="flex justify-between">
           <dt className="text-muted">Envío</dt>
           <dd className="text-right">{shippingLabel}</dd>

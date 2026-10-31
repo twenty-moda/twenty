@@ -14,6 +14,8 @@ export const RATE_LIMITS = {
   paymentProof: { limit: 10, windowMinutes: 60 },
   /** Entrar con Google (verificar el token y crear la sesión). */
   login: { limit: 20, windowMinutes: 15 },
+  /** Probar un cupón en el checkout (que no se puedan adivinar códigos). */
+  coupon: { limit: 15, windowMinutes: 15 },
 } satisfies Record<string, RateLimit>;
 
 /**

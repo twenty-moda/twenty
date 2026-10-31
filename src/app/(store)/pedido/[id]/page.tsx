@@ -269,6 +269,12 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
               <dd>-{formatPrice(p.discountCents)}</dd>
             </div>
           ))}
+          {order.couponDiscountCents ? (
+            <div className="flex justify-between text-success">
+              <dt>Cupón {order.couponCode}</dt>
+              <dd>-{formatPrice(order.couponDiscountCents)}</dd>
+            </div>
+          ) : null}
           <div className="flex justify-between">
             <dt className="text-muted">Envío</dt>
             <dd>{order.shippingCents ? formatPrice(order.shippingCents) : order.paymentOnDelivery ? "Pagas al recoger" : "Gratis"}</dd>

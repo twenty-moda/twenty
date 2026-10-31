@@ -1,4 +1,4 @@
-import { CheckCircle2, Plus } from "lucide-react";
+import { CheckCircle2, Plus, TicketPercent } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AdminPage, Badge, buttonClass, EmptyState, formatDay } from "@/components/admin/ui";
@@ -20,9 +20,14 @@ export default async function PromotionsPage({ searchParams }: PageProps<"/admin
       title="Promociones"
       description="“Lleva N por S/ X”. Se muestran en la tienda y se aplican solas en el carrito y el checkout."
       actions={
-        <Link href="/admin/promociones/nueva" className={buttonClass("primary")}>
-          <Plus className="size-4" aria-hidden /> Nueva promoción
-        </Link>
+        <>
+          <Link href="/admin/cupones" className={buttonClass("secondary")}>
+            <TicketPercent className="size-4" aria-hidden /> Cupones de descuento
+          </Link>
+          <Link href="/admin/promociones/nueva" className={buttonClass("primary")}>
+            <Plus className="size-4" aria-hidden /> Nueva promoción
+          </Link>
+        </>
       }
     >
       {saved ? (

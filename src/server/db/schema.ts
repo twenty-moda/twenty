@@ -28,6 +28,7 @@ const timestamps = {
 export const productStatus = pgEnum("product_status", ["active", "draft", "archived"]);
 export const gender = pgEnum("gender", ["hombre", "mujer", "unisex"]);
 export const promotionType = pgEnum("promotion_type", ["bundle_price"]);
+export const couponType = pgEnum("coupon_type", ["porcentaje", "monto"]);
 /** "single" = prenda con variantes propias; "outfit" = conjunto de varias prendas (ver outfit_pieces). */
 export const productKind = pgEnum("product_kind", ["single", "outfit"]);
 /** Documento de un cliente (pedidos web y ventas en tienda). */
@@ -565,6 +566,39 @@ export const promotionProducts = pgTable(
   (t) => [primaryKey({ columns: [t.promotionId, t.productId] })],
 );
 
+/**
+ * Cupón de descuento que el cliente escribe en el checkout de la web (ver src/lib/coupons.ts). Los usos se cuentan con
+ * los pedidos que lo llevan (`orders.coupon_id`) y no están anulados ni rechazados.
+ */
+export const coupons = pgTable(
+  "coupons",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    /** En mayúsculas (se compara así). */
+    code: text().notNull(),
+    /** Nota para el equipo. */
+    description: text(),
+    type: couponType().notNull(),
+    /** Porcentaje (1 a 100) o monto en céntimos. */
+    value: integer().notNull(),
+    /** Tope del descuento (solo porcentaje). */
+    maxDiscountCents: integer(),
+    /** Compra mínima en prendas, después de las promos "N x S/". */
+    minSubtotalCents: integer().notNull().default(0),
+    /** Usos en total (null = sin límite). */
+    usageLimit: integer(),
+    /** Usos por cliente, por email o documento (null = sin límite). */
+    perCustomerLimit: integer(),
+    /** Solo si el cliente no tiene pedidos anteriores (por email o documento). */
+    firstPurchaseOnly: boolean().notNull().default(false),
+    isActive: boolean().notNull().default(true),
+    startsAt: timestamp({ withTimezone: true }),
+    endsAt: timestamp({ withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("coupons_code_idx").on(t.code), check("coupons_value_positive", sql`${t.value} > 0`)],
+);
+
 // ─── Contenido ───────────────────────────────────────────────────────────────
 
 export const slides = pgTable("slides", {
@@ -747,6 +781,10 @@ export const orders = pgTable(
     paymentMethod: paymentMethod().notNull(),
     subtotalCents: integer().notNull(),
     discountCents: integer().notNull().default(0),
+    /** Cupón usado: el código queda escrito aunque se borre el cupón. Total = subtotal − promos − cupón + envío. */
+    couponId: uuid().references(() => coupons.id, { onDelete: "set null" }),
+    couponCode: text(),
+    couponDiscountCents: integer().notNull().default(0),
     shippingCents: integer().notNull().default(0),
     totalCents: integer().notNull(),
     promotions: jsonb().$type<AppliedPromotion[]>().notNull().default([]),
@@ -761,6 +799,7 @@ export const orders = pgTable(
     index("orders_status_idx").on(t.status, t.createdAt),
     index("orders_customer_idx").on(t.customerId),
     index("orders_created_idx").on(t.createdAt),
+    index("orders_coupon_idx").on(t.couponId),
   ],
 );
 
@@ -783,7 +822,10 @@ export const orderItems = pgTable(
     compareAtPriceCents: integer(),
     quantity: integer().notNull(),
     discountCents: integer().notNull().default(0),
+    /** Con la promo, sin el cupón (así se muestra la línea). */
     totalCents: integer().notNull(),
+    /** Parte del cupón que le toca a esta línea: lo pagado por ella es `totalCents − couponDiscountCents`. */
+    couponDiscountCents: integer().notNull().default(0),
     /**
      * Prenda vendida dentro de un conjunto: una fila por pieza (con su variante, para el stock y el empaque) y el precio
      * del conjunto repartido entre las piezas. `outfitLine` agrupa las piezas de un mismo conjunto en el pedido.

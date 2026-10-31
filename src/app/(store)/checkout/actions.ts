@@ -2,22 +2,47 @@
 
 import { revalidateTag } from "next/cache";
 import { after } from "next/server";
+import { z } from "zod";
 import { cacheTags } from "@/lib/cache-tags";
 import { checkoutSchema, fieldErrors, type CheckoutFieldErrors } from "@/lib/checkout-schema";
+import { COUPON_CODE_MAX, COUPON_ERRORS, type CouponRule } from "@/lib/coupons";
 import { culqiConfig } from "@/lib/culqi-config";
 import { getDb } from "@/server/db/client";
 import { notifyAfterResponse } from "@/server/order-events";
 import { linkCustomerToAccount, rememberCheckoutAddress } from "@/server/services/accounts";
 import { getSiteSettings } from "@/server/services/content";
+import { checkCoupon } from "@/server/services/coupons";
 import { expireUnpaidCardOrders, placeOrder } from "@/server/services/orders";
 import { resolveAgency } from "@/server/services/couriers";
 import { agencyLabel, methodCourier } from "@/lib/couriers";
 import { getCourierAgencies } from "../_data";
 import { getAccount } from "../_lib/account";
+import { allowRequest } from "../_lib/request";
 
 export type PlaceOrderState =
   | { ok: true; orderId: string; payNow: boolean }
   | { ok: false; errors: CheckoutFieldErrors; outOfStock?: string[] };
+
+export type CheckCouponState = { ok: true; coupon: CouponRule } | { ok: false; message: string };
+
+const checkCouponSchema = z.object({
+  code: z.string().trim().min(1).max(COUPON_CODE_MAX),
+  /** Lo que cuestan las prendas con las promos (solo para avisar del mínimo: al comprar lo calcula el servidor). */
+  productsTotalCents: z.number().int().min(0),
+  email: z.string().trim().max(200).optional(),
+  documentNumber: z.string().trim().max(20).optional(),
+});
+
+/** El cliente prueba un cupón: si vale, el checkout calcula el descuento con su regla. No gasta un uso. */
+export async function checkCouponAction(raw: unknown): Promise<CheckCouponState> {
+  const parsed = checkCouponSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, message: COUPON_ERRORS.notFound };
+  if (!(await allowRequest("coupon"))) return { ok: false, message: "Probaste muchos cupones seguidos. Espera unos minutos e inténtalo de nuevo." };
+  const { code, productsTotalCents, email, documentNumber } = parsed.data;
+  const customer = email && documentNumber ? { email, documentNumber } : null;
+  const result = await checkCoupon(getDb(), code, productsTotalCents, customer);
+  return result.ok ? { ok: true, coupon: result.coupon } : { ok: false, message: result.message };
+}
 
 export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   const parsed = checkoutSchema.safeParse(raw);
@@ -63,6 +88,8 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
         return { ok: false, errors: { address: result.message } };
       case "agency":
         return { ok: false, errors: { agencyName: result.message } };
+      case "coupon":
+        return { ok: false, errors: { couponCode: result.message } };
     }
   }
 

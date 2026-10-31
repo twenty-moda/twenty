@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { COUPON_CODE_MAX } from "./coupons";
 import { AGENCY_NAME_MAX } from "./couriers";
 import { MAX_OUTFIT_PIECES, MIN_OUTFIT_PIECES } from "./outfits";
 
@@ -57,6 +58,8 @@ export const checkoutSchema = z
     // "whatsapp" (coordinar el pago) se quitó del checkout; la BD lo conserva por los pedidos anteriores.
     paymentMethod: z.enum(["tarjeta", "yape_plin"], { error: "Elige cómo vas a pagar" }),
     note: optionalText(500),
+    /** Cupón de descuento (el servidor lo vuelve a revisar al crear el pedido). */
+    couponCode: optionalText(COUPON_CODE_MAX),
     /** Con la cuenta abierta: guardar la dirección de entrega para la próxima compra. */
     saveAddress: z.boolean().optional(),
     items: z.array(checkoutItemSchema).min(1, "Tu carrito está vacío").max(30),

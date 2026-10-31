@@ -45,6 +45,7 @@ function totalsBlock(order: OrderDetail): EmailBlock {
     rows: [
       { label: "Subtotal", value: formatPrice(order.subtotalCents) },
       ...order.promotions.map((p) => ({ label: `Promo ${p.name}`, value: `-${formatPrice(p.discountCents)}`, accent: true })),
+      ...(order.couponDiscountCents ? [{ label: `Cupón ${order.couponCode}`, value: `-${formatPrice(order.couponDiscountCents)}`, accent: true }] : []),
       { label: "Envío", value: order.shippingCents ? formatPrice(order.shippingCents) : order.paymentOnDelivery ? "Pagas al recoger" : "Gratis" },
       { label: "Total", value: formatPrice(order.totalCents), strong: true },
       ...(refunded ? [{ label: "Devuelto", value: `-${formatPrice(refunded)}`, accent: true }] : []),

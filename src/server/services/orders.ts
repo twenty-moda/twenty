@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { normalizePhone, type CheckoutInput } from "@/lib/checkout-schema";
 import { COURIER_NAME, orderCourier, type Courier, type CourierGuide } from "@/lib/couriers";
+import { allocateCouponDiscount } from "@/lib/coupons";
 import { canTransition, OPEN_STATUSES, PAID_STATUSES, RESTOCK_STATUSES, type OrderStatus } from "@/lib/order-status";
 import { allocateOutfitPrice, outfitLineKey } from "@/lib/outfits";
 import { priceLines } from "@/lib/pricing";
@@ -8,6 +9,7 @@ import { shippingOptions, type ShippingKind } from "@/lib/shipping";
 import type { Db } from "../db/client";
 import { customers, orderItems, orders, orderStatusHistory, products, productVariants, refundItems, refunds, stockMovements, users } from "../db/schema";
 import { getOutfitSnapshots, getVariantSnapshots } from "./cart";
+import { claimCoupon } from "./coupons";
 import { getDistrict, listShippingMethods, toShippingInfo } from "./shipping";
 import { InsufficientStockError, moveStock } from "./stock";
 
@@ -23,7 +25,10 @@ const refundedCents = () => sql<number>`(select coalesce(sum(${refunds.amountCen
 export type PlaceOrderResult =
   | { ok: true; orderId: string; number: number; totalCents: number; productSlugs: string[]; soldOut: boolean; shippingKind: ShippingKind }
   | { ok: false; code: "unavailable" | "out_of_stock"; variantIds: string[] }
-  | { ok: false; code: "shipping" | "address" | "agency"; message: string };
+  | { ok: false; code: "shipping" | "address" | "agency" | "coupon"; message: string };
+
+/** El cupón no vale (se lanza dentro de la transacción para deshacerla). */
+class CouponRejectedError extends Error {}
 
 /**
  * Crea el pedido. El precio, las promos y el envío se recalculan aquí (no se confía en el navegador), y el
@@ -95,11 +100,21 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
     ...outfitKeys.map((key) => ({ variantId: key, quantity: outfitRequests.get(key)!.quantity, unitPriceCents: outfitByKey.get(key)!.priceCents, promotion: null })),
   ]);
   const lineById = new Map(pricing.lines.map((l) => [l.variantId, l]));
-  const totalCents = pricing.totalCents + option.priceCents;
   const stockIds = [...demand.keys()].sort(); // siempre en el mismo orden: dos compras a la vez no se bloquean entre sí
 
   try {
     return await db.transaction(async (tx) => {
+      // Primero el cupón: se bloquea y se cuentan sus usos aquí, así el último uso no se gasta dos veces.
+      const coupon = input.couponCode
+        ? await claimCoupon(tx, input.couponCode, pricing.totalCents, { email: input.email, documentNumber: input.documentNumber })
+        : null;
+      if (coupon && !coupon.ok) throw new CouponRejectedError(coupon.message);
+      const couponCents = coupon?.ok ? coupon.discountCents : 0;
+      // El cupón repartido entre las líneas (prendas sueltas y conjuntos), para saber lo pagado por cada prenda.
+      const couponShares = allocateCouponDiscount(couponCents, pricing.lines.map((l) => l.totalCents));
+      const couponByLine = new Map(pricing.lines.map((l, i) => [l.variantId, couponShares[i]]));
+      const totalCents = pricing.totalCents - couponCents + option.priceCents;
+
       const [customer] = await tx
         .insert(customers)
         .values({
@@ -150,6 +165,9 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
           paymentMethod: input.paymentMethod,
           subtotalCents: pricing.subtotalCents,
           discountCents: pricing.discountCents,
+          couponId: coupon?.ok ? coupon.id : null,
+          couponCode: coupon?.ok ? coupon.coupon.code : null,
+          couponDiscountCents: couponCents,
           shippingCents: option.priceCents,
           totalCents,
           promotions: pricing.promotions
@@ -187,6 +205,7 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
           quantity: quantities.get(id)!,
           discountCents: line.discountCents,
           totalCents: line.totalCents,
+          couponDiscountCents: couponByLine.get(id)!,
         };
       });
       // Conjuntos: una fila por pieza, con el precio del conjunto repartido (el total del conjunto cuadra exacto).
@@ -194,6 +213,7 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
         const snapshot = outfitByKey.get(key)!;
         const { quantity } = outfitRequests.get(key)!;
         const shares = allocateOutfitPrice(snapshot.priceCents, snapshot.outfit.pieces.map((p) => p.priceCents));
+        const pieceCoupon = allocateCouponDiscount(couponByLine.get(key)!, shares.map((s) => s * quantity));
         return snapshot.outfit.pieces.map((piece, i) => ({
           orderId: order.id,
           variantId: piece.variantId,
@@ -209,6 +229,7 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
           quantity,
           discountCents: 0,
           totalCents: shares[i] * quantity,
+          couponDiscountCents: pieceCoupon[i],
           outfitId: snapshot.outfit.id,
           outfitName: snapshot.productName,
           outfitLine: index + 1,
@@ -235,6 +256,7 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
     });
   } catch (error) {
     if (error instanceof InsufficientStockError) return { ok: false, code: "out_of_stock", variantIds: shortLines([error.variantId]) };
+    if (error instanceof CouponRejectedError) return { ok: false, code: "coupon", message: error.message };
     throw error;
   }
 }
