@@ -79,13 +79,15 @@ type PosScreenProps = {
   variants: PosVariant[];
   company: TicketCompany;
   fontClass: string;
+  /** Sin la API de SUNAT conectada (`MATHYU_SUNAT_API_KEY`), solo se vende con nota de venta. */
+  sunatEnabled: boolean;
 };
 
 /**
  * Modo caja: escanear, elegir el comprobante, el cliente y cobrar sin salir de la pantalla. Atajos: F2 enfoca el
  * buscador, F8 cobra y, con la venta lista, Enter empieza la siguiente.
  */
-export function PosScreen({ warehouse, variants, company, fontClass }: PosScreenProps) {
+export function PosScreen({ warehouse, variants, company, fontClass, sunatEnabled }: PosScreenProps) {
   const [lines, setLines] = useState<Line[]>([]);
   const [query, setQuery] = useState("");
   const [chooser, setChooser] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function PosScreen({ warehouse, variants, company, fontClass }: PosScreen
   // Cada caja recuerda el último documento que usó (preferencia del equipo; sin localStorage, boleta).
   const savedDocType = useSyncExternalStore(subscribeStorage, readSavedDocType, () => null);
   const [pickedDocType, setPickedDocType] = useState<PosDocumentType | null>(null);
-  const docType = pickedDocType ?? savedDocType ?? "boleta";
+  const docType = sunatEnabled ? (pickedDocType ?? savedDocType ?? "boleta") : "nota_venta";
   const [customer, setCustomer] = useState<{ documentType: DocType; documentNumber: string; name: string; address: string }>({ documentType: "dni", documentNumber: "", name: "", address: "" });
   const [discount, setDiscount] = useState("");
   const [shipping, setShipping] = useState("");
@@ -468,13 +470,24 @@ export function PosScreen({ warehouse, variants, company, fontClass }: PosScreen
       <aside className="space-y-3 lg:sticky lg:top-24 lg:self-start" aria-label="Cobro">
         <Step n={1} title="Comprobante">
           <div className="grid grid-cols-3 gap-2">
-            {DOC_OPTIONS.map((o) => (
-              <button key={o.value} type="button" aria-pressed={docType === o.value} onClick={() => chooseDocType(o.value)} className={cn(choiceClass(docType === o.value), "flex flex-col items-start px-3 py-2.5 text-left")}>
-                <span className="text-sm">{o.label}</span>
-                <span className={cn("text-xs font-normal", docType === o.value ? "text-black/60" : "text-subtle")}>{o.hint}</span>
-              </button>
-            ))}
+            {DOC_OPTIONS.map((o) => {
+              const off = !sunatEnabled && o.value !== "nota_venta";
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  aria-pressed={docType === o.value}
+                  disabled={off}
+                  onClick={() => chooseDocType(o.value)}
+                  className={cn(choiceClass(docType === o.value), "flex flex-col items-start px-3 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-40")}
+                >
+                  <span className="text-sm">{o.label}</span>
+                  <span className={cn("text-xs font-normal", docType === o.value ? "text-black/60" : "text-subtle")}>{off ? "Falta SUNAT" : o.hint}</span>
+                </button>
+              );
+            })}
           </div>
+          {sunatEnabled ? null : <p className="text-xs text-warning">Boleta y factura se activan cuando SUNAT esté conectado. Por ahora, nota de venta.</p>}
         </Step>
 
         <Step n={2} title="Cliente" hint={docType === "factura" ? "obligatorio" : docType === "boleta" ? "opcional hasta S/ 700" : "opcional"}>

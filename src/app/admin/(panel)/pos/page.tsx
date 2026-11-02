@@ -10,6 +10,7 @@ import { getDb } from "@/server/db/client";
 import { getSiteSettings } from "@/server/services/content";
 import { listWarehouses } from "@/server/services/inventory";
 import { expectedCash, getOpenSession, getSessionTotals, listPosVariants } from "@/server/services/pos";
+import { sunatFromEnv } from "@/server/services/sunat";
 import { requireStaff } from "../../_lib/auth";
 import { OpenCashForm } from "./open-cash-form";
 import { PosScreen } from "./pos-screen";
@@ -95,6 +96,7 @@ export default async function PosPage({ searchParams }: PageProps<"/admin/pos">)
           variants={variants}
           company={{ legalName: settings.company.legalName, ruc: settings.company.ruc }}
           fontClass={`${displayFont.variable} ${monoFont.variable}`}
+          sunatEnabled={sunatFromEnv() !== null}
         />
       </div>
     </>

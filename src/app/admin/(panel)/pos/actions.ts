@@ -25,6 +25,8 @@ export async function registerSaleAction(input: unknown): Promise<SaleActionResu
   const user = await requireStaff();
   const parsed = saleInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0].message };
+  // Sin SUNAT conectado, una boleta o factura quedaría pendiente días: solo nota de venta.
+  if (parsed.data.documentType !== "nota_venta" && !sunatFromEnv()) return { ok: false, message: "SUNAT todavía no está conectado: por ahora, solo nota de venta." };
   const db = getDb();
   const result = await registerSale(db, parsed.data, user.id);
   if (!result.ok) return result;
