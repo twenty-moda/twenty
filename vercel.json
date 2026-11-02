@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "node scripts/migrate-deploy.mjs && pnpm build",
   "crons": [
     { "path": "/api/cron/expirar-pedidos", "schedule": "0 11 * * *" },
     { "path": "/api/cron/sunat", "schedule": "0 12 * * *" }
