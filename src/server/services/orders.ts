@@ -100,18 +100,24 @@ export async function placeOrder(db: Db, input: CheckoutInput): Promise<PlaceOrd
     ...outfitKeys.map((key) => ({ variantId: key, quantity: outfitRequests.get(key)!.quantity, unitPriceCents: outfitByKey.get(key)!.priceCents, promotion: null })),
   ]);
   const lineById = new Map(pricing.lines.map((l) => [l.variantId, l]));
+  // Para el cupón: de qué producto es cada línea (la prenda, o el conjunto) y lo que cuesta después de las promos.
+  const couponLines = pricing.lines.map((l) => ({
+    productSlug: byId.get(l.variantId)?.productSlug ?? outfitByKey.get(l.variantId)!.productSlug,
+    totalCents: l.totalCents,
+  }));
   const stockIds = [...demand.keys()].sort(); // siempre en el mismo orden: dos compras a la vez no se bloquean entre sí
 
   try {
     return await db.transaction(async (tx) => {
       // Primero el cupón: se bloquea y se cuentan sus usos aquí, así el último uso no se gasta dos veces.
       const coupon = input.couponCode
-        ? await claimCoupon(tx, input.couponCode, pricing.totalCents, { email: input.email, documentNumber: input.documentNumber })
+        ? await claimCoupon(tx, input.couponCode, couponLines, { email: input.email, documentNumber: input.documentNumber })
         : null;
       if (coupon && !coupon.ok) throw new CouponRejectedError(coupon.message);
       const couponCents = coupon?.ok ? coupon.discountCents : 0;
-      // El cupón repartido entre las líneas (prendas sueltas y conjuntos), para saber lo pagado por cada prenda.
-      const couponShares = allocateCouponDiscount(couponCents, pricing.lines.map((l) => l.totalCents));
+      // El cupón repartido entre las líneas a las que se aplica (prendas sueltas y conjuntos), para saber lo pagado por
+      // cada prenda. Las demás llevan 0.
+      const couponShares = coupon?.ok ? coupon.shares : pricing.lines.map(() => 0);
       const couponByLine = new Map(pricing.lines.map((l, i) => [l.variantId, couponShares[i]]));
       const totalCents = pricing.totalCents - couponCents + option.priceCents;
 

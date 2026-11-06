@@ -5,7 +5,7 @@ import { AdminPage, Card, formatDateTime, StatusBadge } from "@/components/admin
 import { formatPrice } from "@/lib/money";
 import { formatOrderNumber } from "@/lib/order-status";
 import { getDb } from "@/server/db/client";
-import { getCouponAdmin } from "@/server/services/coupons";
+import { getCouponAdmin, listCouponProducts } from "@/server/services/coupons";
 import { requireAdmin } from "../../../_lib/auth";
 import { CouponForm } from "../coupon-form";
 import { CouponStateBadge } from "../coupon-state";
@@ -23,7 +23,8 @@ export default async function CouponPage({ params }: PageProps<"/admin/cupones/[
   const { id } = await params;
   const isNew = id === "nuevo";
   if (!isNew && !/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const coupon = isNew ? null : await getCouponAdmin(getDb(), id);
+  const db = getDb();
+  const [coupon, products] = await Promise.all([isNew ? null : getCouponAdmin(db, id), listCouponProducts(db)]);
   if (!isNew && !coupon) notFound();
 
   return (
@@ -36,6 +37,7 @@ export default async function CouponPage({ params }: PageProps<"/admin/cupones/[
         <Card>
           <CouponForm
             id={coupon ? id : null}
+            products={products}
             initial={
               coupon
                 ? {
@@ -51,6 +53,8 @@ export default async function CouponPage({ params }: PageProps<"/admin/cupones/[
                     isActive: coupon.isActive,
                     startsAt: toLimaInput(coupon.startsAt),
                     endsAt: toLimaInput(coupon.endsAt),
+                    limitToProducts: coupon.limitToProducts,
+                    productIds: coupon.productIds,
                   }
                 : undefined
             }

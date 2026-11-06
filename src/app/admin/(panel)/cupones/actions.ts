@@ -26,6 +26,8 @@ export async function saveCouponAction(id: string | null, _: ActionState, fd: Fo
     isActive: form.bool(fd, "isActive"),
     startsAt: limaDate(form.optional(fd, "startsAt")),
     endsAt: limaDate(form.optional(fd, "endsAt")),
+    limitToProducts: form.bool(fd, "limitToProducts"),
+    productIds: fd.getAll("productIds").map(String),
   });
   if (!parsed.success) return zodFailure(parsed.error);
   const result = await saveCoupon(getDb(), id, parsed.data);

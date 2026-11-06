@@ -3,6 +3,7 @@
 import { Shuffle } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
 import { FieldError, FormAlert, SubmitButton, Toggle } from "@/components/admin/form-controls";
+import { ProductPicker, type ProductOption } from "@/components/admin/product-picker";
 import { buttonClass } from "@/components/admin/ui";
 import { fieldClass, inputClass, Segmented } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
@@ -25,6 +26,9 @@ export type CouponFormValues = {
   isActive: boolean;
   startsAt: string;
   endsAt: string;
+  /** false = todas las prendas. */
+  limitToProducts: boolean;
+  productIds: string[];
 };
 
 const NEW_COUPON: CouponFormValues = {
@@ -40,6 +44,8 @@ const NEW_COUPON: CouponFormValues = {
   isActive: true,
   startsAt: "",
   endsAt: "",
+  limitToProducts: false,
+  productIds: [],
 };
 
 /** Sin letras que se confunden al dictarlas (O/0, I/1). */
@@ -51,26 +57,29 @@ const soles = (value: string) => {
   return value.trim() && Number.isFinite(n) ? Math.round(n * 100) : null;
 };
 
-export function CouponForm({ id, initial }: { id: string | null; initial?: CouponFormValues }) {
+export function CouponForm({ id, products, initial }: { id: string | null; products: ProductOption[]; initial?: CouponFormValues }) {
   const [state, action] = useActionState(saveCouponAction.bind(null, id), idle);
   // Todo controlado: así un error al guardar no borra lo escrito.
   const [v, setValues] = useState<CouponFormValues>(initial ?? NEW_COUPON);
   const [deleting, startDelete] = useTransition();
   const set = <K extends keyof CouponFormValues>(key: K, value: CouponFormValues[K]) => setValues((x) => ({ ...x, [key]: value }));
   const isPercent = v.type === "porcentaje";
+  const onlySome = v.limitToProducts;
 
-  // Ejemplo con una compra de S/ 150 (o el mínimo, si es mayor).
+  // Ejemplo con una compra de S/ 150 (o el mínimo, si es mayor) en las prendas a las que se aplica.
   const value = isPercent ? Number(v.value) : soles(v.value);
   const minSubtotalCents = soles(v.minSubtotal) ?? 0;
   const exampleCents = Math.max(15000, minSubtotalCents);
   const exampleDiscount =
     value && value > 0 && (!isPercent || value <= 100)
-      ? couponDiscount({ code: v.code, type: v.type, value, maxDiscountCents: isPercent ? soles(v.maxDiscount) : null, minSubtotalCents }, exampleCents)
+      ? couponDiscount({ type: v.type, value, maxDiscountCents: isPercent ? soles(v.maxDiscount) : null, minSubtotalCents }, exampleCents)
       : null;
+  const exampleBase = onlySome ? `${formatPrice(exampleCents)} en los productos elegidos` : `${formatPrice(exampleCents)} en prendas`;
 
   return (
     <form action={action} className="space-y-6">
       <input type="hidden" name="type" value={v.type} />
+      <input type="hidden" name="limitToProducts" value={String(v.limitToProducts)} />
 
       <div className="space-y-3 rounded-2xl bg-raised p-5">
         <p className="text-sm text-muted">El descuento</p>
@@ -98,9 +107,38 @@ export function CouponForm({ id, initial }: { id: string | null; initial?: Coupo
         <FieldError state={state} name="value" />
         <p className="text-sm text-muted">
           {exampleDiscount
-            ? `Ejemplo: en una compra de ${formatPrice(exampleCents)} en prendas, descuenta ${formatPrice(exampleDiscount)} y el cliente paga ${formatPrice(exampleCents - exampleDiscount)} (más el envío).`
-            : "Se aplica a todas las prendas del carrito, después de las promos “N x S/”. El envío no se descuenta."}
+            ? `Ejemplo: si el carrito lleva ${exampleBase}, descuenta ${formatPrice(exampleDiscount)} y esas prendas quedan en ${formatPrice(exampleCents - exampleDiscount)} (más el envío).`
+            : `Se aplica a ${onlySome ? "los productos elegidos" : "todas las prendas del carrito"}, después de las promos “N x S/”. El envío no se descuenta.`}
         </p>
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-sm font-medium">Aplica a</p>
+        <Segmented
+          label="A qué prendas se aplica"
+          value={onlySome ? "algunos" : "todas"}
+          onChange={(x) => set("limitToProducts", x === "algunos")}
+          options={[
+            { value: "todas", label: "Todas las prendas" },
+            { value: "algunos", label: "Solo algunos productos" },
+          ]}
+        />
+        {onlySome ? (
+          <>
+            <p className="text-sm text-muted">
+              El descuento y la compra mínima se cuentan solo con estos productos; el resto del carrito paga su precio. Un conjunto entra si lo eliges a él
+              (no por sus prendas). Los productos que agregues después a la tienda no entran solos.
+            </p>
+            <ProductPicker
+              name="productIds"
+              legend="Productos del cupón"
+              products={products}
+              selected={new Set(v.productIds)}
+              onChange={(next) => set("productIds", [...next])}
+              error={<FieldError state={state} name="productIds" />}
+            />
+          </>
+        ) : null}
       </div>
 
       <div>
@@ -145,7 +183,7 @@ export function CouponForm({ id, initial }: { id: string | null; initial?: Coupo
           value={v.minSubtotal}
           onChange={(x) => set("minSubtotal", x)}
           decimal
-          hint="En prendas, después de las promos. Vacío = sin mínimo."
+          hint={`${onlySome ? "En los productos elegidos" : "En prendas"}, después de las promos. Vacío = sin mínimo.`}
           state={state}
           errorName="minSubtotalCents"
         />

@@ -12,7 +12,7 @@ import { AGENCY_NAME_MAX, agencyLabel, COURIER_NAME, methodCourier, type Courier
 import { cartTotals, lineItem, type CartLine } from "@/lib/cart";
 import { checkoutSchema, fieldErrors, normalizePhone, type CheckoutFieldErrors, type CheckoutInput } from "@/lib/checkout-schema";
 import { cn } from "@/lib/cn";
-import { COUPON_CODE_MAX, couponDiscount, couponLabel, minimumError, normalizeCouponCode, type CouponRule } from "@/lib/coupons";
+import { applyCoupon as couponOnCart, COUPON_CODE_MAX, couponAppliesTo, couponCartError, couponLabel, normalizeCouponCode, type CouponRule } from "@/lib/coupons";
 import { formatPrice } from "@/lib/money";
 import { priceLines, type PricingResult } from "@/lib/pricing";
 import type { ShippingKind, ShippingMethodInfo } from "@/lib/shipping";
@@ -142,7 +142,16 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     [lines],
   );
   const shippingCents = method?.kind === "lima_delivery" ? (limaDistrict?.priceCents ?? 0) : 0;
-  const couponCents = coupon ? couponDiscount(coupon, pricing.totalCents) : 0;
+  // Cada línea con su producto y lo que cuesta después de las promos: el cupón puede ser solo para algunas prendas.
+  const couponLines = useMemo(
+    () => lines.map((l, i) => ({ productSlug: l.productSlug, totalCents: pricing.lines[i]?.totalCents ?? 0 })),
+    [lines, pricing],
+  );
+  const couponCents = coupon ? couponOnCart(coupon, couponLines).discountCents : 0;
+  /** Si el cupón es solo para algunas prendas: cuáles del carrito entran. */
+  const couponProducts = coupon?.productSlugs
+    ? [...new Set(lines.filter((l) => couponAppliesTo(coupon, l.productSlug)).map((l) => l.productName))]
+    : null;
   const totalCents = pricing.totalCents - couponCents + shippingCents;
   const { units } = cartTotals(lines);
 
@@ -152,7 +161,7 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
     startCouponCheck(async () => {
       const result = await checkCouponAction({
         code,
-        productsTotalCents: pricing.totalCents,
+        lines: couponLines,
         email: form.email || undefined,
         documentNumber: form.documentNumber || undefined,
       });
@@ -699,8 +708,9 @@ export function CheckoutFlow({ methods, limaDistricts, store, payments }: Checko
                     <span className="min-w-0 flex-1 text-sm">
                       <span className="block font-semibold break-all">Cupón {coupon.code}</span>
                       <span className={cn("block", couponCents ? "text-success" : "text-warning")}>
-                        {couponCents ? `${couponLabel(coupon)} de descuento: -${formatPrice(couponCents)}` : minimumError(coupon.minSubtotalCents)}
+                        {couponCents ? `${couponLabel(coupon)} de descuento: -${formatPrice(couponCents)}` : couponCartError(coupon, couponLines)}
                       </span>
+                      {couponCents && couponProducts?.length ? <span className="block text-muted">Solo en {couponProducts.join(", ")}</span> : null}
                     </span>
                     <button type="button" onClick={removeCoupon} className="min-h-10 shrink-0 text-sm underline underline-offset-4">
                       Quitar

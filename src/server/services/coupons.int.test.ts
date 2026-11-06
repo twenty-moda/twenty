@@ -21,6 +21,8 @@ const ids = {
   size32: randomUUID(),
   jean: randomUUID(),
   jean32: randomUUID(),
+  polo: randomUUID(),
+  poloM: randomUUID(),
   promo: randomUUID(),
 };
 
@@ -71,6 +73,8 @@ beforeAll(async () => {
     { id: ids.jean, productId: ids.product, sku: "TMW-CUP-30", colorId: ids.color, sizeId: ids.size30, priceCents: 7000, stock: 100 },
     { id: ids.jean32, productId: ids.product, sku: "TMW-CUP-32", colorId: ids.color, sizeId: ids.size32, priceCents: 4990, stock: 100 },
   ]);
+  await db.insert(schema.products).values({ id: ids.polo, slug: "polo-box", name: "Polo Box", categoryId: ids.category, status: "active" });
+  await db.insert(schema.productVariants).values({ id: ids.poloM, productId: ids.polo, sku: "TMW-CUP-PM", colorId: ids.color, sizeId: ids.size30, priceCents: 4000, stock: 100 });
   await db.insert(schema.shippingMethods).values({ id: randomUUID(), slug: "delivery-lima", name: "Delivery Lima", kind: "lima_delivery" });
   await db.insert(schema.districts).values({ ubigeo: "140130", name: "Santiago De Surco", province: "Lima", department: "Lima", deliveryPriceCents: 1200 });
 });
@@ -182,14 +186,68 @@ describe("placeOrder con cupón", () => {
     expect(previous.ok).toBe(true);
     if (!previous.ok) return;
     // Un pedido sin pagar no cuenta.
-    expect((await checkCoupon(db, "TWENTY10", 7000, { email: "cupon1@example.com", documentNumber: "10000001" })).ok).toBe(true);
+    const lines = [{ productSlug: "mom-jean", totalCents: 7000 }];
+    expect((await checkCoupon(db, "TWENTY10", lines, { email: "cupon1@example.com", documentNumber: "10000001" })).ok).toBe(true);
     await changeOrderStatus(db, { orderId: previous.orderId, to: "pagado", userId: null });
-    expect(await checkCoupon(db, "TWENTY10", 7000, { email: "cupon1@example.com", documentNumber: "10000001" })).toEqual({
+    expect(await checkCoupon(db, "TWENTY10", lines, { email: "cupon1@example.com", documentNumber: "10000001" })).toEqual({
       ok: false,
       message: COUPON_ERRORS.firstPurchase,
     });
     expect(await placeOrder(db, checkout({}, 1))).toMatchObject({ ok: false, message: COUPON_ERRORS.firstPurchase });
     expect((await placeOrder(db, checkout({}, 2))).ok).toBe(true);
+  });
+
+  it("solo para algunos productos: descuenta y reparte solo en esas prendas", async () => {
+    const coupon = await createCoupon({ value: 20, limitToProducts: true, minSubtotalCents: 10000 });
+    await db.insert(schema.couponProducts).values({ couponId: coupon.id, productId: ids.product });
+    const result = await placeOrder(
+      db,
+      checkout({
+        items: [
+          { variantId: ids.poloM, quantity: 1 },
+          { variantId: ids.jean, quantity: 1 },
+          { variantId: ids.jean32, quantity: 1 },
+        ],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const order = (await getOrderById(db, result.orderId))!;
+    // Jeans: 70 + 49.90 = 119.90 → 20% = 23.98. El polo (40) no entra.
+    expect(order.couponDiscountCents).toBe(2398);
+    expect(order.totalCents).toBe(7000 + 4990 + 4000 - 2398 + 1200);
+    const share = (variantId: string) => order.items.find((i) => i.variantId === variantId)!.couponDiscountCents;
+    expect(share(ids.poloM)).toBe(0);
+    expect(share(ids.jean) + share(ids.jean32)).toBe(2398);
+  });
+
+  it("solo para algunos productos: sin esas prendas o sin llegar al mínimo con ellas, no vale", async () => {
+    const coupon = await createCoupon({ limitToProducts: true, minSubtotalCents: 6000 });
+    await db.insert(schema.couponProducts).values({ couponId: coupon.id, productId: ids.product });
+    expect(await placeOrder(db, checkout({ items: [{ variantId: ids.poloM, quantity: 2 }] }))).toEqual({
+      ok: false,
+      code: "coupon",
+      message: COUPON_ERRORS.notInCart,
+    });
+    // 49.90 en jeans no llega a 60, aunque con el polo el carrito pase de 60.
+    expect(
+      await placeOrder(
+        db,
+        checkout({
+          items: [
+            { variantId: ids.poloM, quantity: 1 },
+            { variantId: ids.jean32, quantity: 1 },
+          ],
+        }),
+      ),
+    ).toEqual({ ok: false, code: "coupon", message: minimumError(6000, true) });
+    // Si se borra el producto, el cupón no pasa a valer para todo.
+    await db.delete(schema.couponProducts);
+    expect(await checkCoupon(db, "TWENTY10", [{ productSlug: "mom-jean", totalCents: 7000 }], null)).toEqual({
+      ok: false,
+      message: COUPON_ERRORS.notInCart,
+    });
+    expect(await db.select().from(schema.orders)).toHaveLength(0);
   });
 });
 
@@ -223,9 +281,39 @@ describe("panel de cupones", () => {
       isActive: true,
       startsAt: null,
       endsAt: null,
+      limitToProducts: false,
+      productIds: [],
     };
     expect(await saveCoupon(db, null, input)).toMatchObject({ ok: false, field: "code" });
     // Guardarse a sí mismo con el mismo código sí vale.
     expect(await saveCoupon(db, coupon.id, input)).toEqual({ ok: true, id: coupon.id });
+  });
+
+  it("guarda sus productos y los cambia o los quita", async () => {
+    const input = {
+      code: "SOLOJEANS",
+      type: "porcentaje" as const,
+      value: 10,
+      maxDiscountCents: null,
+      minSubtotalCents: null,
+      usageLimit: null,
+      perCustomerLimit: null,
+      firstPurchaseOnly: false,
+      isActive: true,
+      startsAt: null,
+      endsAt: null,
+      limitToProducts: true,
+      productIds: [ids.product, ids.polo],
+    };
+    const saved = await saveCoupon(db, null, input);
+    if (!saved.ok) throw new Error("no se guardó");
+    expect((await getCouponAdmin(db, saved.id))!.productIds.sort()).toEqual([ids.product, ids.polo].sort());
+    expect((await listCouponsAdmin(db)).find((c) => c.id === saved.id)).toMatchObject({ limitToProducts: true, productCount: 2 });
+
+    await saveCoupon(db, saved.id, { ...input, productIds: [ids.polo] });
+    expect((await getCouponAdmin(db, saved.id))!.productIds).toEqual([ids.polo]);
+    // Para todas las prendas: no le quedan productos.
+    await saveCoupon(db, saved.id, { ...input, limitToProducts: false });
+    expect(await getCouponAdmin(db, saved.id)).toMatchObject({ limitToProducts: false, productIds: [] });
   });
 });

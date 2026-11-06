@@ -44,7 +44,9 @@ export default async function CouponsPage({ searchParams }: PageProps<"/admin/cu
                   <CouponStateBadge state={c.state} />
                 </div>
                 <p className="mt-1 text-sm">
-                  {couponLabel(c)} de descuento{c.minSubtotalCents ? ` · desde ${formatPrice(c.minSubtotalCents)}` : ""}
+                  {couponLabel(c)} de descuento
+                  {c.limitToProducts ? ` en ${c.productCount} ${c.productCount === 1 ? "producto" : "productos"}` : ""}
+                  {c.minSubtotalCents ? ` · desde ${formatPrice(c.minSubtotalCents)}` : ""}
                 </p>
                 <p className="mt-2 text-xs text-muted">
                   {c.uses} {c.uses === 1 ? "uso" : "usos"}

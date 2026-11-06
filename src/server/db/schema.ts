@@ -583,8 +583,10 @@ export const coupons = pgTable(
     value: integer().notNull(),
     /** Tope del descuento (solo porcentaje). */
     maxDiscountCents: integer(),
-    /** Compra mínima en prendas, después de las promos "N x S/". */
+    /** Compra mínima en las prendas a las que se aplica, después de las promos "N x S/". */
     minSubtotalCents: integer().notNull().default(0),
+    /** Solo para los productos de `coupon_products` (si no queda ninguno, no se aplica a nada). false = todas las prendas. */
+    limitToProducts: boolean().notNull().default(false),
     /** Usos en total (null = sin límite). */
     usageLimit: integer(),
     /** Usos por cliente, por email o documento (null = sin límite). */
@@ -597,6 +599,20 @@ export const coupons = pgTable(
     ...timestamps,
   },
   (t) => [uniqueIndex("coupons_code_idx").on(t.code), check("coupons_value_positive", sql`${t.value} > 0`)],
+);
+
+/** Prendas y conjuntos de un cupón con `limit_to_products`. */
+export const couponProducts = pgTable(
+  "coupon_products",
+  {
+    couponId: uuid()
+      .notNull()
+      .references(() => coupons.id, { onDelete: "cascade" }),
+    productId: uuid()
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.couponId, t.productId] }), index("coupon_products_product_idx").on(t.productId)],
 );
 
 // ─── Contenido ───────────────────────────────────────────────────────────────

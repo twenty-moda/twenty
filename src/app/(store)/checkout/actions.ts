@@ -27,8 +27,11 @@ export type CheckCouponState = { ok: true; coupon: CouponRule } | { ok: false; m
 
 const checkCouponSchema = z.object({
   code: z.string().trim().min(1).max(COUPON_CODE_MAX),
-  /** Lo que cuestan las prendas con las promos (solo para avisar del mínimo: al comprar lo calcula el servidor). */
-  productsTotalCents: z.number().int().min(0),
+  /**
+   * Cada prenda o conjunto del carrito con lo que cuesta después de las promos (solo para avisar si el cupón no aplica o
+   * no llega al mínimo: al comprar lo calcula el servidor).
+   */
+  lines: z.array(z.object({ productSlug: z.string().max(200), totalCents: z.number().int().min(0) })).max(100),
   email: z.string().trim().max(200).optional(),
   documentNumber: z.string().trim().max(20).optional(),
 });
@@ -38,9 +41,9 @@ export async function checkCouponAction(raw: unknown): Promise<CheckCouponState>
   const parsed = checkCouponSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, message: COUPON_ERRORS.notFound };
   if (!(await allowRequest("coupon"))) return { ok: false, message: "Probaste muchos cupones seguidos. Espera unos minutos e inténtalo de nuevo." };
-  const { code, productsTotalCents, email, documentNumber } = parsed.data;
+  const { code, lines, email, documentNumber } = parsed.data;
   const customer = email && documentNumber ? { email, documentNumber } : null;
-  const result = await checkCoupon(getDb(), code, productsTotalCents, customer);
+  const result = await checkCoupon(getDb(), code, lines, customer);
   return result.ok ? { ok: true, coupon: result.coupon } : { ok: false, message: result.message };
 }
 
