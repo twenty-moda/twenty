@@ -104,6 +104,13 @@ afterAll(async () => {
 });
 
 describe("getSalesReport", () => {
+  it("por vendedor: solo sus ventas de la tienda; solo la web: sin la tienda", async () => {
+    const web = await getSalesReport(db, today(), { kind: "web" });
+    expect([web.store.count, web.store.returnsCount, web.web.count, web.documents.length]).toEqual([0, 0, 1, 0]);
+    const nadie = await getSalesReport(db, today(), { kind: "vendedor", sellerId: randomUUID() });
+    expect([nadie.store.count, nadie.web.count, nadie.web.refundsCount, nadie.models.length]).toEqual([0, 0, 0, 0]);
+  });
+
   it("suma tienda y web sin las anuladas ni los pedidos sin pagar, y resta las devoluciones aparte", async () => {
     const r = await getSalesReport(db, today());
     expect(r.store).toEqual({ count: 2, cents: 18810 + 9900, units: 3, returnsCount: 1, returnsCents: 9405 });

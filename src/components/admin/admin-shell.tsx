@@ -56,7 +56,7 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
     title: "Tienda",
     items: [
       { href: "/admin/caja", label: "Caja", icon: Banknote, access: "staff" },
-      { href: "/admin/ventas-tienda", label: "Ventas en tienda", icon: ReceiptText, badge: "sunat", access: "staff" },
+      { href: "/admin/ventas-tienda", label: "Comprobantes", icon: ReceiptText, badge: "sunat", access: "staff" },
       { href: "/admin/gastos", label: "Gastos", icon: Wallet, access: "staff" },
     ],
   },

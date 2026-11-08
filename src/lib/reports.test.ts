@@ -48,3 +48,13 @@ it("toCsv: comillas, saltos de línea y fórmulas", () => {
     'Fecha,Cliente,Total\r\n30/10/2026,"Ana ""La"" Torres, SAC",-12.50\r\n,\'=HYPERLINK(1),',
   );
 });
+
+describe("dayRange", () => {
+  const now = new Date("2026-11-08T15:00:00Z");
+  it("sin fechas es hoy; con una sola, ese día", async () => {
+    const { dayRange } = await import("./reports");
+    expect(dayRange(undefined, undefined, now)).toMatchObject({ desde: "2026-11-08", hasta: "2026-11-08", days: 1 });
+    expect(dayRange("2026-11-02", undefined, now)).toMatchObject({ desde: "2026-11-02", hasta: "2026-11-02" });
+    expect(dayRange("2026-11-01", "2026-11-05", now)).toMatchObject({ desde: "2026-11-01", hasta: "2026-11-05", days: 5 });
+  });
+});

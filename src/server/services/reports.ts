@@ -33,10 +33,20 @@ const inRange = (column: PgColumn, range: ReportRange) => and(gte(column, range.
 /** Día ("2026-10-30") o mes ("2026-10") de Lima. El formato va literal: con un parámetro, el GROUP BY no lo reconoce. */
 const bucketOf = (column: PgColumn, unit: "day" | "month") => sql<string>`to_char(${column} at time zone 'America/Lima', ${sql.raw(unit === "day" ? "'YYYY-MM-DD'" : "'YYYY-MM'")})`;
 
-export async function getSalesReport(db: Db, range: ReportRange) {
+/**
+ * Qué ventas entran (pedido de TWENTY, 08/11/2026: ver por separado la venta física, la virtual y la web): todas,
+ * solo las de la web o solo las de un vendedor en el punto de venta (sin la web).
+ */
+export type ReportScope = { kind: "todo" } | { kind: "web" } | { kind: "vendedor"; sellerId: string };
+
+export async function getSalesReport(db: Db, range: ReportRange, scope: ReportScope = { kind: "todo" }) {
   const unit = bucketUnit(range);
-  const storePaid = and(eq(posSales.status, "pagada"), inRange(posSales.createdAt, range));
-  const webPaid = and(inArray(orders.status, PAID_STATUSES), inRange(orders.createdAt, range));
+  const none = sql`false`;
+  // Las ventas de la tienda de ese vendedor (o ninguna si se mira solo la web), y la web solo sin vendedor elegido.
+  const storeScope = scope.kind === "web" ? none : scope.kind === "vendedor" ? eq(posSales.sellerId, scope.sellerId) : undefined;
+  const webScope = scope.kind === "vendedor" ? none : undefined;
+  const storePaid = and(eq(posSales.status, "pagada"), inRange(posSales.createdAt, range), storeScope);
+  const webPaid = and(inArray(orders.status, PAID_STATUSES), inRange(orders.createdAt, range), webScope);
   const storeBucket = bucketOf(posSales.createdAt, unit);
   const webBucket = bucketOf(orders.createdAt, unit);
   const garment = { productId: sql<string | null>`${posSaleItems.productId}::text`, productName: posSaleItems.productName, colorName: posSaleItems.colorName, sizeLabel: posSaleItems.sizeLabel };
@@ -74,7 +84,7 @@ export async function getSalesReport(db: Db, range: ReportRange) {
         rejected: sql<number>`count(*) filter (where ${posSales.status} = 'pagada' and ${posSales.sunatStatus} = 'rechazado')::int`,
       })
       .from(posSales)
-      .where(inRange(posSales.createdAt, range))
+      .where(and(inRange(posSales.createdAt, range), storeScope))
       .groupBy(posSales.documentType),
     db
       .select({
@@ -85,14 +95,15 @@ export async function getSalesReport(db: Db, range: ReportRange) {
         pending: sql<number>`count(*) filter (where ${posReturns.sunatStatus} = 'pendiente')::int`,
       })
       .from(posReturns)
-      .where(inRange(posReturns.createdAt, range))
+      .innerJoin(posSales, eq(posSales.id, posReturns.saleId))
+      .where(and(inRange(posReturns.createdAt, range), storeScope))
       .groupBy(posReturns.refundMethod),
     // Lo devuelto en la web en estas fechas, de pedidos que siguen contando como venta (un anulado ya no suma).
     db
       .select({ count: count(), cents: sumInt(refunds.amountCents) })
       .from(refunds)
       .innerJoin(orders, eq(orders.id, refunds.orderId))
-      .where(and(inArray(orders.status, PAID_STATUSES), inRange(refunds.createdAt, range))),
+      .where(and(inArray(orders.status, PAID_STATUSES), inRange(refunds.createdAt, range), webScope)),
     db
       .select({ ...garment, units: sumInt(posSaleItems.quantity), cents: sumInt(posSaleItems.totalCents) })
       .from(posSaleItems)

@@ -90,3 +90,22 @@ export function toCsv(rows: (string | number | null)[][]): string {
   };
   return rows.map((row) => row.map(cell).join(",")).join("\r\n");
 }
+
+/** Rango para revisar comprobantes: sin fechas en la URL, solo hoy (no el mes, como los reportes). */
+export function dayRange(desde: unknown, hasta: unknown, now = new Date()): ReportRange {
+  const today = todayInLima(now);
+  const start = isDay(desde) ? desde : isDay(hasta) ? hasta : today;
+  return reportRange(start, isDay(hasta) ? hasta : start, now);
+}
+
+/** Atajos para revisar comprobantes: hoy, ayer, 7 días y este mes. */
+export function dayPresets(now = new Date()) {
+  const today = todayInLima(now);
+  const yesterday = addDays(today, -1);
+  return [
+    { label: "Hoy", desde: today, hasta: today },
+    { label: "Ayer", desde: yesterday, hasta: yesterday },
+    { label: "7 días", desde: addDays(today, -6), hasta: today },
+    { label: "Este mes", desde: `${today.slice(0, 8)}01`, hasta: today },
+  ];
+}

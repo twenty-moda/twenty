@@ -8,9 +8,11 @@ import { cn } from "@/lib/cn";
 import { formatPrice } from "@/lib/money";
 import { PAYMENT_METHOD_LABEL } from "@/lib/order-status";
 import { PAYMENT_LABEL, PAYMENT_METHODS, POS_DOCUMENT_LABEL, SALE_DOCUMENT_TYPES } from "@/lib/pos";
+import { isPanelRole, PANEL_ROLE_LABEL } from "@/lib/panel-access";
 import { rangePresets, reportRange, type ReportRange } from "@/lib/reports";
 import { getDb } from "@/server/db/client";
-import { getSalesReport, getStockValuation, type SalesReport } from "@/server/services/reports";
+import { listSellers } from "@/server/services/receipts";
+import { getSalesReport, getStockValuation, type ReportScope, type SalesReport } from "@/server/services/reports";
 import { requireAdmin } from "../../_lib/auth";
 import { SalesChart } from "./sales-chart";
 
@@ -25,9 +27,12 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin/re
   await requireAdmin();
   const params = await searchParams;
   const range = reportRange(params.desde, params.hasta);
+  const ver = typeof params.ver === "string" ? params.ver : "";
+  const scope: ReportScope = ver === "web" ? { kind: "web" } : /^[0-9a-f-]{36}$/i.test(ver) ? { kind: "vendedor", sellerId: ver } : { kind: "todo" };
   const db = getDb();
-  const [report, stock] = await Promise.all([getSalesReport(db, range), getStockValuation(db)]);
+  const [report, stock, sellers] = await Promise.all([getSalesReport(db, range, scope), getStockValuation(db), listSellers(db)]);
   const query = `desde=${range.desde}&hasta=${range.hasta}`;
+  const scopeParam = scope.kind === "todo" ? "" : `&ver=${ver}`;
 
   return (
     <AdminPage
@@ -39,7 +44,24 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin/re
         </a>
       }
     >
-      <RangeFilter range={range} />
+      <RangeFilter range={range} scopeParam={scopeParam} />
+      <FilterTabs
+        items={[
+          { href: `/admin/reportes?${query}`, label: "Todo", active: scope.kind === "todo" },
+          ...sellers.map((s) => ({
+            href: `/admin/reportes?${query}&ver=${s.id}`,
+            label: `${s.name}${isPanelRole(s.role) && s.role !== "admin" ? ` · ${PANEL_ROLE_LABEL[s.role]}` : ""}`,
+            active: scope.kind === "vendedor" && scope.sellerId === s.id,
+          })),
+          { href: `/admin/reportes?${query}&ver=web`, label: "Solo la web", active: scope.kind === "web" },
+        ]}
+      />
+      {scope.kind === "todo" ? null : (
+        <p className="mt-2 text-sm text-muted">
+          {scope.kind === "web" ? "Solo los pedidos de la web (sin el punto de venta)." : "Solo lo que vendió esa persona en el punto de venta (sin los pedidos de la web)."} El stock valorizado es siempre el de todo.
+        </p>
+      )}
+      <div className="mb-5" />
       <SalesSummary report={report} />
       <div className="mt-6 space-y-4">
         <Card title={report.unit === "day" ? "Ventas por día" : "Ventas por mes"}>
@@ -86,14 +108,15 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin/re
   );
 }
 
-function RangeFilter({ range }: { range: ReportRange }) {
+function RangeFilter({ range, scopeParam }: { range: ReportRange; scopeParam: string }) {
   const presets = rangePresets();
-  const href = (desde: string, hasta: string) => `/admin/reportes?desde=${desde}&hasta=${hasta}`;
+  const href = (desde: string, hasta: string) => `/admin/reportes?desde=${desde}&hasta=${hasta}${scopeParam}`;
   const dateClass = "h-11 rounded-xl border border-line bg-raised px-3 text-sm text-white [color-scheme:dark] outline-none focus:border-white";
   return (
-    <div className="mb-5 flex flex-wrap items-end gap-3">
+    <div className="mb-3 flex flex-wrap items-end gap-3">
       <FilterTabs items={presets.map((p) => ({ href: href(p.desde, p.hasta), label: p.label, active: p.desde === range.desde && p.hasta === range.hasta }))} />
       <Form action="/admin/reportes" className="flex flex-wrap items-end gap-2">
+        {scopeParam ? <input type="hidden" name="ver" value={scopeParam.slice("&ver=".length)} /> : null}
         <label className="text-xs text-muted">
           Desde
           <input type="date" name="desde" defaultValue={range.desde} className={cn(dateClass, "mt-1 block")} />
