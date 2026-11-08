@@ -5,6 +5,7 @@ import { displayFont, monoFont } from "@/components/home/fonts";
 import { AdminPage, EmptyState } from "@/components/admin/ui";
 import { Logo } from "@/components/store/logo";
 import { cn } from "@/lib/cn";
+import { canSellVirtual } from "@/lib/panel-access";
 import { formatPrice } from "@/lib/money";
 import { getDb } from "@/server/db/client";
 import { getSiteSettings } from "@/server/services/content";
@@ -102,6 +103,7 @@ export default async function PosPage({ searchParams }: PageProps<"/admin/pos">)
           fontClass={`${displayFont.variable} ${monoFont.variable}`}
           sunatEnabled={sunatFromEnv() !== null}
           quote={quote?.warehouseId === warehouse.id ? quote : null}
+          canSellVirtual={canSellVirtual(user.role)}
         />
       </div>
     </>

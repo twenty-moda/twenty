@@ -11,7 +11,8 @@ import { getCashSession } from "./pos";
 
 export type CashReportLine = {
   at: Date;
-  kind: "venta" | "anulada" | "devolucion" | "gasto" | "ingreso" | "egreso";
+  /** "virtual" = venta del punto de venta marcada como virtual (WhatsApp, redes). */
+  kind: "venta" | "virtual" | "anulada" | "devolucion" | "gasto" | "ingreso" | "egreso";
   /** NV05-12, B005-3, el detalle del gasto o el motivo del movimiento. */
   document: string;
   /** Con signo: lo que entra suma y lo que sale resta. Una venta anulada va en 0. */
@@ -23,7 +24,15 @@ export async function getCashReport(db: Db, number: number) {
   if (!session) return null;
   const [sales, returns] = await Promise.all([
     db
-      .select({ at: posSales.createdAt, documentType: posSales.documentType, series: posSales.series, number: posSales.number, status: posSales.status, totalCents: posSales.totalCents })
+      .select({
+        at: posSales.createdAt,
+        documentType: posSales.documentType,
+        series: posSales.series,
+        number: posSales.number,
+        status: posSales.status,
+        channel: posSales.channel,
+        totalCents: posSales.totalCents,
+      })
       .from(posSales)
       .where(eq(posSales.cashSessionId, session.id))
       .orderBy(asc(posSales.createdAt)),
@@ -35,7 +44,12 @@ export async function getCashReport(db: Db, number: number) {
   ]);
 
   const lines: CashReportLine[] = [
-    ...sales.map((s) => ({ at: s.at, kind: s.status === "anulada" ? ("anulada" as const) : ("venta" as const), document: formatDocNumber(s.series, s.number), cents: s.status === "anulada" ? 0 : s.totalCents })),
+    ...sales.map((s) => ({
+      at: s.at,
+      kind: s.status === "anulada" ? ("anulada" as const) : s.channel === "virtual" ? ("virtual" as const) : ("venta" as const),
+      document: formatDocNumber(s.series, s.number),
+      cents: s.status === "anulada" ? 0 : s.totalCents,
+    })),
     ...returns.map((r) => ({
       at: r.at,
       kind: "devolucion" as const,

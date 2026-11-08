@@ -37,14 +37,15 @@ const bucketOf = (column: PgColumn, unit: "day" | "month") => sql<string>`to_cha
  * Qué ventas entran (pedido de TWENTY, 08/11/2026: ver por separado la venta física, la virtual y la web): todas,
  * solo las de la web o solo las de un vendedor en el punto de venta (sin la web).
  */
-export type ReportScope = { kind: "todo" } | { kind: "web" } | { kind: "vendedor"; sellerId: string };
+export type ReportScope = { kind: "todo" } | { kind: "web" } | { kind: "canal"; channel: "tienda" | "virtual" } | { kind: "vendedor"; sellerId: string };
 
 export async function getSalesReport(db: Db, range: ReportRange, scope: ReportScope = { kind: "todo" }) {
   const unit = bucketUnit(range);
   const none = sql`false`;
   // Las ventas de la tienda de ese vendedor (o ninguna si se mira solo la web), y la web solo sin vendedor elegido.
-  const storeScope = scope.kind === "web" ? none : scope.kind === "vendedor" ? eq(posSales.sellerId, scope.sellerId) : undefined;
-  const webScope = scope.kind === "vendedor" ? none : undefined;
+  const storeScope =
+    scope.kind === "web" ? none : scope.kind === "vendedor" ? eq(posSales.sellerId, scope.sellerId) : scope.kind === "canal" ? eq(posSales.channel, scope.channel) : undefined;
+  const webScope = scope.kind === "vendedor" || scope.kind === "canal" ? none : undefined;
   const storePaid = and(eq(posSales.status, "pagada"), inRange(posSales.createdAt, range), storeScope);
   const webPaid = and(inArray(orders.status, PAID_STATUSES), inRange(orders.createdAt, range), webScope);
   const storeBucket = bucketOf(posSales.createdAt, unit);
@@ -223,7 +224,8 @@ export async function getStockValuation(db: Db) {
 
 export type LedgerRow = {
   at: Date;
-  channel: "Tienda" | "Web";
+  /** Tienda = venta presencial del punto de venta; Virtual = venta virtual del punto de venta; Web = pedido de la tienda online. */
+  channel: "Tienda" | "Virtual" | "Web";
   document: string;
   number: string;
   /** El comprobante que modifica una nota de crédito o una devolución. */
@@ -263,6 +265,7 @@ export async function getSalesLedger(db: Db, range: ReportRange) {
         totalCents: posSales.totalCents,
         // Calificado a mano: dentro de la subconsulta, un "id" suelto sería el del pago.
         methods: sql<string | null>`(select string_agg(distinct p.method::text, ',') from ${posPayments} p where p.sale_id = ${sql.raw(`"pos_sales"."id"`)})`,
+        channel: posSales.channel,
       })
       .from(posSales)
       .where(inRange(posSales.createdAt, range)),
@@ -284,6 +287,7 @@ export async function getSalesLedger(db: Db, range: ReportRange) {
         creditNoteNumber: posReturns.creditNoteNumber,
         sunatStatus: posReturns.sunatStatus,
         saleType: posSales.documentType,
+        saleChannel: posSales.channel,
         saleSeries: posSales.series,
         saleNumber: posSales.number,
         customerDocumentType: posSales.customerDocumentType,
@@ -333,7 +337,7 @@ export async function getSalesLedger(db: Db, range: ReportRange) {
     const split = electronic && !voided ? igvSplit(lines) : null;
     rows.push({
       at: s.at,
-      channel: "Tienda",
+      channel: s.channel === "virtual" ? "Virtual" : "Tienda",
       document: s.documentType,
       number: `${s.series}-${s.number}`,
       reference: null,
@@ -352,7 +356,7 @@ export async function getSalesLedger(db: Db, range: ReportRange) {
     const split = r.creditNoteSeries ? igvSplit(returnLinesOf.get(r.id) ?? []) : null;
     rows.push({
       at: r.at,
-      channel: "Tienda",
+      channel: r.saleChannel === "virtual" ? "Virtual" : "Tienda",
       document: r.creditNoteSeries ? "nota_credito" : "devolucion",
       number: r.creditNoteSeries ? `${r.creditNoteSeries}-${r.creditNoteNumber}` : `DEV-${r.number}`,
       reference: `${r.saleSeries}-${r.saleNumber}`,

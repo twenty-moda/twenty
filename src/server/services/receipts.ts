@@ -5,23 +5,24 @@
  */
 import { and, asc, eq, gte, ilike, lt, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { PosDocumentType } from "@/lib/pos";
+import type { PosDocumentType, SaleChannel } from "@/lib/pos";
 import type { ReportRange } from "@/lib/reports";
 import type { Db } from "../db/client";
 import { cashSessions, posPayments, posReturns, posSaleItems, posSales, users, warehouses } from "../db/schema";
 
 export const RECEIPT_TABS = ["todos", "nota_venta", "boleta", "factura", "devoluciones"] as const;
 export type ReceiptTab = (typeof RECEIPT_TABS)[number];
-export type ReceiptFilter = { range: Pick<ReportRange, "from" | "to">; sellerId?: string; q?: string };
+export type ReceiptFilter = { range: Pick<ReportRange, "from" | "to">; sellerId?: string; q?: string; channel?: SaleChannel };
 
 const seller = alias(users, "receipt_seller");
 const SALES_ID = sql.raw(`"pos_sales"."id"`);
 export const RECEIPTS_PAGE_SIZE = 100;
 
-function saleConditions({ range, sellerId, q }: ReceiptFilter, documentType?: PosDocumentType): SQL[] {
+function saleConditions({ range, sellerId, q, channel }: ReceiptFilter, documentType?: PosDocumentType): SQL[] {
   const conditions: SQL[] = [gte(posSales.createdAt, range.from), lt(posSales.createdAt, range.to)];
   if (documentType) conditions.push(eq(posSales.documentType, documentType));
   if (sellerId) conditions.push(eq(posSales.sellerId, sellerId));
+  if (channel) conditions.push(eq(posSales.channel, channel));
   if (q?.trim()) {
     const term = q.trim();
     const like = `%${term}%`;
@@ -54,6 +55,7 @@ export async function listReceiptSales(db: Db, filter: ReceiptFilter & { documen
         customerDocumentNumber: posSales.customerDocumentNumber,
         customerName: posSales.customerName,
         status: posSales.status,
+        channel: posSales.channel,
         sunatStatus: posSales.sunatStatus,
         sunatVoidStatus: posSales.sunatVoidStatus,
         sunatPdfUrl: posSales.sunatPdfUrl,
@@ -79,10 +81,11 @@ export async function listReceiptSales(db: Db, filter: ReceiptFilter & { documen
 export type ReceiptSale = Awaited<ReturnType<typeof listReceiptSales>>["rows"][number];
 
 /** Devoluciones del rango con su nota de crédito (o DEV-n si la venta fue nota de venta). */
-export async function listReceiptReturns(db: Db, { range, sellerId, q }: ReceiptFilter) {
+export async function listReceiptReturns(db: Db, { range, sellerId, q, channel }: ReceiptFilter) {
   const conditions: SQL[] = [gte(posReturns.createdAt, range.from), lt(posReturns.createdAt, range.to)];
-  // Por vendedor: las devoluciones de sus ventas.
+  // Por vendedor o canal: las devoluciones de esas ventas.
   if (sellerId) conditions.push(eq(posSales.sellerId, sellerId));
+  if (channel) conditions.push(eq(posSales.channel, channel));
   if (q?.trim()) {
     const like = `%${q.trim()}%`;
     conditions.push(or(ilike(posSales.customerName, like), ilike(posSales.customerDocumentNumber, like), ilike(sql`${posReturns.creditNoteSeries} || '-' || ${posReturns.creditNoteNumber}`, like))!);
@@ -142,7 +145,14 @@ export async function receiptCounts(db: Db, filter: ReceiptFilter) {
       })
       .from(posReturns)
       .innerJoin(posSales, eq(posSales.id, posReturns.saleId))
-      .where(and(gte(posReturns.createdAt, filter.range.from), lt(posReturns.createdAt, filter.range.to), filter.sellerId ? eq(posSales.sellerId, filter.sellerId) : undefined)),
+      .where(
+        and(
+          gte(posReturns.createdAt, filter.range.from),
+          lt(posReturns.createdAt, filter.range.to),
+          filter.sellerId ? eq(posSales.sellerId, filter.sellerId) : undefined,
+          filter.channel ? eq(posSales.channel, filter.channel) : undefined,
+        ),
+      ),
   ]);
   const of = (type: PosDocumentType) => byType.find((t) => t.documentType === type) ?? { documentType: type, count: 0, cents: 0, voided: 0, pending: 0, rejected: 0, first: null, last: null };
   return {

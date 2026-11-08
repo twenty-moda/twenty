@@ -1,6 +1,6 @@
 import writeExcelFile from "write-excel-file/node";
 import { DOCUMENT_LABEL } from "@/lib/order-status";
-import { formatDocNumber, PAYMENT_LABEL, POS_DOCUMENT_LABEL, type PaymentMethod } from "@/lib/pos";
+import { CHANNEL_LABEL, formatDocNumber, PAYMENT_LABEL, POS_DOCUMENT_LABEL, SALE_CHANNELS, type PaymentMethod, type SaleChannel } from "@/lib/pos";
 import { dayRange } from "@/lib/reports";
 import { getDb } from "@/server/db/client";
 import { listReceiptReturns, listReceiptSales, RECEIPT_TABS, type ReceiptTab } from "@/server/services/receipts";
@@ -24,7 +24,13 @@ export async function GET(request: Request) {
   const tab: ReceiptTab = RECEIPT_TABS.includes(params.get("tipo") as ReceiptTab) ? (params.get("tipo") as ReceiptTab) : "todos";
   const range = dayRange(params.get("desde"), params.get("hasta"));
   const vendedor = params.get("vendedor");
-  const filter = { range, sellerId: vendedor && /^[0-9a-f-]{36}$/i.test(vendedor) ? vendedor : undefined, q: params.get("q") ?? undefined };
+  const canal = params.get("canal") as SaleChannel | null;
+  const filter = {
+    range,
+    sellerId: vendedor && /^[0-9a-f-]{36}$/i.test(vendedor) ? vendedor : undefined,
+    q: params.get("q") ?? undefined,
+    channel: canal && SALE_CHANNELS.includes(canal) ? canal : undefined,
+  };
   const db = getDb();
 
   let data;
@@ -50,12 +56,13 @@ export async function GET(request: Request) {
   } else {
     const { rows } = await listReceiptSales(db, { ...filter, documentType: tab === "todos" ? undefined : tab, pageSize: 10_000 });
     data = [
-      ["#", "Emisión", "Comprobante", "Número", "Tipo doc.", "N° doc.", "Cliente", "SUNAT", "Estado", "Medio de pago", "Vendedor", "Caja", "Moneda", "Total"].map(header),
+      ["#", "Emisión", "Comprobante", "Número", "Canal", "Tipo doc.", "N° doc.", "Cliente", "SUNAT", "Estado", "Medio de pago", "Vendedor", "Caja", "Moneda", "Total"].map(header),
       ...rows.map((s, i) => [
         { value: i + 1 },
         { value: when.format(s.createdAt).replace(",", "") },
         { value: POS_DOCUMENT_LABEL[s.documentType] },
         { value: formatDocNumber(s.series, s.number) },
+        { value: CHANNEL_LABEL[s.channel] },
         { value: s.customerDocumentType ? DOCUMENT_LABEL[s.customerDocumentType] : "" },
         { value: s.customerDocumentNumber ?? "" },
         { value: s.customerName ?? "CLIENTES VARIOS" },

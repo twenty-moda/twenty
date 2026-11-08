@@ -50,7 +50,7 @@ export default async function StoreSalePage({ params }: PageProps<"/admin/ventas
     <AdminPage
       title={`${POS_DOCUMENT_LABEL[sale.documentType]} ${formatDocNumber(sale.series, sale.number)}`}
       back={{ href: "/admin/ventas-tienda", label: "Comprobantes" }}
-      description={`${sale.warehouseName} · Caja #${sale.sessionNumber} · ${formatDateTime(sale.createdAt)}`}
+      description={`${sale.warehouseName} · Caja #${sale.sessionNumber} · ${formatDateTime(sale.createdAt)}${sale.channel === "virtual" ? " · Venta virtual" : ""}${sale.sellerName ? ` · ${sale.sellerName}` : ""}`}
       // Boleta o factura: el comprobante que se imprime es el de SUNAT (en SunatStatus). Nota de venta: el ticket de TWENTY.
       actions={electronic ? undefined : <ReprintButton sale={sale} company={company} fontClass={fontClass} />}
     >

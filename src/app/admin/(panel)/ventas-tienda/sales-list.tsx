@@ -29,6 +29,7 @@ export function SalesList({ rows }: { rows: Row[] }) {
                 .map((m) => PAYMENT_LABEL[m as PaymentMethod])
                 .join(" + ")}
             </span>
+            {s.channel === "virtual" ? <Badge tone="info">Virtual</Badge> : null}
             {s.status === "pagada" && (s.sunatStatus === "pendiente" || s.sunatStatus === "rechazado") ? (
               <Badge tone={s.sunatStatus === "rechazado" ? "danger" : "warning"}>{s.sunatStatus === "rechazado" ? "SUNAT la rechazó" : "Pendiente en SUNAT"}</Badge>
             ) : null}

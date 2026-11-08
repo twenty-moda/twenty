@@ -5,6 +5,7 @@ import { ticketDate, ticketDisplay, TicketRow, ticketRule, type TicketCompany } 
 
 const KIND_LABEL: Record<CashReportLine["kind"], string> = {
   venta: "Venta",
+  virtual: "Virtual",
   anulada: "Anulada",
   devolucion: "Devolución",
   gasto: "Gasto",

@@ -2,7 +2,7 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
-import { checkCustomer, PAYMENT_METHODS, SALE_DOCUMENT_TYPES, saleTotal, settlePayments, type PaymentMethod } from "@/lib/pos";
+import { checkCustomer, PAYMENT_METHODS, SALE_CHANNELS, SALE_DOCUMENT_TYPES, saleTotal, settlePayments, type PaymentMethod } from "@/lib/pos";
 import { priceLines, type PricedPromotion } from "@/lib/pricing";
 import type { Db } from "../db/client";
 import {
@@ -339,6 +339,8 @@ export const saleInputSchema = z.object({
   note: z.string().trim().max(300).nullable(),
   /** Cotización que se está vendiendo: queda como vendida y enlazada a la venta. */
   quoteId: z.uuid().nullish(),
+  /** Tienda o virtual (la acción solo deja "virtual" a quien tiene el perfil «Tienda y web» o es admin). */
+  channel: z.enum(SALE_CHANNELS).default("tienda"),
 });
 export type SaleInput = z.input<typeof saleInputSchema>;
 
@@ -422,6 +424,7 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
           totalCents: total.totalCents,
           changeCents: settled.changeCents,
           note: input.note?.trim() || null,
+          channel: input.channel ?? "tienda",
         })
         .returning({ id: posSales.id });
       if (input.quoteId) await tx.update(quotes).set({ status: "vendida", posSaleId: sale.id, updatedAt: new Date() }).where(eq(quotes.id, input.quoteId));
@@ -632,6 +635,7 @@ export async function listPosSales(db: Db, { q, sessionId, page = 1 }: { q?: str
         customerDocumentNumber: posSales.customerDocumentNumber,
         totalCents: posSales.totalCents,
         status: posSales.status,
+        channel: posSales.channel,
         sunatStatus: posSales.sunatStatus,
         sellerName: seller.name,
         warehouseCode: warehouses.code,

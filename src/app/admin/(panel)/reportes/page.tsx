@@ -28,7 +28,14 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin/re
   const params = await searchParams;
   const range = reportRange(params.desde, params.hasta);
   const ver = typeof params.ver === "string" ? params.ver : "";
-  const scope: ReportScope = ver === "web" ? { kind: "web" } : /^[0-9a-f-]{36}$/i.test(ver) ? { kind: "vendedor", sellerId: ver } : { kind: "todo" };
+  const scope: ReportScope =
+    ver === "web"
+      ? { kind: "web" }
+      : ver === "tienda" || ver === "virtual"
+        ? { kind: "canal", channel: ver }
+        : /^[0-9a-f-]{36}$/i.test(ver)
+          ? { kind: "vendedor", sellerId: ver }
+          : { kind: "todo" };
   const db = getDb();
   const [report, stock, sellers] = await Promise.all([getSalesReport(db, range, scope), getStockValuation(db), listSellers(db)]);
   const query = `desde=${range.desde}&hasta=${range.hasta}`;
@@ -48,17 +55,26 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin/re
       <FilterTabs
         items={[
           { href: `/admin/reportes?${query}`, label: "Todo", active: scope.kind === "todo" },
+          { href: `/admin/reportes?${query}&ver=tienda`, label: "Venta en tienda", active: scope.kind === "canal" && scope.channel === "tienda" },
+          { href: `/admin/reportes?${query}&ver=virtual`, label: "Venta virtual", active: scope.kind === "canal" && scope.channel === "virtual" },
+          { href: `/admin/reportes?${query}&ver=web`, label: "Pedidos web", active: scope.kind === "web" },
           ...sellers.map((s) => ({
             href: `/admin/reportes?${query}&ver=${s.id}`,
             label: `${s.name}${isPanelRole(s.role) && s.role !== "admin" ? ` · ${PANEL_ROLE_LABEL[s.role]}` : ""}`,
             active: scope.kind === "vendedor" && scope.sellerId === s.id,
           })),
-          { href: `/admin/reportes?${query}&ver=web`, label: "Solo la web", active: scope.kind === "web" },
         ]}
       />
       {scope.kind === "todo" ? null : (
         <p className="mt-2 text-sm text-muted">
-          {scope.kind === "web" ? "Solo los pedidos de la web (sin el punto de venta)." : "Solo lo que vendió esa persona en el punto de venta (sin los pedidos de la web)."} El stock valorizado es siempre el de todo.
+          {scope.kind === "web"
+            ? "Solo los pedidos de la tienda online (sin el punto de venta)."
+            : scope.kind === "canal"
+              ? scope.channel === "virtual"
+                ? "Solo las ventas del punto de venta marcadas como virtuales (WhatsApp, redes), sin los pedidos web."
+                : "Solo las ventas presenciales del punto de venta, sin las virtuales ni los pedidos web."
+              : "Solo lo que vendió esa persona en el punto de venta (sin los pedidos de la web)."}{" "}
+          El stock valorizado es siempre el de todo.
         </p>
       )}
       <div className="mb-5" />

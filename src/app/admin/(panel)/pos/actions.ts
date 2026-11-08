@@ -3,6 +3,7 @@
 import { refresh, revalidateTag } from "next/cache";
 import { after } from "next/server";
 import { cacheTags } from "@/lib/cache-tags";
+import { canSellVirtual } from "@/lib/panel-access";
 import { getDb } from "@/server/db/client";
 import { findCustomerByDocument, getPosSale, openCashSession, registerSale, retryPendingSunat, saleInputSchema, sendToSunat, type PosSaleDetail } from "@/server/services/pos";
 import { retryPendingReturns } from "@/server/services/pos-returns";
@@ -28,7 +29,8 @@ export async function registerSaleAction(input: unknown): Promise<SaleActionResu
   // Sin SUNAT conectado, una boleta o factura quedaría pendiente días: solo nota de venta.
   if (parsed.data.documentType !== "nota_venta" && !sunatFromEnv()) return { ok: false, message: "SUNAT todavía no está conectado: por ahora, solo nota de venta." };
   const db = getDb();
-  const result = await registerSale(db, parsed.data, user.id);
+  // Solo «Tienda y web» y el admin marcan ventas virtuales; las de «Solo tienda» siempre son de tienda.
+  const result = await registerSale(db, { ...parsed.data, channel: canSellVirtual(user.role) ? parsed.data.channel : "tienda" }, user.id);
   if (!result.ok) return result;
   // Igual que un pedido web: las fichas muestran el stock nuevo y el catálogo, si algo se agotó.
   for (const slug of result.productSlugs) revalidateTag(cacheTags.product(slug), "max");

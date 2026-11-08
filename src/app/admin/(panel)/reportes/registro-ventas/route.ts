@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       r.reference,
       r.customerDocumentType ? CUSTOMER_DOCUMENT[r.customerDocumentType] : null,
       r.customerDocumentNumber,
-      r.customerName ?? (r.channel === "Tienda" ? "CLIENTES VARIOS" : null),
+      r.customerName ?? (r.channel !== "Web" ? "CLIENTES VARIOS" : null),
       payment(r),
       money(r.baseCents),
       money(r.igvCents),

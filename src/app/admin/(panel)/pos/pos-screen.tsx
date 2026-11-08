@@ -14,7 +14,18 @@ import { failure, idle, type ActionState } from "@/lib/action-state";
 import { cn } from "@/lib/cn";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL } from "@/lib/order-status";
-import { checkCustomer, formatDocNumber, PAYMENT_LABEL, PAYMENT_METHODS, POS_DOCUMENT_LABEL, saleTotal, settlePayments, type PaymentMethod, type PosDocumentType } from "@/lib/pos";
+import {
+  checkCustomer,
+  formatDocNumber,
+  PAYMENT_LABEL,
+  PAYMENT_METHODS,
+  POS_DOCUMENT_LABEL,
+  saleTotal,
+  settlePayments,
+  type PaymentMethod,
+  type PosDocumentType,
+  type SaleChannel,
+} from "@/lib/pos";
 import { priceLines } from "@/lib/pricing";
 import type { PosSaleDetail, PosVariant } from "@/server/services/pos";
 import type { PosQuote } from "@/server/services/quotes";
@@ -35,6 +46,15 @@ const cents = (value: string) => {
 const soles = (c: number) => String(c / 100);
 const roundUp = (c: number, step: number) => Math.ceil(c / step) * step;
 const DOC_KEY = "twenty-pos-documento";
+const CHANNEL_KEY = "twenty-pos-canal";
+const readSavedChannel = (): SaleChannel | null => {
+  try {
+    const saved = localStorage.getItem(CHANNEL_KEY);
+    return saved === "tienda" || saved === "virtual" ? saved : null;
+  } catch {
+    return null;
+  }
+};
 const subscribeStorage = (onChange: () => void) => {
   window.addEventListener("storage", onChange);
   return () => window.removeEventListener("storage", onChange);
@@ -84,6 +104,8 @@ type PosScreenProps = {
   sunatEnabled: boolean;
   /** Cotización que se vende (`?cotizacion=`): sus prendas, el cliente y el descuento que la deja en su total. */
   quote?: PosQuote | null;
+  /** «Tienda y web» y admin: pueden marcar la venta como virtual (WhatsApp, redes). */
+  canSellVirtual?: boolean;
 };
 
 /** Lo que arranca la venta de una cotización: sus prendas que siguen en la tienda y el descuento hasta su total. */
@@ -100,7 +122,7 @@ function quoteStart(quote: PosQuote | null | undefined, variants: PosVariant[]) 
  * Modo caja: escanear, elegir el comprobante, el cliente y cobrar sin salir de la pantalla. Atajos: F2 enfoca el
  * buscador, F8 cobra y, con la venta lista, Enter empieza la siguiente.
  */
-export function PosScreen({ warehouse, variants, company, fontClass, sunatEnabled, quote }: PosScreenProps) {
+export function PosScreen({ warehouse, variants, company, fontClass, sunatEnabled, quote, canSellVirtual = false }: PosScreenProps) {
   const [start] = useState(() => quoteStart(quote, variants));
   const [activeQuote, setActiveQuote] = useState(quote ?? null);
   const [lines, setLines] = useState<Line[]>(start?.lines ?? []);
@@ -112,6 +134,18 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
   const savedDocType = useSyncExternalStore(subscribeStorage, readSavedDocType, () => null);
   const [pickedDocType, setPickedDocType] = useState<PosDocumentType | null>(null);
   const docType = sunatEnabled ? (pickedDocType ?? savedDocType ?? "boleta") : "nota_venta";
+  // Tienda o virtual: cada caja recuerda el último (sin el perfil «Tienda y web», siempre tienda).
+  const savedChannel = useSyncExternalStore(subscribeStorage, readSavedChannel, () => null);
+  const [pickedChannel, setPickedChannel] = useState<SaleChannel | null>(null);
+  const channel: SaleChannel = canSellVirtual ? (pickedChannel ?? savedChannel ?? "tienda") : "tienda";
+  const chooseChannel = (next: SaleChannel) => {
+    setPickedChannel(next);
+    try {
+      localStorage.setItem(CHANNEL_KEY, next);
+    } catch {
+      // Sin localStorage solo no se recuerda.
+    }
+  };
   const [customer, setCustomer] = useState<{ documentType: DocType; documentNumber: string; name: string; address: string }>(() =>
     quote
       ? { documentType: quote.customer.documentType ?? "dni", documentNumber: quote.customer.documentNumber ?? "", name: quote.customer.name, address: quote.customer.address ?? "" }
@@ -246,6 +280,7 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
         payments: paymentInputs,
         note: null,
         quoteId: activeQuote?.id ?? null,
+        channel,
       });
       if (!result.ok) return setState(failure(result.message));
       setDone(result.sale);
@@ -306,6 +341,7 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
             <h2 className="text-3xl font-extrabold tracking-tight">Venta lista</h2>
             <p className="mt-1 text-muted">
               {POS_DOCUMENT_LABEL[done.documentType]} {formatDocNumber(done.series, done.number)} · {formatPrice(done.totalCents)}
+              {done.channel === "virtual" ? " · venta virtual" : ""}
             </p>
           </div>
           {done.changeCents ? (
@@ -509,6 +545,28 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
       </div>
 
       <aside className="space-y-3 lg:sticky lg:top-24 lg:self-start" aria-label="Cobro">
+        {canSellVirtual ? (
+          <div className="grid grid-cols-2 gap-2 rounded-2xl border border-line bg-surface p-2" role="radiogroup" aria-label="Dónde es la venta">
+            {(
+              [
+                ["tienda", "En tienda", "El cliente está aquí"],
+                ["virtual", "Virtual", "WhatsApp, redes, delivery"],
+              ] as const
+            ).map(([value, label, hint]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={channel === value}
+                onClick={() => chooseChannel(value)}
+                className={cn(choiceClass(channel === value), "flex flex-col items-start px-3 py-2 text-left")}
+              >
+                <span className="text-sm">{label}</span>
+                <span className={cn("text-xs font-normal", channel === value ? "text-black/60" : "text-subtle")}>{hint}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <Step n={1} title="Comprobante">
           <div className="grid grid-cols-3 gap-2">
             {DOC_OPTIONS.map((o) => {

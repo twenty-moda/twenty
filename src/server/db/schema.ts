@@ -380,6 +380,8 @@ export const cashMovements = pgTable(
 );
 
 export const posSaleStatus = pgEnum("pos_sale_status", ["pagada", "anulada"]);
+/** Venta en la tienda (presencial) o virtual (WhatsApp, redes: el cliente no está en la tienda). */
+export const posSaleChannel = pgEnum("pos_sale_channel", ["tienda", "virtual"]);
 /** Boleta o factura en SUNAT (por la API de Mathyu's Solutions). La nota de venta no va a SUNAT. */
 export const posSunatStatus = pgEnum("pos_sunat_status", ["pendiente", "aceptado", "rechazado"]);
 
@@ -428,6 +430,8 @@ export const posSales = pgTable(
     totalCents: integer().notNull(),
     changeCents: integer().notNull().default(0),
     status: posSaleStatus().notNull().default("pagada"),
+    /** La marca quien vende con el perfil «Tienda y web» (o el admin); las demás son de tienda. */
+    channel: posSaleChannel().notNull().default("tienda"),
     note: text(),
     voidedAt: timestamp({ withTimezone: true }),
     voidedBy: uuid().references(() => users.id, { onDelete: "set null" }),
@@ -820,8 +824,8 @@ export const settings = pgTable("settings", {
 // ─── Usuarios y sesiones ─────────────────────────────────────────────────────
 
 /**
- * Perfiles del panel: "vendedor" = venta presencial (punto de venta, caja, gastos y comprobantes de la tienda) y
- * "vendedor_virtual" = venta virtual (lo mismo + los pedidos de la web). Ver src/lib/panel-access.ts.
+ * Perfiles del panel: "vendedor" = «Solo tienda» (punto de venta, caja, gastos y comprobantes de la tienda) y
+ * "vendedor_virtual" = «Tienda y web» (lo mismo + venta virtual y los pedidos de la web). Ver src/lib/panel-access.ts.
  */
 export const userRole = pgEnum("user_role", ["admin", "customer", "vendedor", "vendedor_virtual"]);
 export type UserRole = (typeof userRole.enumValues)[number];

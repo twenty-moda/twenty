@@ -17,7 +17,7 @@ export default async function TeamPage() {
   return (
     <AdminPage
       title="Equipo"
-      description="Quiénes entran al panel y con qué perfil. Venta presencial: punto de venta, caja, gastos y comprobantes. Venta virtual: lo mismo más los pedidos de la web. Admin: todo."
+      description="Quiénes entran al panel y con qué perfil. Solo tienda: venta presencial, caja, gastos y comprobantes. Tienda y web: lo mismo, venta virtual y los pedidos de la web. Admin: todo."
     >
       <div className="space-y-4">
         <Card title="Dar acceso al panel">

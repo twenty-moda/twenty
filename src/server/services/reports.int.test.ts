@@ -107,6 +107,9 @@ describe("getSalesReport", () => {
   it("por vendedor: solo sus ventas de la tienda; solo la web: sin la tienda", async () => {
     const web = await getSalesReport(db, today(), { kind: "web" });
     expect([web.store.count, web.store.returnsCount, web.web.count, web.documents.length]).toEqual([0, 0, 1, 0]);
+    const tienda = await getSalesReport(db, today(), { kind: "canal", channel: "tienda" });
+    const virtual = await getSalesReport(db, today(), { kind: "canal", channel: "virtual" });
+    expect([tienda.store.count, tienda.web.count, virtual.store.count]).toEqual([2, 0, 0]);
     const nadie = await getSalesReport(db, today(), { kind: "vendedor", sellerId: randomUUID() });
     expect([nadie.store.count, nadie.web.count, nadie.web.refundsCount, nadie.models.length]).toEqual([0, 0, 0, 0]);
   });

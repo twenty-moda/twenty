@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL } from "@/lib/order-status";
 import { PANEL_ROLE_LABEL, isPanelRole } from "@/lib/panel-access";
-import { formatDocNumber, PAYMENT_LABEL, POS_DOCUMENT_LABEL, type PaymentMethod } from "@/lib/pos";
+import { formatDocNumber, PAYMENT_LABEL, POS_DOCUMENT_LABEL, SALE_CHANNELS, type PaymentMethod, type SaleChannel } from "@/lib/pos";
 import { dayPresets, dayRange, type ReportRange } from "@/lib/reports";
 import { getDb } from "@/server/db/client";
 import { listReceiptReturns, listReceiptSales, listSellers, receiptCounts, RECEIPT_TABS, type ReceiptSale, type ReceiptTab } from "@/server/services/receipts";
@@ -43,9 +43,10 @@ export default async function ReceiptsPage({ searchParams }: PageProps<"/admin/v
   const range = dayRange(params.desde, params.hasta);
   const q = typeof params.q === "string" && params.q.trim() ? params.q : undefined;
   const sellerId = typeof params.vendedor === "string" && /^[0-9a-f-]{36}$/i.test(params.vendedor) ? params.vendedor : undefined;
+  const channel = SALE_CHANNELS.includes(params.canal as SaleChannel) ? (params.canal as SaleChannel) : undefined;
   const page = Number(params.pagina) || 1;
   const db = getDb();
-  const filter = { range, sellerId, q };
+  const filter = { range, sellerId, q, channel };
   const [counts, sellers, sales, returns] = await Promise.all([
     receiptCounts(db, filter),
     listSellers(db),
@@ -53,7 +54,7 @@ export default async function ReceiptsPage({ searchParams }: PageProps<"/admin/v
     tab === "devoluciones" ? listReceiptReturns(db, filter) : null,
   ]);
   const query = (over: Record<string, string | undefined>) => {
-    const base = { tipo: tab === "todos" ? undefined : tab, desde: range.desde, hasta: range.hasta, vendedor: sellerId, q, ...over };
+    const base = { tipo: tab === "todos" ? undefined : tab, desde: range.desde, hasta: range.hasta, vendedor: sellerId, canal: channel, q, ...over };
     return `?${new URLSearchParams(Object.entries(base).filter((e): e is [string, string] => !!e[1]))}`;
   };
   const tabCount = (t: ReceiptTab) => (t === "todos" ? counts.all.count : t === "devoluciones" ? counts.returns.count : counts[t].count);
@@ -74,12 +75,19 @@ export default async function ReceiptsPage({ searchParams }: PageProps<"/admin/v
       }
     >
       <div className="space-y-4">
-        <DateFilter range={range} query={query} tab={tab} sellerId={sellerId} q={q} />
+        <DateFilter range={range} query={query} tab={tab} sellerId={sellerId} q={q} channel={channel} />
         <div className="flex flex-wrap items-center gap-3">
-          <SearchBox placeholder="Buscar B005-12, cliente o DNI" defaultValue={q} hidden={{ tipo: tab === "todos" ? undefined : tab, desde: range.desde, hasta: range.hasta, vendedor: sellerId }} />
-          {sellers.length > 1 ? (
-            <Form action="/admin/ventas-tienda" className="flex items-center gap-2">
-              {Object.entries({ tipo: tab === "todos" ? undefined : tab, desde: range.desde, hasta: range.hasta, q }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
+          <SearchBox placeholder="Buscar B005-12, cliente o DNI" defaultValue={q} hidden={{ tipo: tab === "todos" ? undefined : tab, desde: range.desde, hasta: range.hasta, vendedor: sellerId, canal: channel }} />
+          <Form action="/admin/ventas-tienda" className="flex flex-wrap items-center gap-2">
+            {Object.entries({ tipo: tab === "todos" ? undefined : tab, desde: range.desde, hasta: range.hasta, q }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
+            <SelectWrap>
+              <select name="canal" defaultValue={channel ?? ""} aria-label="Canal" className={cn(selectClass, "h-11 w-44 text-sm")}>
+                <option value="">Tienda y virtual</option>
+                <option value="tienda">Solo en tienda</option>
+                <option value="virtual">Solo virtual</option>
+              </select>
+            </SelectWrap>
+            {sellers.length > 1 ? (
               <SelectWrap>
                 <select name="vendedor" defaultValue={sellerId ?? ""} aria-label="Vendedor" className={cn(selectClass, "h-11 w-56 text-sm")}>
                   <option value="">Todos los vendedores</option>
@@ -91,11 +99,11 @@ export default async function ReceiptsPage({ searchParams }: PageProps<"/admin/v
                   ))}
                 </select>
               </SelectWrap>
-              <button type="submit" className={buttonClass("secondary")}>
-                Filtrar
-              </button>
-            </Form>
-          ) : null}
+            ) : null}
+            <button type="submit" className={buttonClass("secondary")}>
+              Filtrar
+            </button>
+          </Form>
         </div>
 
         <FilterTabs items={RECEIPT_TABS.map((t) => ({ href: query({ tipo: t === "todos" ? undefined : t, pagina: undefined }), label: TAB_LABEL[t], count: tabCount(t), active: t === tab }))} />
@@ -120,13 +128,27 @@ export default async function ReceiptsPage({ searchParams }: PageProps<"/admin/v
   );
 }
 
-function DateFilter({ range, query, tab, sellerId, q }: { range: ReportRange; query: (over: Record<string, string | undefined>) => string; tab: ReceiptTab; sellerId?: string; q?: string }) {
+function DateFilter({
+  range,
+  query,
+  tab,
+  sellerId,
+  q,
+  channel,
+}: {
+  range: ReportRange;
+  query: (over: Record<string, string | undefined>) => string;
+  tab: ReceiptTab;
+  sellerId?: string;
+  q?: string;
+  channel?: SaleChannel;
+}) {
   const dateClass = "h-11 rounded-xl border border-line bg-raised px-3 text-sm text-white [color-scheme:dark] outline-none focus:border-white";
   return (
     <div className="flex flex-wrap items-end gap-3">
       <FilterTabs items={dayPresets().map((p) => ({ href: query({ desde: p.desde, hasta: p.hasta, pagina: undefined }), label: p.label, active: p.desde === range.desde && p.hasta === range.hasta }))} />
       <Form action="/admin/ventas-tienda" className="flex flex-wrap items-end gap-2">
-        {Object.entries({ tipo: tab === "todos" ? undefined : tab, vendedor: sellerId, q }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
+        {Object.entries({ tipo: tab === "todos" ? undefined : tab, vendedor: sellerId, canal: channel, q }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
         <label className="text-xs text-muted">
           Desde
           <input type="date" name="desde" defaultValue={range.desde} className={cn(dateClass, "mt-1 block")} />
@@ -237,6 +259,7 @@ function SalesTable({ rows }: { rows: ReceiptSale[] }) {
                   <span className="block text-xs text-subtle">
                     {POS_DOCUMENT_LABEL[s.documentType]} · Caja #{s.sessionNumber}
                   </span>
+                  {s.channel === "virtual" ? <Badge tone="info">Virtual</Badge> : null}
                 </td>
                 <td className="px-3 py-3">
                   {sunat ? <Badge tone={sunat.tone}>{sunat.label}</Badge> : <span className="text-xs text-subtle">No va a SUNAT</span>}

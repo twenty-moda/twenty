@@ -11,6 +11,7 @@ const { getOnlineWarehouseId } = await import("./stock");
 const { addCashMovement, closeCashSession, getCashSession, getOpenSession, getPosSale, listOpenSessions, openCashSession, registerSale, retryPendingSunat, sendToSunat, voidSale } =
   await import("./pos");
 const { registerExpense, voidExpense } = await import("./expenses");
+const { getCashReport } = await import("./cash-report");
 const { listSaleReturns, registerReturn, retryPendingReturns, sendReturnToSunat } = await import("./pos-returns");
 type SunatClient = import("./sunat").SunatClient;
 
@@ -297,6 +298,21 @@ describe("caja de cada vendedor", () => {
     const [adelanto] = detail.expenses.filter((e) => e.description === "Adelanto Héctor");
     expect(await voidExpense(db, { expenseId: adelanto.id, reason: "error" }, { id: ana, role: "admin" })).toEqual({ ok: false, message: "La caja de ese gasto ya se cerró: su arqueo no cambia." });
     expect(await registerExpense(db, { ...gasto, cashSessionId: caja.id }, { id: ana, role: "vendedor" })).toMatchObject({ ok: false, message: "Esa caja ya está cerrada." });
+  });
+
+  it("una venta virtual queda marcada y sale así en el reporte de caja", async () => {
+    const luis = await seller("Luis", "vendedor_virtual");
+    await openCashSession(db, { warehouseId: store, openingCents: 0, userId: luis });
+    const sold = await sale({ channel: "virtual", payments: [{ method: "yape", amountCents: 7000, receivedCents: null, reference: null }] }, luis);
+    if (!sold.ok) throw new Error("venta");
+    expect((await getPosSale(db, sold.saleId))?.channel).toBe("virtual");
+    const caja = (await getOpenSession(db, store, luis))!;
+    const report = (await getCashReport(db, caja.number))!;
+    expect(report.lines.map((l) => [l.kind, l.cents])).toEqual([["virtual", 7000]]);
+    // Sin decir nada, la venta es de tienda.
+    const plain = await sale({}, null);
+    if (!plain.ok) throw new Error("venta");
+    expect((await getPosSale(db, plain.saleId))?.channel).toBe("tienda");
   });
 
   it("una devolución con varias cajas abiertas sale de la de quien devuelve o de la elegida", async () => {

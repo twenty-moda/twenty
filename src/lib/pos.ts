@@ -13,6 +13,11 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   transferencia: "Transferencia",
 };
 
+/** Venta en la tienda (presencial) o virtual (WhatsApp, redes): se separan en Reportes y en Comprobantes. */
+export const SALE_CHANNELS = ["tienda", "virtual"] as const;
+export type SaleChannel = (typeof SALE_CHANNELS)[number];
+export const CHANNEL_LABEL: Record<SaleChannel, string> = { tienda: "Tienda", virtual: "Virtual" };
+
 export const SALE_DOCUMENT_TYPES = ["nota_venta", "boleta", "factura"] as const;
 /** Lo que se emite al vender (las notas de crédito salen de una devolución). */
 export type PosDocumentType = (typeof SALE_DOCUMENT_TYPES)[number];
