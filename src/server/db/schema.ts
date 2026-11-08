@@ -855,6 +855,8 @@ export const users = pgTable(
     role: userRole().notNull().default("customer"),
     isActive: boolean().notNull().default(true),
     lastLoginAt: timestamp({ withTimezone: true }),
+    /** Admin: le llegan por correo los avisos de pedidos (nuevo, captura de pago, anulado). Se apaga en Equipo. */
+    orderEmails: boolean().notNull().default(true),
     ...timestamps,
   },
   (t) => [check("users_email_or_username", sql`${t.email} is not null or ${t.username} is not null`)],

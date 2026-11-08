@@ -18,7 +18,7 @@ export const PANEL_ROLE_LABEL: Record<PanelRole, string> = {
 };
 
 export const PANEL_ROLE_HINT: Record<PanelRole, string> = {
-  admin: "Todo el panel: pedidos, productos, inventario, reportes, contenido y equipo. Recibe los avisos de pedidos.",
+  admin: "Todo el panel: pedidos, productos, inventario, reportes, contenido y equipo. Puede recibir los avisos de pedidos por correo.",
   vendedor: "Venta presencial: punto de venta, su caja, gastos, comprobantes, cotizaciones y guías. No anula ventas.",
   vendedor_virtual: "Venta presencial y virtual: todo lo de «Solo tienda», marca sus ventas por WhatsApp o redes como virtuales y atiende los pedidos de la web.",
 };

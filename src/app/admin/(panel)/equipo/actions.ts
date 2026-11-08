@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { z } from "zod";
 import { PANEL_ROLE_LABEL, PANEL_ROLES } from "@/lib/panel-access";
 import { getDb } from "@/server/db/client";
-import { createStaffAccount, grantPanelAccess, revokeAdmin, setPanelPassword, setPanelRole } from "@/server/services/accounts";
+import { createStaffAccount, grantPanelAccess, revokeAdmin, setOrderEmails, setPanelPassword, setPanelRole } from "@/server/services/accounts";
 import { getSiteSettings } from "@/server/services/content";
 import { emailConfigured } from "@/server/services/email";
 import { sendAdminInvite } from "@/server/services/notifications";
@@ -59,6 +59,15 @@ export async function changeRoleAction(userId: string, nextRole: string): Promis
   if (!result.ok) return failure(result.message);
   refresh();
   return success(`${result.name} ahora es ${PANEL_ROLE_LABEL[parsed.data].toLowerCase()}.`);
+}
+
+/** Avisos de pedidos por correo: cada admin decide si le llegan (también el propio). */
+export async function setOrderEmailsAction(userId: string, enabled: boolean): Promise<ActionState> {
+  await requireAdmin();
+  const result = await setOrderEmails(getDb(), userId, enabled);
+  if (!result.ok) return failure(result.message);
+  refresh();
+  return success(enabled ? `A ${result.name} le van a llegar los avisos de pedidos.` : `${result.name} ya no recibe los avisos de pedidos.`);
 }
 
 export async function resetPasswordAction(userId: string, _: ActionState, fd: FormData): Promise<ActionState> {

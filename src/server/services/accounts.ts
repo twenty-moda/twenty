@@ -400,6 +400,16 @@ export async function setPanelRole(db: Db, userId: string, role: PanelRole): Pro
   });
 }
 
+/** Prende o apaga los avisos de pedidos por correo de alguien del equipo (solo les llegan a los admin con correo). */
+export async function setOrderEmails(db: Db, userId: string, enabled: boolean): Promise<{ ok: true; name: string } | TeamFail> {
+  const [updated] = await db
+    .update(users)
+    .set({ orderEmails: enabled, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), eq(users.isActive, true), inArray(users.role, [...PANEL_ROLES])))
+    .returning({ name: users.name });
+  return updated ? { ok: true, name: updated.name } : { ok: false, message: "Esa persona ya no tiene acceso al panel." };
+}
+
 /** Contraseña nueva para una cuenta con usuario: cierra sus sesiones del panel (tiene que volver a entrar). */
 export async function setPanelPassword(db: Db, userId: string, password: string): Promise<{ ok: true; username: string } | TeamFail> {
   const [target] = await db.select({ username: users.username, role: users.role, isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1);
@@ -414,7 +424,7 @@ export async function setPanelPassword(db: Db, userId: string, password: string)
   return { ok: true, username: target.username };
 }
 
-/** Admins activos (reciben los avisos de pedidos). */
+/** Admins activos (los que tienen `orderEmails` reciben los avisos de pedidos). */
 export function listAdmins(db: Db) {
   return db
     .select({ id: users.id, name: users.name, email: users.email, lastLoginAt: users.lastLoginAt })
@@ -426,7 +436,7 @@ export function listAdmins(db: Db) {
 /** Quienes entran al panel, con su perfil. */
 export function listTeam(db: Db) {
   return db
-    .select({ id: users.id, name: users.name, email: users.email, username: users.username, role: users.role, lastLoginAt: users.lastLoginAt })
+    .select({ id: users.id, name: users.name, email: users.email, username: users.username, role: users.role, lastLoginAt: users.lastLoginAt, orderEmails: users.orderEmails })
     .from(users)
     .where(and(inArray(users.role, [...PANEL_ROLES]), eq(users.isActive, true)))
     .orderBy(users.role, users.name);

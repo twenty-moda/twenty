@@ -325,4 +325,17 @@ describe("equipo del panel", () => {
     expect(await accounts.createStaffAccount(db, { username: "tienda1", name: "Ana", role: "vendedor_virtual", password: "otra-clave-55" })).toMatchObject({ ok: true, reactivated: true });
     expect(await accounts.signInWithPassword(db, { username: "tienda1", password: "otra-clave-55" })).toEqual({ ok: true, userId: ana.user.id, role: "vendedor_virtual" });
   });
+
+  it("cada admin puede apagar sus avisos de pedidos; el correo de la empresa los recibe igual", async () => {
+    const { teamRecipients } = await import("./order-notifications");
+    const settings = { company: { notificationEmail: "avisos@twenty.pe" }, contact: { email: "" } } as Parameters<typeof teamRecipients>[1];
+    const duena = await accounts.grantAdmin(db, { email: "duena@example.com", name: "Dueña" });
+    const mathyu = await accounts.grantAdmin(db, { email: "mathyu@example.com", name: "Mathyu" });
+    expect((await teamRecipients(db, settings)).sort()).toEqual(["avisos@twenty.pe", "duena@example.com", "mathyu@example.com"]);
+    expect(await accounts.setOrderEmails(db, mathyu.id, false)).toEqual({ ok: true, name: "Mathyu" });
+    expect((await teamRecipients(db, settings)).sort()).toEqual(["avisos@twenty.pe", "duena@example.com"]);
+    expect((await accounts.listTeam(db)).find((t) => t.id === mathyu.id)?.orderEmails).toBe(false);
+    await accounts.setOrderEmails(db, mathyu.id, true);
+    expect(await teamRecipients(db, settings, duena.id)).toEqual(["mathyu@example.com", "avisos@twenty.pe"]);
+  });
 });

@@ -8,7 +8,7 @@ import { inputClass, inputCompactClass, selectClass, SelectWrap } from "@/compon
 import { cn } from "@/lib/cn";
 import { PANEL_ROLE_HINT, PANEL_ROLE_LABEL, PANEL_ROLES, type PanelRole } from "@/lib/panel-access";
 import { idle, type ActionState } from "../../_lib/action-state";
-import { addMemberAction, changeRoleAction, removeAdminAction, resetPasswordAction } from "./actions";
+import { addMemberAction, changeRoleAction, removeAdminAction, resetPasswordAction, setOrderEmailsAction } from "./actions";
 
 /** Contraseña fácil de dictar: sin 0/O ni 1/l/I. */
 function suggestPassword() {
@@ -142,6 +142,32 @@ function RolePicker({ value, onChange }: { value: PanelRole; onChange: (role: Pa
         </label>
       ))}
     </fieldset>
+  );
+}
+
+/** Si a ese admin le llegan por correo los avisos de pedidos (nuevo, captura de pago, anulado). */
+export function OrderEmailsToggle({ id, enabled, isMe }: { id: string; enabled: boolean; isMe: boolean }) {
+  const [on, setOn] = useState(enabled);
+  const [state, setState] = useState<ActionState>(idle);
+  const [pending, start] = useTransition();
+  return (
+    <div className="space-y-1.5">
+      <Toggle
+        name={`avisos-${id}`}
+        checked={on}
+        onChange={(next) => {
+          setOn(next);
+          start(async () => {
+            const result = await setOrderEmailsAction(id, next);
+            if (result.status === "error") setOn(!next);
+            setState(result);
+          });
+        }}
+        label={isMe ? "Me llegan los avisos de pedidos por correo" : "Le llegan los avisos de pedidos por correo"}
+        hint={pending ? "Guardando…" : "Pedido nuevo, captura de pago y anulaciones. El correo de avisos de la empresa (Contenido) los recibe igual."}
+      />
+      {state.status === "error" ? <FormAlert state={state} /> : null}
+    </div>
   );
 }
 

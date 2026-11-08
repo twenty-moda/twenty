@@ -211,6 +211,13 @@
       "when": 1794170762417,
       "tag": "0029_sale-channel",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794175001471,
+      "tag": "0030_order-emails",
+      "breakpoints": true
     }
   ]
 }

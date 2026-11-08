@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "order_emails" boolean DEFAULT true NOT NULL;

@@ -5,7 +5,7 @@ import { getDb } from "@/server/db/client";
 import { listTeam } from "@/server/services/accounts";
 import { emailConfigured } from "@/server/services/email";
 import { requireAdmin } from "../../_lib/auth";
-import { AddMemberForm, MemberActions } from "./team-forms";
+import { AddMemberForm, MemberActions, OrderEmailsToggle } from "./team-forms";
 
 export const instant = false;
 export const metadata: Metadata = { title: "Equipo" };
@@ -41,6 +41,12 @@ export default async function TeamPage() {
                     </span>
                     <span className="block truncate text-sm text-muted">{a.email ?? <>Usuario: <span className="font-mono text-white">{a.username}</span></>}</span>
                     <span className="block text-xs text-subtle">{a.lastLoginAt ? `Último ingreso: ${formatDateTime(a.lastLoginAt)}` : "Aún no entra"}</span>
+                    {/* Los avisos de pedidos solo les llegan a los admin con correo. */}
+                    {a.role === "admin" && a.email ? (
+                      <span className="mt-2 block">
+                        <OrderEmailsToggle id={a.id} enabled={a.orderEmails} isMe={a.id === me.id} />
+                      </span>
+                    ) : null}
                   </span>
                   {a.id === me.id ? null : (
                     <MemberActions id={a.id} name={a.name} role={a.role} hasUsername={!!a.username} canChange={!lastAdmin} canRemove={!lastAdmin} />

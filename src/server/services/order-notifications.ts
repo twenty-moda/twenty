@@ -66,15 +66,18 @@ export function planOrderEmails(event: OrderEvent): { customer: CustomerEmailKin
   return event.notifyCustomer === false ? { ...plan, customer: null } : plan;
 }
 
-/** Admins activos del panel + el email de avisos (o el de contacto), sin repetir y sin quien hizo el cambio. */
+/**
+ * Admins activos del panel que tienen prendidos los avisos (`orderEmails`, en Equipo) + el email de avisos de la
+ * empresa (o el de contacto), sin repetir y sin quien hizo el cambio.
+ */
 export async function teamRecipients(db: Db, settings: SiteSettings, excludeUserId: string | null = null): Promise<string[]> {
   const admins = await db
-    .select({ id: users.id, email: users.email })
+    .select({ id: users.id, email: users.email, orderEmails: users.orderEmails })
     .from(users)
     .where(and(eq(users.role, "admin"), eq(users.isActive, true)));
   const actor = admins.find((a) => a.id === excludeUserId)?.email?.toLowerCase();
   // Un admin que entra con usuario (sin correo) no recibe avisos.
-  const all = [...admins.map((a) => a.email ?? ""), settings.company.notificationEmail || settings.contact.email].map((e) => e.trim().toLowerCase());
+  const all = [...admins.filter((a) => a.orderEmails).map((a) => a.email ?? ""), settings.company.notificationEmail || settings.contact.email].map((e) => e.trim().toLowerCase());
   return [...new Set(all)].filter((e) => e.includes("@") && e !== actor);
 }
 
