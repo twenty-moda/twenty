@@ -46,6 +46,7 @@ async function loadExisting(db: Conn) {
         sizeId: productVariants.sizeId,
         priceCents: productVariants.priceCents,
         compareAtPriceCents: productVariants.compareAtPriceCents,
+        costCents: productVariants.costCents,
         stock: productVariants.stock,
         isActive: productVariants.isActive,
       })
@@ -104,6 +105,7 @@ function resolve(parsed: ParsedSheet, existing: Existing) {
       if ((variant.compareAtPriceCents ?? null) !== row.compareAtCents) {
         changes.push(row.compareAtCents ? `Precio antes ${formatPrice(row.compareAtCents)}` : "Sin precio antes");
       }
+      if (row.costCents !== null && variant.costCents !== row.costCents) changes.push(`Costo ${formatPrice(row.costCents)}`);
       if (variant.stock !== row.stock) changes.push(`Stock ${variant.stock} → ${row.stock}`);
       if (variant.isActive !== row.visible) changes.push(row.visible ? "Se muestra" : "Se oculta");
       resolved.push({
@@ -184,7 +186,7 @@ export async function applyImport(db: Db, parsed: ParsedSheet, userId: string | 
         if (r.plan.action === "sin-cambios") continue;
         await tx
           .update(productVariants)
-          .set({ priceCents: row.priceCents, compareAtPriceCents: row.compareAtCents, isActive: row.visible })
+          .set({ priceCents: row.priceCents, compareAtPriceCents: row.compareAtCents, isActive: row.visible, ...(row.costCents !== null ? { costCents: row.costCents } : {}) })
           .where(eq(productVariants.id, r.variantId));
         stockTargets.push({ variantId: r.variantId, quantity: row.stock });
         continue;
@@ -233,6 +235,7 @@ export async function applyImport(db: Db, parsed: ParsedSheet, userId: string | 
           sizeId,
           priceCents: row.priceCents,
           compareAtPriceCents: row.compareAtCents,
+          costCents: row.costCents,
           isActive: row.visible,
           position,
         })
@@ -258,6 +261,7 @@ export async function exportCatalogRows(db: Db): Promise<(string | number)[][]> 
       sku: productVariants.sku,
       price: productVariants.priceCents,
       compareAt: productVariants.compareAtPriceCents,
+      cost: productVariants.costCents,
       stock: productVariants.stock,
       description: products.description,
       active: productVariants.isActive,
@@ -278,6 +282,7 @@ export async function exportCatalogRows(db: Db): Promise<(string | number)[][]> 
     r.sku,
     r.price / 100,
     r.compareAt ? r.compareAt / 100 : "",
+    r.cost ? r.cost / 100 : "",
     r.stock,
     r.description ?? "",
     r.active ? "sí" : "no",

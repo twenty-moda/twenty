@@ -29,9 +29,9 @@ describe("carga masiva", () => {
   it("crea productos y variantes, y en la segunda carga actualiza por SKU", async () => {
     const first = parseProductSheet([
       header,
-      ["Baggy Nuevo", "PANTALONES", "Baggy Jean", "Negro", "30", "TMW-9001", 99, 120, 5, "Jean rígido", "sí"],
-      ["Baggy Nuevo", "Pantalones", "Baggy Jean", "negro", "32", "", 99, "", 2, "", "sí"],
-      ["Polo Básico", "Camisetas", "", "Blanco", "M", "TMW-9003", 30, "", 10, "", "sí"],
+      ["Baggy Nuevo", "PANTALONES", "Baggy Jean", "Negro", "30", "TMW-9001", 99, 120, 40, 5, "Jean rígido", "sí"],
+      ["Baggy Nuevo", "Pantalones", "Baggy Jean", "negro", "32", "", 99, "", "", 2, "", "sí"],
+      ["Polo Básico", "Camisetas", "", "Blanco", "M", "TMW-9003", 30, "", "", 10, "", "sí"],
     ]);
     const plan = await planImport(db, first);
     expect(plan.summary).toMatchObject({ newProducts: 1, newVariants: 2, updated: 0, skipped: 1 });
@@ -42,19 +42,20 @@ describe("carga masiva", () => {
     const { productSlugs } = await applyImport(db, first);
     expect(productSlugs).toEqual(["baggy-nuevo"]);
     const variants = await db.select().from(schema.productVariants).orderBy(schema.productVariants.sku);
-    expect(variants.map((v) => [v.sku, v.stock, v.priceCents, v.compareAtPriceCents])).toEqual([
-      ["TMW-9001", 5, 9900, 12000],
-      ["TMW-9002", 2, 9900, null], // SKU generado
+    expect(variants.map((v) => [v.sku, v.stock, v.priceCents, v.compareAtPriceCents, v.costCents])).toEqual([
+      ["TMW-9001", 5, 9900, 12000, 4000],
+      ["TMW-9002", 2, 9900, null, null], // SKU generado, sin costo
     ]);
     const [product] = await db.select().from(schema.products).where(eq(schema.products.slug, "baggy-nuevo"));
     expect(product).toMatchObject({ name: "Baggy Nuevo", status: "active", description: "Jean rígido" });
 
-    const second = parseProductSheet([header, ["Baggy Nuevo", "Pantalones", "Baggy Jean", "Negro", "30", "TMW-9001", 89, "", 0, "", "no"]]);
+    // Sin costo en la celda: el que tenía no se borra.
+    const second = parseProductSheet([header, ["Baggy Nuevo", "Pantalones", "Baggy Jean", "Negro", "30", "TMW-9001", 89, "", "", 0, "", "no"]]);
     const plan2 = await planImport(db, second);
     expect(plan2.rows[0]).toMatchObject({ action: "actualizar", changes: ["Precio S/ 99 → S/ 89", "Sin precio antes", "Stock 5 → 0", "Se oculta"] });
     await applyImport(db, second);
     const [updated] = await db.select().from(schema.productVariants).where(eq(schema.productVariants.sku, "TMW-9001"));
-    expect(updated).toMatchObject({ priceCents: 8900, compareAtPriceCents: null, stock: 0, isActive: false });
+    expect(updated).toMatchObject({ priceCents: 8900, compareAtPriceCents: null, costCents: 4000, stock: 0, isActive: false });
 
     expect((await planImport(db, second)).rows[0].action).toBe("sin-cambios");
   });

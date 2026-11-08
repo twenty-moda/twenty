@@ -10,7 +10,7 @@ export async function GET() {
   const rows = await exportCatalogRows(getDb());
   const header = TEMPLATE_COLUMNS.map((value) => ({ value, fontWeight: "bold" as const, backgroundColor: "#EEEEEE" }));
   const buffer = await writeExcelFile([header, ...rows], {
-    columns: [{ width: 28 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 8 }, { width: 12 }, { width: 10 }, { width: 12 }, { width: 8 }, { width: 30 }, { width: 8 }],
+    columns: [{ width: 28 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 8 }, { width: 12 }, { width: 10 }, { width: 12 }, { width: 10 }, { width: 8 }, { width: 30 }, { width: 8 }],
     sheet: "Productos",
   }).toBuffer();
   const date = new Date().toISOString().slice(0, 10);

@@ -132,6 +132,8 @@ export const productVariants = pgTable(
     priceCents: integer().notNull(),
     /** Precio anterior (tachado) si hay descuento. */
     compareAtPriceCents: integer(),
+    /** Precio costo (lo que le cuesta la prenda a TWENTY). Solo lo ve el admin; null = no se anotó. */
+    costCents: integer(),
     stock: integer().notNull().default(0),
     isActive: boolean().notNull().default(true),
     position: integer().notNull().default(0),

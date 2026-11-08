@@ -61,7 +61,7 @@ export function OperationForm({ warehouses, variants, initialKind }: { warehouse
       return;
     }
     setState(idle);
-    setLines((ls) => (ls.some((l) => l.variantId === v.variantId) ? ls.map((l) => (l.variantId === v.variantId ? { ...l, quantity: l.quantity + 1 } : l)) : [...ls, { variantId: v.variantId, quantity: 1, cost: "" }]));
+    setLines((ls) => (ls.some((l) => l.variantId === v.variantId) ? ls.map((l) => (l.variantId === v.variantId ? { ...l, quantity: l.quantity + 1 } : l)) : [...ls, { variantId: v.variantId, quantity: 1, cost: v.costCents ? String(v.costCents / 100) : "" }]));
   };
   const update = (variantId: string, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.variantId === variantId ? { ...l, ...patch } : l)));
 

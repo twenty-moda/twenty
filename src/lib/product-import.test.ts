@@ -18,8 +18,18 @@ describe("plantilla nueva", () => {
     const { format, rows, issues } = parseProductSheet([[...TEMPLATE_COLUMNS], ...TEMPLATE_EXAMPLE]);
     expect(format).toBe("twenty");
     expect(issues).toEqual([]);
-    expect(rows[0]).toMatchObject({ row: 2, product: "Baggy Ángel", category: "Pantalones", color: "Celeste", size: "28", sku: "TMW-0001", priceCents: 9900, stock: 5, visible: true });
-    expect(rows[2]).toMatchObject({ sku: "", priceCents: 3000, compareAtCents: 4000 });
+    expect(rows[0]).toMatchObject({ row: 2, product: "Baggy Ángel", category: "Pantalones", color: "Celeste", size: "28", sku: "TMW-0001", priceCents: 9900, costCents: 4500, stock: 5, visible: true });
+    expect(rows[2]).toMatchObject({ sku: "", priceCents: 3000, compareAtCents: 4000, costCents: null });
+  });
+
+  it("el costo es opcional y no puede ser 0 ni negativo", () => {
+    const { rows, issues } = parseProductSheet([
+      ["Producto", "Categoría", "Color", "Talla", "Precio", "Precio costo"],
+      ["Polo", "Polos", "Negro", "M", 30, "S/ 12,50"],
+      ["Polo", "Polos", "Negro", "L", 30, 0],
+    ]);
+    expect(rows.map((r) => r.costCents)).toEqual([1250]);
+    expect(issues).toEqual([{ row: 3, message: "El costo debe ser mayor que 0 (o deja la celda vacía)." }]);
   });
 
   it("reporta filas incompletas y duplicadas con su número de fila", () => {

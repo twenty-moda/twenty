@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "../db/client";
 
@@ -143,5 +143,12 @@ describe("getStockValuation", () => {
     // 10 − 2 (boleta) − 1 + 1 (anulada) − 1 + 1 (devuelta) + 10 (ingresos) = 18
     const gamarra = (await getStockValuation(db)).find((w) => w.warehouseId === store);
     expect(gamarra).toMatchObject({ units: 18, priceCents: 18 * 9900, costCents: 18 * 4500, unitsWithoutCost: 0 });
+  });
+
+  it("el precio costo de la ficha manda sobre el promedio de los ingresos", async () => {
+    await db.update(schema.productVariants).set({ costCents: 3000 }).where(eq(schema.productVariants.id, ids.variant));
+    const gamarra = (await getStockValuation(db)).find((w) => w.warehouseId === store);
+    expect(gamarra).toMatchObject({ units: 18, costCents: 18 * 3000, unitsWithoutCost: 0 });
+    await db.update(schema.productVariants).set({ costCents: null }).where(eq(schema.productVariants.id, ids.variant));
   });
 });

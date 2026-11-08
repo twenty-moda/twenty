@@ -16,6 +16,7 @@ export const TEMPLATE_COLUMNS = [
   "SKU",
   "Precio",
   "Precio antes",
+  "Costo",
   "Stock",
   "Descripción",
   "Visible",
@@ -33,6 +34,8 @@ export type ImportRow = {
   sku: string;
   priceCents: number;
   compareAtCents: number | null;
+  /** Precio costo; null = la celda está vacía (o no hay columna) y no cambia el que ya tenía. */
+  costCents: number | null;
   stock: number;
   description: string | null;
   visible: boolean;
@@ -105,6 +108,10 @@ function finalizeRow(draft: Omit<ImportRow, "priceCents" | "compareAtCents"> & {
     issues.push({ row: draft.row, message: "El precio debe ser mayor que 0." });
     return null;
   }
+  if (draft.costCents !== null && draft.costCents <= 0) {
+    issues.push({ row: draft.row, message: "El costo debe ser mayor que 0 (o deja la celda vacía)." });
+    return null;
+  }
   if (draft.stock < 0) {
     issues.push({ row: draft.row, message: "El stock no puede ser negativo." });
     return null;
@@ -124,6 +131,7 @@ function parseTwenty(sheet: readonly (readonly Cell[])[], headerIndex: number): 
     sku: columnIndex(header, "SKU", "Código"),
     price: columnIndex(header, "Precio"),
     compareAt: columnIndex(header, "Precio antes", "Precio anterior", "Precio tachado"),
+    cost: columnIndex(header, "Costo", "Precio costo", "Precio de costo"),
     stock: columnIndex(header, "Stock", "Cantidad"),
     description: columnIndex(header, "Descripción", "Descripcion"),
     visible: columnIndex(header, "Visible", "Publicado"),
@@ -150,6 +158,7 @@ function parseTwenty(sheet: readonly (readonly Cell[])[], headerIndex: number): 
         sku: text(get(r, col.sku)).toUpperCase(),
         price: parseMoney(get(r, col.price)),
         compareAt: parseMoney(get(r, col.compareAt)),
+        costCents: parseMoney(get(r, col.cost)),
         stock: parseInteger(get(r, col.stock)) ?? 0,
         description: text(get(r, col.description)) || null,
         visible: parseBool(get(r, col.visible), true),
@@ -211,6 +220,7 @@ function parseLegacy(sheet: readonly (readonly Cell[])[], headerIndex: number): 
         sku: text(get(r, col.sku)).toUpperCase(),
         price: useDiscount ? discounted : list,
         compareAt: useDiscount ? list : null,
+        costCents: null,
         stock: parseInteger(get(r, col.stock)) ?? 0,
         description,
         visible: parseBool(get(r, col.visible), true),
@@ -255,7 +265,7 @@ export function parsePhotoName(filename: string): { sku: string; position: numbe
 
 /** Filas de ejemplo para la plantilla que se descarga desde el admin. */
 export const TEMPLATE_EXAMPLE: (string | number)[][] = [
-  ["Baggy Ángel", "Pantalones", "Baggy Jean", "Celeste", "28", "TMW-0001", 99, "", 5, "Material: Jean Rígido", "sí"],
-  ["Baggy Ángel", "Pantalones", "Baggy Jean", "Celeste", "30", "TMW-0002", 99, "", 3, "", "sí"],
-  ["Polo Slim Fit", "Polos", "Slim Fit", "Negro", "M", "", 30, 40, 10, "Algodón", "sí"],
+  ["Baggy Ángel", "Pantalones", "Baggy Jean", "Celeste", "28", "TMW-0001", 99, "", 45, 5, "Material: Jean Rígido", "sí"],
+  ["Baggy Ángel", "Pantalones", "Baggy Jean", "Celeste", "30", "TMW-0002", 99, "", 45, 3, "", "sí"],
+  ["Polo Slim Fit", "Polos", "Slim Fit", "Negro", "M", "", 30, 40, "", 10, "Algodón", "sí"],
 ];

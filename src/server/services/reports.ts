@@ -173,8 +173,9 @@ export async function getSalesReport(db: Db, range: ReportRange) {
 export type SalesReport = Awaited<ReturnType<typeof getSalesReport>>;
 
 /**
- * Stock de hoy por almacén: unidades, lo que vale a precio de venta y al costo. El costo de cada prenda es el promedio
- * de sus ingresos con costo (ponderado por unidades); las que nunca entraron con costo se cuentan aparte.
+ * Stock de hoy por almacén: unidades, lo que vale a precio de venta y al costo. El costo de cada prenda es su precio
+ * costo (el de la ficha del producto) y, si no lo tiene, el promedio de sus ingresos con costo (ponderado por
+ * unidades); las que no tienen ninguno se cuentan aparte.
  */
 export async function getStockValuation(db: Db) {
   const cost = db.$with("cost").as(
@@ -194,8 +195,8 @@ export async function getStockValuation(db: Db) {
       name: warehouses.name,
       units: sumInt(inventoryLevels.quantity),
       priceCents: sql<number>`coalesce(sum(${inventoryLevels.quantity}::bigint * ${productVariants.priceCents}), 0)::float8`,
-      costCents: sql<number>`coalesce(sum(${inventoryLevels.quantity} * ${cost.unitCost}), 0)::float8`,
-      unitsWithoutCost: sql<number>`coalesce(sum(${inventoryLevels.quantity}) filter (where ${cost.unitCost} is null), 0)::int`,
+      costCents: sql<number>`coalesce(sum(${inventoryLevels.quantity} * coalesce(${productVariants.costCents}, ${cost.unitCost})), 0)::float8`,
+      unitsWithoutCost: sql<number>`coalesce(sum(${inventoryLevels.quantity}) filter (where ${productVariants.costCents} is null and ${cost.unitCost} is null), 0)::int`,
     })
     .from(warehouses)
     .leftJoin(inventoryLevels, and(eq(inventoryLevels.warehouseId, warehouses.id), gt(inventoryLevels.quantity, 0)))

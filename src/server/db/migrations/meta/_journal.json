@@ -169,6 +169,13 @@
       "when": 1793932929635,
       "tag": "0023_coupon-products",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794165025744,
+      "tag": "0024_variant-cost",
+      "breakpoints": true
     }
   ]
 }

@@ -332,7 +332,7 @@ function StockCard({ stock }: { stock: Awaited<ReturnType<typeof getStockValuati
         </table>
       </div>
       <p className="mt-3 text-xs text-subtle">
-        El costo de cada prenda es el promedio de sus ingresos de mercadería con costo.
+        El costo de cada prenda es su precio costo (en la ficha del producto) o, si no lo tiene, el promedio de sus ingresos de mercadería con costo.
         {total.unitsWithoutCost ? ` ${plural(total.unitsWithoutCost, "prenda todavía no tiene", "prendas todavía no tienen")} costo y no suman en esa columna.` : ""}
       </p>
     </Card>

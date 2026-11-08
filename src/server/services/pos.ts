@@ -238,13 +238,14 @@ export async function listCashSessions(db: Db, { page = 1 }: { page?: number } =
 
 // ─── Catálogo del POS ────────────────────────────────────────────────────────
 
-export type PosVariant = PickerVariant & { stock: number; promotion: PricedPromotion | null };
+export type PosVariant = Omit<PickerVariant, "costCents"> & { stock: number; promotion: PricedPromotion | null };
 
 /** Todas las prendas (también las que no están publicadas en la web) con su stock en la tienda y su promo vigente. */
 export async function listPosVariants(db: Db, warehouseId: string): Promise<PosVariant[]> {
   const variants = await listPickerVariants(db);
   const promotions = await activePromotionsByProduct(db, [...new Set(variants.map((v) => v.productId))], new Date());
-  return variants.map((v) => ({ ...v, stock: v.levels[warehouseId] ?? 0, promotion: promotions.get(v.productId) ?? null }));
+  // El costo no viaja a la pantalla del vendedor.
+  return variants.map(({ costCents: _cost, ...v }) => ({ ...v, stock: v.levels[warehouseId] ?? 0, promotion: promotions.get(v.productId) ?? null }));
 }
 
 // ─── Venta ───────────────────────────────────────────────────────────────────

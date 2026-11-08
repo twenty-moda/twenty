@@ -97,6 +97,7 @@ export async function getAdminProduct(db: Db, id: string) {
         sizeLabel: sizes.label,
         priceCents: productVariants.priceCents,
         compareAtPriceCents: productVariants.compareAtPriceCents,
+        costCents: productVariants.costCents,
         stock: productVariants.stock,
         isActive: productVariants.isActive,
         colorPosition: colors.position,
@@ -356,6 +357,8 @@ export const variantInputSchema = z.object({
   sku: z.string().trim().toUpperCase().max(40).optional().default(""),
   priceCents: z.number().int().positive("El precio debe ser mayor que 0"),
   compareAtPriceCents: z.number().int().positive().nullable(),
+  /** Precio costo; null = sin anotar. */
+  costCents: z.number().int().positive("El costo debe ser mayor que 0").nullish(),
   stock: z.number().int().min(0, "El stock no puede ser negativo"),
   isActive: z.boolean(),
 });
@@ -420,6 +423,7 @@ export async function saveVariants(db: Db, productId: string, input: VariantInpu
         sizeId,
         priceCents: v.priceCents,
         compareAtPriceCents: v.compareAtPriceCents && v.compareAtPriceCents > v.priceCents ? v.compareAtPriceCents : null,
+        costCents: v.costCents ?? null,
         isActive: v.isActive,
         position,
       };

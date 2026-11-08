@@ -118,7 +118,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
           </div>
         ) : (
           <div id="variantes" className="scroll-mt-32">
-            <Card title="Variantes: color, talla, precio y stock">
+            <Card title="Variantes: color, talla, precio, costo y stock">
               <VariantsEditor
                 productId={product.id}
                 colors={options.colors.map((c) => ({ value: c.name, hex: c.hex }))}
@@ -130,6 +130,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
                   sku: v.sku,
                   priceCents: v.priceCents,
                   compareAtPriceCents: v.compareAtPriceCents,
+                  costCents: v.costCents,
                   stock: v.stock,
                   isActive: v.isActive,
                 }))}

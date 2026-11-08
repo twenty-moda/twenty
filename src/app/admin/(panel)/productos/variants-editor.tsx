@@ -20,13 +20,15 @@ export type EditableVariant = {
   sku: string;
   priceCents: number;
   compareAtPriceCents: number | null;
+  /** Precio costo (solo lo ve el admin). */
+  costCents: number | null;
   stock: number;
   isActive: boolean;
 };
 
-type Row = Omit<EditableVariant, "priceCents" | "compareAtPriceCents"> & { key: string; price: string; compareAt: string };
+type Row = Omit<EditableVariant, "priceCents" | "compareAtPriceCents" | "costCents"> & { key: string; price: string; compareAt: string; cost: string };
 type Combo = { color: string; size: string };
-type ComboValues = Pick<Row, "price" | "compareAt" | "stock">;
+type ComboValues = Pick<Row, "price" | "compareAt" | "cost" | "stock">;
 
 const COMMON_SIZES = ["XS", "S", "M", "L", "XL", "28", "30", "32", "34", "36"];
 const toSoles = (cents: number | null) => (cents ? String(cents / 100) : "");
@@ -44,14 +46,14 @@ const newSize = (v: string) => `Talla nueva: «${v.toUpperCase()}»`;
 // Encabezado y filas con la misma plantilla. Las dos últimas columnas tienen ancho fijo: con `auto`, el
 // encabezado ("Activa") y las filas (casilla y tacho) las medían distinto y los títulos no calzaban.
 const COLUMNS =
-  "lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_3.5rem_2.75rem]";
+  "lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_3.5rem_2.75rem]";
 const inkInputClass = cn(fieldClass, "h-12 w-full bg-ink px-4 text-base");
 
 type VariantsEditorProps = { productId: string; initial: EditableVariant[]; colors: ComboOption[]; sizeLabels: string[] };
 
 export function VariantsEditor({ productId, initial, colors, sizeLabels }: VariantsEditorProps) {
   const [rows, setRows] = useState<Row[]>(() =>
-    initial.map((v) => ({ ...v, key: v.id ?? newKey(), price: toSoles(v.priceCents), compareAt: toSoles(v.compareAtPriceCents) })),
+    initial.map(({ priceCents, compareAtPriceCents, costCents, ...v }) => ({ ...v, key: v.id ?? newKey(), price: toSoles(priceCents), compareAt: toSoles(compareAtPriceCents), cost: toSoles(costCents) })),
   );
   const [dirty, setDirty] = useState(false);
   const [state, setState] = useState<ActionState>(idle);
@@ -72,7 +74,7 @@ export function VariantsEditor({ productId, initial, colors, sizeLabels }: Varia
   const addRow = () => {
     setRows((rs) => [
       ...rs,
-      { key: newKey(), color: last?.color ?? "", size: "", sku: "", price: last?.price ?? "", compareAt: last?.compareAt ?? "", stock: 0, isActive: true },
+      { key: newKey(), color: last?.color ?? "", size: "", sku: "", price: last?.price ?? "", compareAt: last?.compareAt ?? "", cost: last?.cost ?? "", stock: 0, isActive: true },
     ]);
     setDirty(true);
   };
@@ -86,6 +88,7 @@ export function VariantsEditor({ productId, initial, colors, sizeLabels }: Varia
         sku: r.sku,
         priceCents: toCents(r.price) ?? 0,
         compareAtPriceCents: toCents(r.compareAt),
+        costCents: toCents(r.cost),
         stock: Math.max(0, Math.floor(r.stock)),
         isActive: r.isActive,
       }));
@@ -141,12 +144,13 @@ export function VariantsEditor({ productId, initial, colors, sizeLabels }: Varia
           onUpdate={(combos, values) => {
             const targets = new Set(combos.map((c) => optionKey(c.color, c.size)));
             const keys = new Set(rows.filter((r) => targets.has(optionKey(r.color, r.size))).map((r) => r.key));
-            setRows((rs) => rs.map((r) => (keys.has(r.key) ? { ...r, ...values } : r)));
+            // Un costo vacío no borra el que ya tenían.
+            setRows((rs) => rs.map((r) => (keys.has(r.key) ? { ...r, ...values, cost: values.cost || r.cost } : r)));
             setDirty(true);
             setGeneratorOpen(false);
             setRecent({
               keys,
-              message: `Cambiaste el precio y el stock de ${plural(keys.size, "variante", "variantes")} (resaltadas abajo). Toca «Guardar variantes» para que queden.`,
+              message: `Cambiaste el precio, el costo y el stock de ${plural(keys.size, "variante", "variantes")} (resaltadas abajo). Toca «Guardar variantes» para que queden.`,
             });
           }}
         />
@@ -167,6 +171,7 @@ export function VariantsEditor({ productId, initial, colors, sizeLabels }: Varia
             <span className="px-3">SKU</span>
             <span className="px-3">Precio S/</span>
             <span className="px-3">Antes S/</span>
+            <span className="px-3">Costo S/</span>
             <span className="text-center">Stock</span>
             <span className="text-center">Activa</span>
             <span />
@@ -206,6 +211,7 @@ export function VariantsEditor({ productId, initial, colors, sizeLabels }: Varia
                 <Input label="SKU" value={r.sku} placeholder="Automático" onChange={(v) => update(r.key, { sku: v.toUpperCase() })} mono />
                 <Input label="Precio S/" value={r.price} inputMode="decimal" onChange={(v) => update(r.key, { price: v })} />
                 <Input label="Antes S/" value={r.compareAt} inputMode="decimal" placeholder="—" onChange={(v) => update(r.key, { compareAt: v })} />
+                <Input label="Costo S/" value={r.cost} inputMode="decimal" placeholder="—" onChange={(v) => update(r.key, { cost: v })} />
                 <div className="col-span-2 lg:col-span-1">
                   <span className="mb-1 block text-xs text-muted lg:sr-only">Stock</span>
                   <div className="flex h-11 items-center rounded-xl border border-line bg-raised">
@@ -237,8 +243,8 @@ export function VariantsEditor({ productId, initial, colors, sizeLabels }: Varia
             ))}
           </ul>
           <BulkPrice
-            onApply={(price, compareAt) => {
-              setRows((rs) => rs.map((r) => ({ ...r, price, compareAt })));
+            onApply={(patch) => {
+              setRows((rs) => rs.map((r) => ({ ...r, ...patch })));
               setDirty(true);
             }}
           />
@@ -321,6 +327,7 @@ function Generator({ sizes, colors, productColors, existing, onAdd, onUpdate }: 
   const [selected, setSelected] = useState<string[]>([]);
   const [price, setPrice] = useState("");
   const [compareAt, setCompareAt] = useState("");
+  const [cost, setCost] = useState("");
   const [stock, setStock] = useState("0");
   const inCatalog = (name: string) => colors.find((c) => slugify(c.value) === slugify(name));
   const isOn = (name: string) => colorList.some((c) => slugify(c) === slugify(name));
@@ -334,7 +341,7 @@ function Generator({ sizes, colors, productColors, existing, onAdd, onUpdate }: 
   const combos = colorList.flatMap((color) => [...selected].sort(compareSizes).map((size) => ({ color, size })));
   const fresh = combos.filter((c) => !existing.has(optionKey(c.color, c.size)));
   const repeated = combos.filter((c) => existing.has(optionKey(c.color, c.size)));
-  const values = { price, compareAt, stock: Math.max(0, Number(stock) || 0) };
+  const values = { price, compareAt, cost, stock: Math.max(0, Number(stock) || 0) };
   const priceOk = !!toCents(price);
 
   return (
@@ -388,7 +395,7 @@ function Generator({ sizes, colors, productColors, existing, onAdd, onUpdate }: 
           })}
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <label>
           <span className="mb-1.5 block text-sm">Precio S/</span>
           <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className={inkInputClass} />
@@ -396,6 +403,10 @@ function Generator({ sizes, colors, productColors, existing, onAdd, onUpdate }: 
         <label>
           <span className="mb-1.5 block text-sm">Antes S/</span>
           <input value={compareAt} onChange={(e) => setCompareAt(e.target.value)} inputMode="decimal" placeholder="—" className={inkInputClass} />
+        </label>
+        <label>
+          <span className="mb-1.5 block text-sm">Costo S/</span>
+          <input value={cost} onChange={(e) => setCost(e.target.value)} inputMode="decimal" placeholder="—" className={inkInputClass} />
         </label>
         <label>
           <span className="mb-1.5 block text-sm">Stock c/u</span>
@@ -412,7 +423,7 @@ function Generator({ sizes, colors, productColors, existing, onAdd, onUpdate }: 
             </span>
           </p>
           <button type="button" disabled={!priceOk} onClick={() => onUpdate(repeated, values)} className={buttonClass("secondary", "sm")}>
-            {repeated.length === 1 ? "Ponerle" : "Ponerles"} este precio y stock
+            {repeated.length === 1 ? "Ponerle" : "Ponerles"} este precio, costo y stock
           </button>
         </div>
       ) : null}
@@ -436,25 +447,40 @@ function describeCombos(combos: Combo[]) {
   return [...byColor].map(([color, sizes]) => `${color} ${sizeList.format(sizes)}`).join(" · ");
 }
 
-function BulkPrice({ onApply }: { onApply: (price: string, compareAt: string) => void }) {
+/** El mismo precio (con su "antes") o el mismo costo para todas las variantes: se aplica lo que se escriba. */
+function BulkPrice({ onApply }: { onApply: (patch: Partial<Pick<Row, "price" | "compareAt" | "cost">>) => void }) {
   const [price, setPrice] = useState("");
   const [compareAt, setCompareAt] = useState("");
+  const [cost, setCost] = useState("");
+  const bulkInput = cn(fieldClass, "h-11 w-28 bg-raised px-3 text-base pointer-fine:text-sm");
+  const hasPrice = !!toCents(price);
+  const hasCost = !!toCents(cost);
   return (
     <details className="rounded-xl border border-line">
-      <summary className="cursor-pointer list-none px-4 py-3 text-sm">Poner el mismo precio a todas</summary>
+      <summary className="cursor-pointer list-none px-4 py-3 text-sm">Poner el mismo precio o costo a todas</summary>
       <div className="flex flex-wrap items-end gap-2 border-t border-line p-4">
         <label>
           <span className="mb-1 block text-xs text-muted">Precio S/</span>
-          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className={cn(fieldClass, "h-11 w-28 bg-raised px-3 text-base pointer-fine:text-sm")} />
+          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className={bulkInput} />
         </label>
         <label>
           <span className="mb-1 block text-xs text-muted">Antes S/</span>
-          <input value={compareAt} onChange={(e) => setCompareAt(e.target.value)} inputMode="decimal" placeholder="—" className={cn(fieldClass, "h-11 w-28 bg-raised px-3 text-base pointer-fine:text-sm")} />
+          <input value={compareAt} onChange={(e) => setCompareAt(e.target.value)} inputMode="decimal" placeholder="—" className={bulkInput} />
         </label>
-        <button type="button" disabled={!toCents(price)} onClick={() => onApply(price, compareAt)} className={buttonClass("secondary", "sm")}>
+        <label>
+          <span className="mb-1 block text-xs text-muted">Costo S/</span>
+          <input value={cost} onChange={(e) => setCost(e.target.value)} inputMode="decimal" placeholder="—" className={bulkInput} />
+        </label>
+        <button
+          type="button"
+          disabled={!hasPrice && !hasCost}
+          onClick={() => onApply({ ...(hasPrice ? { price, compareAt } : {}), ...(hasCost ? { cost } : {}) })}
+          className={buttonClass("secondary", "sm")}
+        >
           Aplicar a todas
         </button>
       </div>
+      <p className="px-4 pb-4 text-xs text-muted">Lo que dejes vacío no cambia. El costo solo lo ve el admin: sirve para el stock valorizado de Reportes.</p>
     </details>
   );
 }
