@@ -35,7 +35,13 @@ export async function registerReturnAction(saleId: string, _: ActionState, fd: F
   } catch {
     items = [];
   }
-  const parsed = returnInputSchema.safeParse({ saleId, items, reason: form.text(fd, "reason"), refundMethod: form.text(fd, "refundMethod") });
+  const parsed = returnInputSchema.safeParse({
+    saleId,
+    items,
+    reason: form.text(fd, "reason"),
+    refundMethod: form.text(fd, "refundMethod"),
+    cashSessionId: form.optional(fd, "cashSessionId") ?? undefined,
+  });
   if (!parsed.success) return failure(parsed.error.issues[0].message);
   const db = getDb();
   const result = await registerReturn(db, parsed.data, admin.id);

@@ -1,4 +1,4 @@
-export { failure, idle, success, zodFailure, type ActionState } from "@/lib/action-state";
+export { failure, formValues, idle, success, zodFailure, type ActionState } from "@/lib/action-state";
 
 /** Lectura de FormData con conversiones comunes. */
 export const form = {

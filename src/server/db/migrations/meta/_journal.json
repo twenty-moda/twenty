@@ -183,6 +183,13 @@
       "when": 1794165536893,
       "tag": "0025_staff-username",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794166393134,
+      "tag": "0026_cash-per-seller-expenses",
+      "breakpoints": true
     }
   ]
 }

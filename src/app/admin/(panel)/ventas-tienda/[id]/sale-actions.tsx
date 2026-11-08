@@ -65,7 +65,17 @@ export type ReturnFormLine = ReturnLine & { label: string; sku: string };
  * Devolver prendas: cuántas de cada línea, cómo se entrega el dinero y por qué. Lo que se devuelve es lo que se pagó
  * por esas prendas (con su parte de la promo y del descuento), igual que en la nota de crédito.
  */
-export function ReturnForm({ saleId, lines, defaultMethod, creditNote }: { saleId: string; lines: ReturnFormLine[]; defaultMethod: PaymentMethod; creditNote: boolean }) {
+type ReturnFormProps = {
+  saleId: string;
+  lines: ReturnFormLine[];
+  defaultMethod: PaymentMethod;
+  creditNote: boolean;
+  /** Cajas abiertas de la tienda (cada vendedor tiene la suya): de cuál sale el dinero. */
+  cashSessions: { id: string; label: string }[];
+  defaultSessionId: string | null;
+};
+
+export function ReturnForm({ saleId, lines, defaultMethod, creditNote, cashSessions, defaultSessionId }: ReturnFormProps) {
   const [state, action] = useActionState(registerReturnAction.bind(null, saleId), idle);
   const [open, setOpen] = useState(false);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -131,13 +141,30 @@ export function ReturnForm({ saleId, lines, defaultMethod, creditNote }: { saleI
             </SelectWrap>
           )}
         </Field>
+        {cashSessions.length > 1 ? (
+          <Field label="Sale de la caja" className="w-56">
+            {(a11y) => (
+              <SelectWrap>
+                <select {...a11y} name="cashSessionId" defaultValue={defaultSessionId ?? cashSessions[0].id} className={cn(selectClass, "h-11 text-sm")}>
+                  {cashSessions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </SelectWrap>
+            )}
+          </Field>
+        ) : cashSessions.length === 1 ? (
+          <input type="hidden" name="cashSessionId" value={cashSessions[0].id} />
+        ) : null}
         <Field label="¿Por qué se devuelve?" className="min-w-[14rem] flex-1">
           {(a11y) => <input {...a11y} name="reason" maxLength={250} placeholder="Ej. No le quedó la talla" className={inputCompactClass} />}
         </Field>
       </div>
       <input type="hidden" name="items" value={JSON.stringify(items)} />
       <p className="text-xs text-subtle">
-        Las prendas vuelven al stock de la tienda y el dinero sale de la caja abierta.
+        {cashSessions.length ? "Las prendas vuelven al stock de la tienda y el dinero sale de esa caja." : "No hay ninguna caja abierta en la tienda: abre la tuya en el punto de venta para devolver el dinero."}
         {creditNote ? " Sale una nota de crédito por lo devuelto." : ""}
       </p>
       <div className="flex flex-wrap items-center gap-2">

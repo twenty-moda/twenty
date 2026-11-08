@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { formatDateTime } from "@/components/admin/ui";
 import { cn } from "@/lib/cn";
+import { expenseCategoryLabel } from "@/lib/expenses";
 import { formatPrice } from "@/lib/money";
 import { PAYMENT_LABEL, PAYMENT_METHODS } from "@/lib/pos";
 import type { getCashSession } from "@/server/services/pos";
@@ -57,6 +59,12 @@ export function CashSummary({ session }: { session: Session }) {
             <dd className="tabular-nums">{formatPrice(totals.refundsByMethod.efectivo)}</dd>
           </div>
         ) : null}
+        {totals.expensesCents ? (
+          <div className="flex justify-between">
+            <dt className="text-muted">− Gastos</dt>
+            <dd className="tabular-nums">{formatPrice(totals.expensesCents)}</dd>
+          </div>
+        ) : null}
         <div className="flex justify-between">
           <dt className="text-muted">+ Ingresos</dt>
           <dd className="tabular-nums">{formatPrice(totals.ingresosCents)}</dd>
@@ -89,6 +97,32 @@ export function CashSummary({ session }: { session: Session }) {
         {session.closingNote ? ` · ${session.closingNote}` : ""}
       </p>
     </div>
+  );
+}
+
+/** Gastos pagados con el efectivo de la caja (los anulados, tachados). */
+export function CashExpensesList({ expenses, voidButton }: { expenses: Session["expenses"]; voidButton?: (expense: Session["expenses"][number]) => ReactNode }) {
+  if (!expenses.length) return <p className="text-sm text-muted">Sin gastos.</p>;
+  return (
+    <ul className="divide-y divide-line text-sm">
+      {expenses.map((e) => (
+        <li key={e.id} className={cn("flex flex-wrap items-center justify-between gap-2 py-2", e.voidedAt && "opacity-50")}>
+          <span className="min-w-0 flex-1">
+            <span className={cn(e.voidedAt && "line-through")}>{e.description}</span>
+            <span className="block text-xs text-subtle">
+              Gasto #{e.number} · {expenseCategoryLabel(e.category)}
+              {e.supplierName ? ` · ${e.supplierName}` : ""} · {formatDateTime(e.createdAt)}
+              {e.userName ? ` · ${e.userName}` : ""}
+              {e.voidedAt ? " · anulado" : ""}
+            </span>
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="font-semibold tabular-nums">−{formatPrice(e.amountCents)}</span>
+            {!e.voidedAt && voidButton ? voidButton(e) : null}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

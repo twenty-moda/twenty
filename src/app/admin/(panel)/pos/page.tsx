@@ -31,7 +31,8 @@ export default async function PosPage({ searchParams }: PageProps<"/admin/pos">)
   // Por defecto, la tienda que vende en la web (Gamarra).
   const warehouse = warehouses.find((w) => w.id === tienda) ?? warehouses.find((w) => w.sellsOnline) ?? warehouses[0];
   if (!warehouse) return <AdminPage title="Punto de venta"><EmptyState title="No hay tiendas activas" /></AdminPage>;
-  const session = await getOpenSession(db, warehouse.id);
+  // Cada vendedor vende en su caja.
+  const session = await getOpenSession(db, warehouse.id, user.id);
   const home = user.role === "admin" ? "/admin" : "/admin/ventas-tienda";
 
   const bar = (status: ReactNode) => (

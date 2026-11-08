@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -324,7 +325,10 @@ export const documentSeries = pgTable(
   (t) => [uniqueIndex("document_series_warehouse_type_uq").on(t.warehouseId, t.documentType)],
 );
 
-/** Caja de una tienda: se abre con un monto inicial y se cierra con el arqueo. Una abierta por tienda a la vez. */
+/**
+ * Caja de un vendedor en una tienda: se abre con un monto inicial y se cierra con el arqueo. Cada vendedor tiene la
+ * suya (como en Insaga): una abierta por persona y tienda a la vez. Sus ventas, gastos y movimientos son los de esa caja.
+ */
 export const cashSessions = pgTable(
   "cash_sessions",
   {
@@ -344,7 +348,10 @@ export const cashSessions = pgTable(
     closedAt: timestamp({ withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("cash_sessions_one_open_uq").on(t.warehouseId).where(sql`${t.closedAt} is null`),
+    // Sin quien la abrió (cuenta borrada) cuenta como una persona más: coalesce a un uuid fijo.
+    uniqueIndex("cash_sessions_one_open_per_user_uq")
+      .on(t.warehouseId, sql`coalesce(${t.openedBy}, '00000000-0000-0000-0000-000000000000'::uuid)`)
+      .where(sql`${t.closedAt} is null`),
     index("cash_sessions_opened_idx").on(t.openedAt),
     check("cash_sessions_opening_non_negative", sql`${t.openingCents} >= 0`),
   ],
@@ -472,6 +479,48 @@ export const posPayments = pgTable(
     reference: text(),
   },
   (t) => [index("pos_payments_sale_idx").on(t.saleId), check("pos_payments_amount_positive", sql`${t.amountCents} > 0`)],
+);
+
+/**
+ * Gastos de la tienda (pedido de TWENTY, 08/11/2026: como el «Listado de gastos» de Insaga). Si se pagan en efectivo
+ * de una caja, salen de su arqueo (`cashSessionId`). `category` y `documentType` son textos de listas fijas en
+ * src/lib/expenses.ts (así se agregan opciones sin migración). Un gasto no se borra: se anula.
+ */
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    number: integer().notNull().unique().generatedAlwaysAsIdentity({ startWith: 1 }),
+    /** Día del gasto (de Lima). */
+    issuedOn: date({ mode: "string" }).notNull(),
+    warehouseId: uuid()
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    /** La caja de la que salió el efectivo (null = se pagó de otra forma o con dinero que no estaba en caja). */
+    cashSessionId: uuid().references(() => cashSessions.id, { onDelete: "restrict" }),
+    paymentMethod: posPaymentMethod().notNull(),
+    /** Motivo: varios, planilla, adelanto, movilidad, producción… */
+    category: text().notNull().default("varios"),
+    /** Qué se pagó ("Adelanto Héctor", "Bolsas", "Estampado"). */
+    description: text().notNull(),
+    /** A quién se le pagó (opcional). */
+    supplierName: text(),
+    supplierDocument: text(),
+    /** Comprobante del gasto: planilla, boleta, factura, recibo, ninguno. */
+    documentType: text().notNull().default("ninguno"),
+    documentNumber: text(),
+    amountCents: integer().notNull(),
+    userId: uuid().references(() => users.id, { onDelete: "set null" }),
+    voidedAt: timestamp({ withTimezone: true }),
+    voidedBy: uuid().references(() => users.id, { onDelete: "set null" }),
+    voidReason: text(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    index("expenses_issued_idx").on(t.issuedOn),
+    index("expenses_session_idx").on(t.cashSessionId),
+    check("expenses_amount_positive", sql`${t.amountCents} > 0`),
+  ],
 );
 
 /**

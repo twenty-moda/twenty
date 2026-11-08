@@ -12,6 +12,7 @@ import {
   customers,
   documentSeries,
   documentType,
+  expenses,
   posDocumentType,
   posPayments,
   posReturns,
@@ -66,13 +67,37 @@ export async function takeNumber(tx: Tx, warehouseId: string, type: DocumentType
 
 // ─── Caja ────────────────────────────────────────────────────────────────────
 
-export async function getOpenSession(db: Conn, warehouseId: string) {
+/** Cada vendedor tiene su caja: la de una persona (o la de nadie, si se borró la cuenta) en una tienda. */
+const ownedBy = (userId: string | null) => (userId ? eq(cashSessions.openedBy, userId) : isNull(cashSessions.openedBy));
+const openOf = (warehouseId: string, userId: string | null) => and(eq(cashSessions.warehouseId, warehouseId), ownedBy(userId), isNull(cashSessions.closedAt));
+
+/** La caja abierta de esa persona en esa tienda. */
+export async function getOpenSession(db: Conn, warehouseId: string, userId: string | null) {
   const [session] = await db
     .select({ id: cashSessions.id, number: cashSessions.number, openingCents: cashSessions.openingCents, openedAt: cashSessions.openedAt })
     .from(cashSessions)
-    .where(and(eq(cashSessions.warehouseId, warehouseId), isNull(cashSessions.closedAt)))
+    .where(openOf(warehouseId, userId))
     .limit(1);
   return session ?? null;
+}
+
+/** Todas las cajas abiertas (para el admin y para elegir de qué caja sale una devolución), con la tienda y quién la abrió. */
+export async function listOpenSessions(db: Conn, warehouseId?: string) {
+  return db
+    .select({
+      id: cashSessions.id,
+      number: cashSessions.number,
+      warehouseId: cashSessions.warehouseId,
+      warehouseName: warehouses.name,
+      openedBy: cashSessions.openedBy,
+      openedByName: users.name,
+      openedAt: cashSessions.openedAt,
+    })
+    .from(cashSessions)
+    .innerJoin(warehouses, eq(warehouses.id, cashSessions.warehouseId))
+    .leftJoin(users, eq(users.id, cashSessions.openedBy))
+    .where(and(isNull(cashSessions.closedAt), warehouseId ? eq(cashSessions.warehouseId, warehouseId) : undefined))
+    .orderBy(asc(cashSessions.openedAt));
 }
 
 export async function openCashSession(db: Db, input: { warehouseId: string; openingCents: number; userId: string | null }): Promise<{ ok: true; number: number } | Fail> {
@@ -84,7 +109,7 @@ export async function openCashSession(db: Db, input: { warehouseId: string; open
     .values({ warehouseId: input.warehouseId, openingCents: input.openingCents, openedBy: input.userId })
     .onConflictDoNothing()
     .returning({ number: cashSessions.number });
-  return created ? { ok: true, number: created.number } : { ok: false, message: "Ya hay una caja abierta en esta tienda." };
+  return created ? { ok: true, number: created.number } : { ok: false, message: "Ya tienes una caja abierta en esta tienda." };
 }
 
 export const cashMovementSchema = z.object({
@@ -102,9 +127,9 @@ export async function addCashMovement(db: Db, sessionId: string, input: z.infer<
   });
 }
 
-/** Totales de la caja: ventas por medio de pago, devoluciones, ingresos, egresos y el efectivo que debería haber. */
+/** Totales de la caja: ventas por medio de pago, devoluciones, gastos, ingresos, egresos y el efectivo que debería haber. */
 export async function getSessionTotals(db: Conn, sessionId: string) {
-  const [byMethod, [sales], movements, refunds] = await Promise.all([
+  const [byMethod, [sales], movements, refunds, [spent]] = await Promise.all([
     db
       .select({ method: posPayments.method, cents: sql<number>`coalesce(sum(${posPayments.amountCents}), 0)::int` })
       .from(posPayments)
@@ -130,6 +155,11 @@ export async function getSessionTotals(db: Conn, sessionId: string) {
       .from(posReturns)
       .where(eq(posReturns.cashSessionId, sessionId))
       .groupBy(posReturns.refundMethod),
+    // Gastos pagados con el efectivo de esta caja (los anulados no cuentan).
+    db
+      .select({ cents: sql<number>`coalesce(sum(${expenses.amountCents}), 0)::int`, count: sql<number>`count(*)::int` })
+      .from(expenses)
+      .where(and(eq(expenses.cashSessionId, sessionId), isNull(expenses.voidedAt))),
   ]);
   const perMethod = (rows: { method: PaymentMethod; cents: number }[]) =>
     Object.fromEntries(PAYMENT_METHODS.map((m) => [m, rows.find((r) => r.method === m)?.cents ?? 0])) as Record<PaymentMethod, number>;
@@ -147,12 +177,17 @@ export async function getSessionTotals(db: Conn, sessionId: string) {
     refundsByMethod,
     ingresosCents,
     egresosCents,
+    expensesCount: spent.count,
+    expensesCents: spent.cents,
   };
 }
 
-/** Efectivo que debería haber: lo inicial + lo cobrado en efectivo (sin el vuelto) − lo devuelto en efectivo + ingresos − egresos. */
+/**
+ * Efectivo que debería haber: lo inicial + lo cobrado en efectivo (sin el vuelto) − lo devuelto en efectivo − los
+ * gastos pagados de la caja + ingresos − egresos.
+ */
 export const expectedCash = (openingCents: number, totals: Awaited<ReturnType<typeof getSessionTotals>>) =>
-  openingCents + totals.methods.efectivo - totals.refundsByMethod.efectivo + totals.ingresosCents - totals.egresosCents;
+  openingCents + totals.methods.efectivo - totals.refundsByMethod.efectivo - totals.expensesCents + totals.ingresosCents - totals.egresosCents;
 
 export async function closeCashSession(db: Db, input: { sessionId: string; countedCashCents: number; note: string | null; userId: string | null }): Promise<{ ok: true; expectedCashCents: number } | Fail> {
   if (!Number.isInteger(input.countedCashCents) || input.countedCashCents < 0) return { ok: false, message: "El efectivo contado no es válido." };
@@ -180,8 +215,10 @@ export async function getCashSession(db: Db, number: number) {
       number: cashSessions.number,
       warehouseId: cashSessions.warehouseId,
       warehouseName: warehouses.name,
+      warehouseAddress: warehouses.address,
       openingCents: cashSessions.openingCents,
       openedAt: cashSessions.openedAt,
+      openedBy: cashSessions.openedBy,
       openedByName: openedBy.name,
       closedAt: cashSessions.closedAt,
       closedByName: closedBy.name,
@@ -196,7 +233,7 @@ export async function getCashSession(db: Db, number: number) {
     .where(eq(cashSessions.number, number))
     .limit(1);
   if (!session) return null;
-  const [totals, movements] = await Promise.all([
+  const [totals, movements, sessionExpenses] = await Promise.all([
     getSessionTotals(db, session.id),
     db
       .select({ id: cashMovements.id, type: cashMovements.type, amountCents: cashMovements.amountCents, note: cashMovements.note, createdAt: cashMovements.createdAt, userName: users.name })
@@ -204,14 +241,33 @@ export async function getCashSession(db: Db, number: number) {
       .leftJoin(users, eq(users.id, cashMovements.userId))
       .where(eq(cashMovements.sessionId, session.id))
       .orderBy(asc(cashMovements.createdAt)),
+    db
+      .select({
+        id: expenses.id,
+        number: expenses.number,
+        category: expenses.category,
+        description: expenses.description,
+        supplierName: expenses.supplierName,
+        amountCents: expenses.amountCents,
+        createdAt: expenses.createdAt,
+        voidedAt: expenses.voidedAt,
+        userId: expenses.userId,
+        userName: users.name,
+      })
+      .from(expenses)
+      .leftJoin(users, eq(users.id, expenses.userId))
+      .where(eq(expenses.cashSessionId, session.id))
+      .orderBy(asc(expenses.createdAt)),
   ]);
-  return { ...session, totals, movements, expectedNowCents: expectedCash(session.openingCents, totals) };
+  return { ...session, totals, movements, expenses: sessionExpenses, expectedNowCents: expectedCash(session.openingCents, totals) };
 }
 
 export const CASH_SESSIONS_PAGE_SIZE = 30;
 
-export async function listCashSessions(db: Db, { page = 1 }: { page?: number } = {}) {
+/** Historial de cajas; con `userId`, solo las de esa persona (lo que ve un vendedor). */
+export async function listCashSessions(db: Db, { page = 1, userId }: { page?: number; userId?: string } = {}) {
   const SESSION_ID = sql.raw(`"cash_sessions"."id"`);
+  const where = userId ? eq(cashSessions.openedBy, userId) : undefined;
   const [rows, [{ total }]] = await Promise.all([
     db
       .select({
@@ -228,10 +284,11 @@ export async function listCashSessions(db: Db, { page = 1 }: { page?: number } =
       .from(cashSessions)
       .innerJoin(warehouses, eq(warehouses.id, cashSessions.warehouseId))
       .leftJoin(openedBy, eq(openedBy.id, cashSessions.openedBy))
+      .where(where)
       .orderBy(desc(cashSessions.number))
       .limit(CASH_SESSIONS_PAGE_SIZE)
       .offset((page - 1) * CASH_SESSIONS_PAGE_SIZE),
-    db.select({ total: sql<number>`count(*)::int` }).from(cashSessions),
+    db.select({ total: sql<number>`count(*)::int` }).from(cashSessions).where(where),
   ]);
   return { rows, total, page, pageCount: Math.max(1, Math.ceil(total / CASH_SESSIONS_PAGE_SIZE)) };
 }
@@ -330,12 +387,9 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
 
   try {
     return await db.transaction(async (tx) => {
-      const [session] = await tx
-        .select({ id: cashSessions.id })
-        .from(cashSessions)
-        .where(and(eq(cashSessions.warehouseId, input.warehouseId), isNull(cashSessions.closedAt)))
-        .for("share");
-      if (!session) return { ok: false as const, message: "La caja de esta tienda está cerrada. Ábrela para vender." };
+      // La venta entra en la caja de quien vende.
+      const [session] = await tx.select({ id: cashSessions.id }).from(cashSessions).where(openOf(input.warehouseId, sellerId)).for("share");
+      if (!session) return { ok: false as const, message: "Tu caja en esta tienda está cerrada. Ábrela para vender." };
 
       const { series, number } = await takeNumber(tx, input.warehouseId, input.documentType);
       const [sale] = await tx
@@ -644,4 +698,11 @@ export async function countSunatIssues(db: Db) {
       .where(inArray(posReturns.sunatStatus, ["pendiente", "rechazado"])),
   ]);
   return sales.n + returns.n;
+}
+
+/** La caja la maneja quien la abrió; el admin, cualquiera. */
+export async function canManageSession(db: Db, sessionId: string, user: { id: string; role: string }) {
+  if (user.role === "admin") return true;
+  const [session] = await db.select({ openedBy: cashSessions.openedBy }).from(cashSessions).where(eq(cashSessions.id, sessionId)).limit(1);
+  return session?.openedBy === user.id;
 }

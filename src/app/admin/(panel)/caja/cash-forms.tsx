@@ -1,22 +1,166 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
-import { useActionState, useRef, useState } from "react";
-import { FormAlert, SubmitButton } from "@/components/admin/form-controls";
+import { useActionState, useRef, useState, useTransition } from "react";
+import { FieldError, FormAlert, SubmitButton } from "@/components/admin/form-controls";
+import { buttonClass } from "@/components/admin/ui";
 import { Field, inputCompactClass, selectClass, SelectWrap } from "@/components/ui/form";
+import { idle, type ActionState } from "@/lib/action-state";
 import { cn } from "@/lib/cn";
+import { EXPENSE_CATEGORIES, EXPENSE_DOCUMENTS, QUICK_EXPENSES, type ExpenseCategory } from "@/lib/expenses";
 import { formatPrice } from "@/lib/money";
-import { idle } from "../../_lib/action-state";
-import { addCashMovementAction, closeCashAction } from "./actions";
+import { addCashExpenseAction, addCashMovementAction, closeCashAction, voidExpenseAction } from "./actions";
 
-/** Los motivos de siempre: un toque llena el tipo y el motivo. */
+/** Los motivos de siempre: un toque llena el tipo y el motivo. Los gastos (movilidad, adelantos) van en «Gastos». */
 const QUICK_MOVEMENTS = [
-  { label: "Movilidad", type: "egreso", note: "Pago de movilidad" },
   { label: "Sencillo", type: "ingreso", note: "Sencillo para dar vuelto" },
   { label: "Depósito al banco", type: "egreso", note: "Depósito al banco" },
+  { label: "Retiro de la dueña", type: "egreso", note: "Retiro de efectivo" },
 ] as const;
 
-/** Efectivo que entra o sale sin ser venta: sencillo, pago de movilidad, retiro para el banco. */
+/**
+ * Gasto pagado con el efectivo de la caja: movilidad, adelantos, bolsas… Sale del arqueo y del reporte de cierre, y
+ * queda en Gastos. Proveedor y comprobante son opcionales.
+ */
+export function CashExpenseForm({ sessionId, warehouseId }: { sessionId: string; warehouseId: string }) {
+  const [formKey, setFormKey] = useState(0);
+  const [state, action] = useActionState(async (prev: ActionState, fd: FormData) => {
+    const result = await addCashExpenseAction(sessionId, warehouseId, prev, fd);
+    if (result.status === "success") setFormKey((k) => k + 1);
+    return result;
+  }, idle);
+  return (
+    <div className="space-y-3">
+      <form key={formKey} action={action} className="space-y-3">
+        <ExpenseFields state={state} />
+        <SubmitButton variant="secondary" pendingLabel="Anotando…">
+          Anotar gasto
+        </SubmitButton>
+      </form>
+      <FormAlert state={state} />
+    </div>
+  );
+}
+
+function ExpenseFields({ state }: { state: ActionState }) {
+  const [category, setCategory] = useState<ExpenseCategory>("varios");
+  const [description, setDescription] = useState("");
+  const [more, setMore] = useState(false);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const descriptionRef = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {QUICK_EXPENSES.map((q) => (
+          <button
+            key={q.label}
+            type="button"
+            onClick={() => {
+              setCategory(q.category);
+              setDescription(q.description);
+              // "Adelanto de " pide el nombre; los demás, el monto.
+              (q.description.endsWith(" ") ? descriptionRef : amountRef).current?.focus();
+            }}
+            className="h-9 rounded-full border border-line px-3.5 text-sm font-semibold hover:border-white"
+          >
+            {q.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <Field label="Qué se pagó" className="min-w-48 flex-1">
+          {(a11y) => (
+            <input {...a11y} ref={descriptionRef} name="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej. Adelanto Héctor" className={inputCompactClass} />
+          )}
+        </Field>
+        <Field label="Monto S/" className="w-28">
+          {(a11y) => <input {...a11y} ref={amountRef} name="amount" inputMode="decimal" className={cn(inputCompactClass, "tabular-nums")} />}
+        </Field>
+        <Field label="Motivo" className="w-52">
+          {(a11y) => (
+            <SelectWrap>
+              <select {...a11y} name="category" value={category} onChange={(e) => setCategory(e.target.value as ExpenseCategory)} className={cn(selectClass, "h-11 text-sm")}>
+                {Object.entries(EXPENSE_CATEGORIES).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </SelectWrap>
+          )}
+        </Field>
+      </div>
+      <FieldError state={state} name="description" />
+      <FieldError state={state} name="amount" />
+      {more ? (
+        <div className="flex flex-wrap gap-3">
+          <Field label="A quién" optional className="min-w-44 flex-1">
+            {(a11y) => <input {...a11y} name="supplierName" placeholder="Nombre o razón social" className={inputCompactClass} />}
+          </Field>
+          <Field label="DNI o RUC" optional className="w-36">
+            {(a11y) => <input {...a11y} name="supplierDocument" inputMode="numeric" className={inputCompactClass} />}
+          </Field>
+          <Field label="Comprobante" className="w-44">
+            {(a11y) => (
+              <SelectWrap>
+                <select {...a11y} name="documentType" defaultValue="ninguno" className={cn(selectClass, "h-11 text-sm")}>
+                  {Object.entries(EXPENSE_DOCUMENTS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </SelectWrap>
+            )}
+          </Field>
+          <Field label="N°" optional className="w-32">
+            {(a11y) => <input {...a11y} name="documentNumber" className={inputCompactClass} />}
+          </Field>
+        </div>
+      ) : (
+        <div>
+          <button type="button" onClick={() => setMore(true)} className="text-sm underline underline-offset-4 hover:text-muted">
+            + A quién y comprobante
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Anular un gasto: pide el motivo en el mismo lugar (sin ventanas del navegador). */
+export function VoidExpenseButton({ expenseId }: { expenseId: string }) {
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const [state, setState] = useState<ActionState>(idle);
+  const [pending, start] = useTransition();
+  if (!asking)
+    return (
+      <button key="ask" type="button" onClick={() => setAsking(true)} className={cn(buttonClass("ghost", "sm"), "px-2")}>
+        Anular
+      </button>
+    );
+  return (
+    <span className="flex w-full flex-wrap items-center justify-end gap-2">
+      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="¿Por qué se anula?" aria-label="Motivo de la anulación" className={cn(inputCompactClass, "h-9 w-52")} autoFocus />
+      <button
+        key="confirm"
+        type="button"
+        disabled={pending || reason.trim().length < 3}
+        onClick={() => start(async () => setState(await voidExpenseAction(expenseId, reason)))}
+        className={buttonClass("danger", "sm")}
+      >
+        {pending ? "Anulando…" : "Sí, anular"}
+      </button>
+      <button type="button" onClick={() => setAsking(false)} className={buttonClass("ghost", "sm")}>
+        No
+      </button>
+      {state.status === "error" ? <span className="w-full text-right text-xs text-danger">{state.message}</span> : null}
+    </span>
+  );
+}
+
+/** Efectivo que entra o sale sin ser venta ni gasto: sencillo, depósito al banco, retiro. */
 export function CashMovementForm({ sessionId }: { sessionId: string }) {
   const [state, action] = useActionState(addCashMovementAction.bind(null, sessionId), idle);
   const typeRef = useRef<HTMLSelectElement>(null);
@@ -55,7 +199,7 @@ export function CashMovementForm({ sessionId }: { sessionId: string }) {
           {(a11y) => <input {...a11y} ref={amountRef} name="amount" inputMode="decimal" className={cn(inputCompactClass, "tabular-nums")} />}
         </Field>
         <Field label="Motivo" className="min-w-48 flex-1">
-          {(a11y) => <input {...a11y} ref={noteRef} name="note" placeholder="Ej. Pago de movilidad" className={inputCompactClass} />}
+          {(a11y) => <input {...a11y} ref={noteRef} name="note" placeholder="Ej. Depósito al banco" className={inputCompactClass} />}
         </Field>
       </div>
       <SubmitButton variant="secondary">Registrar</SubmitButton>

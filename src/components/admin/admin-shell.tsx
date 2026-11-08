@@ -26,6 +26,7 @@ import {
   Truck,
   UserCog,
   Users,
+  Wallet,
   Warehouse,
 } from "lucide-react";
 import Link from "next/link";
@@ -56,6 +57,7 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
     items: [
       { href: "/admin/caja", label: "Caja", icon: Banknote, access: "staff" },
       { href: "/admin/ventas-tienda", label: "Ventas en tienda", icon: ReceiptText, badge: "sunat", access: "staff" },
+      { href: "/admin/gastos", label: "Gastos", icon: Wallet, access: "staff" },
     ],
   },
   {

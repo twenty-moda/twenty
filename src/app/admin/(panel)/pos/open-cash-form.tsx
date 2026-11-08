@@ -12,8 +12,8 @@ export function OpenCashForm({ warehouseId, warehouseName }: { warehouseId: stri
   return (
     <form action={action} className="max-w-sm space-y-4 rounded-2xl border border-line p-5">
       <div>
-        <h2 className="font-semibold">Abrir caja en {warehouseName}</h2>
-        <p className="mt-1 text-sm text-muted">Cuenta el efectivo que hay para dar vuelto. Al cerrar, se compara con lo que debería haber.</p>
+        <h2 className="font-semibold">Abrir tu caja en {warehouseName}</h2>
+        <p className="mt-1 text-sm text-muted">Cada vendedor tiene su caja. Cuenta el efectivo que tienes para dar vuelto: al cerrar, se compara con lo que debería haber.</p>
       </div>
       <Field label="Monto inicial S/">
         {(a11y) => <input {...a11y} name="opening" inputMode="decimal" placeholder="0" autoFocus className={inputClass} />}

@@ -8,7 +8,9 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
 const { getOnlineWarehouseId } = await import("./stock");
-const { addCashMovement, closeCashSession, getCashSession, getOpenSession, getPosSale, openCashSession, registerSale, retryPendingSunat, sendToSunat, voidSale } = await import("./pos");
+const { addCashMovement, closeCashSession, getCashSession, getOpenSession, getPosSale, listOpenSessions, openCashSession, registerSale, retryPendingSunat, sendToSunat, voidSale } =
+  await import("./pos");
+const { registerExpense, voidExpense } = await import("./expenses");
 const { listSaleReturns, registerReturn, retryPendingReturns, sendReturnToSunat } = await import("./pos-returns");
 type SunatClient = import("./sunat").SunatClient;
 
@@ -16,7 +18,7 @@ let db: Db;
 let store: string;
 const ids = { category: randomUUID(), product: randomUUID(), color: randomUUID(), size: randomUUID(), variant: randomUUID(), promo: randomUUID() };
 
-const sale = (overrides: Partial<Parameters<typeof registerSale>[1]> = {}) =>
+const sale = (overrides: Partial<Parameters<typeof registerSale>[1]> = {}, sellerId: string | null = null) =>
   registerSale(
     db,
     {
@@ -30,7 +32,7 @@ const sale = (overrides: Partial<Parameters<typeof registerSale>[1]> = {}) =>
       note: null,
       ...overrides,
     },
-    null,
+    sellerId,
   );
 async function stock() {
   const [v] = await db.select({ stock: schema.productVariants.stock }).from(schema.productVariants).where(eq(schema.productVariants.id, ids.variant));
@@ -49,7 +51,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.execute(sql`TRUNCATE cash_sessions, document_series, promotion_products, promotions, product_variants RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE expenses, cash_sessions, document_series, promotion_products, promotions, product_variants RESTART IDENTITY CASCADE`);
   await db.insert(schema.productVariants).values({ id: ids.variant, productId: ids.product, sku: "TMW-TEST", colorId: ids.color, sizeId: ids.size, priceCents: 7000, stock: 3 });
   await openCashSession(db, { warehouseId: store, openingCents: 10000, userId: null });
 });
@@ -90,9 +92,9 @@ describe("registerSale", () => {
   });
 
   it("sin caja abierta no vende", async () => {
-    const session = await getOpenSession(db, store);
+    const session = await getOpenSession(db, store, null);
     await closeCashSession(db, { sessionId: session!.id, countedCashCents: 10000, note: null, userId: null });
-    expect(await sale()).toEqual({ ok: false, message: "La caja de esta tienda está cerrada. Ábrela para vender." });
+    expect(await sale()).toEqual({ ok: false, message: "Tu caja en esta tienda está cerrada. Ábrela para vender." });
   });
 
   it("si no hay stock no vende nada ni gasta un número", async () => {
@@ -212,11 +214,11 @@ describe("boleta y factura (SUNAT)", () => {
 
 describe("caja", () => {
   it("no abre dos cajas en la misma tienda", async () => {
-    expect(await openCashSession(db, { warehouseId: store, openingCents: 0, userId: null })).toEqual({ ok: false, message: "Ya hay una caja abierta en esta tienda." });
+    expect(await openCashSession(db, { warehouseId: store, openingCents: 0, userId: null })).toEqual({ ok: false, message: "Ya tienes una caja abierta en esta tienda." });
   });
 
   it("anular devuelve el stock y la saca de los totales; el arqueo cuenta inicial + efectivo + ingresos − egresos", async () => {
-    const session = (await getOpenSession(db, store))!;
+    const session = (await getOpenSession(db, store, null))!;
     const kept = await sale();
     const voided = await sale({ payments: [{ method: "plin", amountCents: 7000, receivedCents: null, reference: null }] });
     if (!kept.ok || !voided.ok) throw new Error("venta");
@@ -233,13 +235,93 @@ describe("caja", () => {
   });
 });
 
+describe("caja de cada vendedor", () => {
+  const seller = async (name: string, role: "vendedor" | "vendedor_virtual" | "admin" = "vendedor") => {
+    const [user] = await db
+      .insert(schema.users)
+      .values({ name, username: `${name.toLowerCase()}-${randomUUID().slice(0, 8)}`, role })
+      .returning({ id: schema.users.id });
+    return user.id;
+  };
+
+  it("cada vendedor abre la suya y vende en ella; sin caja abierta no vende", async () => {
+    const ana = await seller("Ana");
+    const luis = await seller("Luis", "vendedor_virtual");
+    expect(await openCashSession(db, { warehouseId: store, openingCents: 2000, userId: ana })).toMatchObject({ ok: true });
+    expect(await openCashSession(db, { warehouseId: store, openingCents: 0, userId: ana })).toEqual({ ok: false, message: "Ya tienes una caja abierta en esta tienda." });
+    expect(await sale({}, luis)).toEqual({ ok: false, message: "Tu caja en esta tienda está cerrada. Ábrela para vender." });
+    await openCashSession(db, { warehouseId: store, openingCents: 0, userId: luis });
+
+    const byAna = await sale({}, ana);
+    const byLuis = await sale({ payments: [{ method: "yape", amountCents: 7000, receivedCents: null, reference: "123" }] }, luis);
+    if (!byAna.ok || !byLuis.ok) throw new Error("venta");
+    const anaCaja = (await getOpenSession(db, store, ana))!;
+    const luisCaja = (await getOpenSession(db, store, luis))!;
+    expect((await getPosSale(db, byAna.saleId))?.cashSessionId).toBe(anaCaja.id);
+    expect((await getPosSale(db, byLuis.saleId))?.cashSessionId).toBe(luisCaja.id);
+    expect((await getCashSession(db, anaCaja.number))!.expectedNowCents).toBe(2000 + 7000);
+    expect((await getCashSession(db, luisCaja.number))!.totals.methods.yape).toBe(7000);
+    // La del beforeEach (sin dueño) + la de Ana + la de Luis.
+    expect((await listOpenSessions(db, store)).length).toBe(3);
+  });
+
+  it("un gasto en efectivo sale del arqueo de su caja; anulado, vuelve; con la caja cerrada ya no se anula", async () => {
+    const ana = await seller("Ana");
+    const otro = await seller("Otro");
+    await openCashSession(db, { warehouseId: store, openingCents: 10000, userId: ana });
+    const caja = (await getOpenSession(db, store, ana))!;
+    const gasto = { warehouseId: store, fromCash: true, paymentMethod: "efectivo" as const, category: "adelanto" as const, description: "Adelanto Héctor", amountCents: 5000 };
+
+    expect(await registerExpense(db, { ...gasto, paymentMethod: "yape" }, { id: ana, role: "vendedor" })).toMatchObject({ ok: false, message: "Lo que sale de la caja es en efectivo." });
+    expect(await registerExpense(db, gasto, { id: otro, role: "vendedor" })).toMatchObject({ ok: false });
+    expect(await registerExpense(db, { ...gasto, cashSessionId: caja.id }, { id: otro, role: "vendedor" })).toMatchObject({ ok: false, message: "Solo puedes anotar gastos en tu caja." });
+    const first = await registerExpense(db, gasto, { id: ana, role: "vendedor" });
+    expect(first).toMatchObject({ ok: true, cashSessionNumber: caja.number });
+    await registerExpense(db, { ...gasto, description: "Poet", category: "varios", amountCents: 1790 }, { id: ana, role: "vendedor" });
+    // Pagado por Yape: queda en el listado, no en la caja.
+    expect(await registerExpense(db, { ...gasto, fromCash: false, paymentMethod: "yape", description: "Estampado", category: "produccion", amountCents: 50000 }, { id: ana, role: "vendedor" })).toMatchObject({
+      ok: true,
+      cashSessionNumber: null,
+    });
+
+    let detail = (await getCashSession(db, caja.number))!;
+    expect([detail.totals.expensesCount, detail.totals.expensesCents, detail.expectedNowCents]).toEqual([2, 6790, 10000 - 6790]);
+    const [poet] = detail.expenses.filter((e) => e.description === "Poet");
+    expect(await voidExpense(db, { expenseId: poet.id, reason: "Lo pagó la dueña" }, { id: otro, role: "vendedor" })).toMatchObject({ ok: false });
+    expect(await voidExpense(db, { expenseId: poet.id, reason: "Lo pagó la dueña" }, { id: ana, role: "vendedor" })).toEqual({ ok: true });
+    detail = (await getCashSession(db, caja.number))!;
+    expect(detail.expectedNowCents).toBe(10000 - 5000);
+
+    const closed = await closeCashSession(db, { sessionId: caja.id, countedCashCents: 5000, note: null, userId: ana });
+    expect(closed).toEqual({ ok: true, expectedCashCents: 5000 });
+    const [adelanto] = detail.expenses.filter((e) => e.description === "Adelanto Héctor");
+    expect(await voidExpense(db, { expenseId: adelanto.id, reason: "error" }, { id: ana, role: "admin" })).toEqual({ ok: false, message: "La caja de ese gasto ya se cerró: su arqueo no cambia." });
+    expect(await registerExpense(db, { ...gasto, cashSessionId: caja.id }, { id: ana, role: "vendedor" })).toMatchObject({ ok: false, message: "Esa caja ya está cerrada." });
+  });
+
+  it("una devolución con varias cajas abiertas sale de la de quien devuelve o de la elegida", async () => {
+    const ana = await seller("Ana");
+    const jefa = await seller("Jefa", "admin");
+    await openCashSession(db, { warehouseId: store, openingCents: 0, userId: ana });
+    const sold = await sale({}, ana);
+    if (!sold.ok) throw new Error("venta");
+    const item = (await getPosSale(db, sold.saleId))!.items[0].id;
+    const ret = (cashSessionId?: string) => registerReturn(db, { saleId: sold.saleId, items: [{ saleItemId: item, quantity: 1 }], reason: "Talla", refundMethod: "efectivo", cashSessionId }, jefa);
+    // La jefa no tiene caja y hay dos abiertas (la del beforeEach y la de Ana): tiene que elegir.
+    expect(await ret()).toEqual({ ok: false, message: "Elige de qué caja sale el dinero." });
+    const anaCaja = (await getOpenSession(db, store, ana))!;
+    expect((await ret(anaCaja.id)).ok).toBe(true);
+    expect((await getCashSession(db, anaCaja.number))!.totals.refundsCents).toBe(7000);
+  });
+});
+
 describe("devoluciones", () => {
   const giveBack = (saleId: string, saleItemId: string, quantity: number, refundMethod: "efectivo" | "yape" = "efectivo") =>
     registerReturn(db, { saleId, items: [{ saleItemId, quantity }], reason: "No le quedó la talla", refundMethod }, null);
   const itemId = async (saleId: string) => (await getPosSale(db, saleId))!.items[0].id;
 
   it("devuelve lo pagado (con el descuento repartido), vuelve al stock y sale del efectivo de la caja", async () => {
-    const session = (await getOpenSession(db, store))!;
+    const session = (await getOpenSession(db, store, null))!;
     const sold = await sale({ lines: [{ variantId: ids.variant, quantity: 3 }], manualDiscountCents: 1000, payments: [{ method: "efectivo", amountCents: 20000, receivedCents: 20000, reference: null }] });
     if (!sold.ok) throw new Error("venta");
     const item = await itemId(sold.saleId);
@@ -294,15 +376,15 @@ describe("devoluciones", () => {
   });
 
   it("con la caja de la venta cerrada, el dinero sale de la caja abierta del día", async () => {
-    const first = (await getOpenSession(db, store))!;
+    const first = (await getOpenSession(db, store, null))!;
     const sold = await sale();
     if (!sold.ok) throw new Error("venta");
     await closeCashSession(db, { sessionId: first.id, countedCashCents: 17000, note: null, userId: null });
     const item = await itemId(sold.saleId);
-    expect(await giveBack(sold.saleId, item, 1)).toEqual({ ok: false, message: "La caja de la tienda está cerrada: ábrela para devolver el dinero." });
+    expect(await giveBack(sold.saleId, item, 1)).toEqual({ ok: false, message: "No hay ninguna caja abierta en la tienda: abre la tuya para devolver el dinero." });
 
     await openCashSession(db, { warehouseId: store, openingCents: 5000, userId: null });
-    const today = (await getOpenSession(db, store))!;
+    const today = (await getOpenSession(db, store, null))!;
     expect((await giveBack(sold.saleId, item, 1)).ok).toBe(true);
     expect((await getCashSession(db, today.number))!.expectedNowCents).toBe(5000 - 7000);
     expect((await getCashSession(db, first.number))!.totals.refundsCount).toBe(0);

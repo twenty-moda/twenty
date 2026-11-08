@@ -19,6 +19,8 @@ export const returnInputSchema = z.object({
   items: z.array(z.object({ saleItemId: z.uuid(), quantity: z.number().int().positive() })).min(1, "Elige qué prendas se devuelven."),
   reason: z.string().trim().min(3, "Escribe por qué se devuelve.").max(250),
   refundMethod: z.enum(PAYMENT_METHODS),
+  /** De qué caja abierta de la tienda sale el dinero. Sin elegir: la de quien devuelve, o la única abierta. */
+  cashSessionId: z.uuid().optional(),
 });
 export type ReturnInput = z.infer<typeof returnInputSchema>;
 
@@ -37,12 +39,23 @@ export async function registerReturn(db: Db, input: ReturnInput, userId: string 
     if (electronic && sale.sunatStatus === "pendiente") return { ok: false as const, message: "El comprobante todavía no tiene respuesta de SUNAT: reintenta el envío antes de devolver." };
     if (electronic && sale.sunatStatus === "rechazado") return { ok: false as const, message: "SUNAT rechazó el comprobante de esta venta: no lleva nota de crédito. Anula la venta." };
 
-    const [session] = await tx
-      .select({ id: cashSessions.id })
+    // Cada vendedor tiene su caja: el dinero sale de la elegida, de la de quien devuelve o de la única abierta.
+    const open = await tx
+      .select({ id: cashSessions.id, openedBy: cashSessions.openedBy })
       .from(cashSessions)
       .where(and(eq(cashSessions.warehouseId, sale.warehouseId), isNull(cashSessions.closedAt)))
       .for("share");
-    if (!session) return { ok: false as const, message: "La caja de la tienda está cerrada: ábrela para devolver el dinero." };
+    const session = input.cashSessionId
+      ? open.find((s) => s.id === input.cashSessionId)
+      : (open.find((s) => userId && s.openedBy === userId) ?? (open.length === 1 ? open[0] : undefined));
+    if (!session) {
+      const message = !open.length
+        ? "No hay ninguna caja abierta en la tienda: abre la tuya para devolver el dinero."
+        : input.cashSessionId
+          ? "Esa caja ya se cerró: elige otra."
+          : "Elige de qué caja sale el dinero.";
+      return { ok: false as const, message };
+    }
 
     const items = await tx.select().from(posSaleItems).where(eq(posSaleItems.saleId, sale.id)).orderBy(asc(posSaleItems.productName), asc(posSaleItems.sku));
     const returned = await tx

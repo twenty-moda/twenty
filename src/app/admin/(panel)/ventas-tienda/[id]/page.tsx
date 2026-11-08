@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { formatDocNumber, POS_DOCUMENT_LABEL, returnLines } from "@/lib/pos";
 import { getDb } from "@/server/db/client";
 import { getSiteSettings } from "@/server/services/content";
-import { getPosSale } from "@/server/services/pos";
+import { getPosSale, listOpenSessions } from "@/server/services/pos";
 import { listSaleReturns } from "@/server/services/pos-returns";
 import { requireStaff } from "../../../_lib/auth";
 import { SunatStatus } from "../sunat-status";
@@ -41,6 +41,7 @@ export default async function StoreSalePage({ params }: PageProps<"/admin/ventas
   // Anular devuelve todo: con una devolución de por medio o con la caja cerrada, lo que queda se devuelve.
   const voidable = sale.status === "pagada" && !returns.length && !sale.sessionClosedAt;
   const mainPayment = [...sale.payments].sort((a, b) => b.amountCents - a.amountCents)[0];
+  const openCajas = me.role === "admin" && returnable ? await listOpenSessions(db, sale.warehouseId) : [];
 
   return (
     <AdminPage
@@ -77,7 +78,15 @@ export default async function StoreSalePage({ params }: PageProps<"/admin/ventas
               ) : null}
               <div className="flex flex-wrap items-start gap-2">
                 {/* key: después de cada devolución el formulario vuelve a empezar, con lo que queda por devolver. */}
-                {returnable && !waitingSunat ? <ReturnForm key={returns.length} saleId={sale.id} lines={lines} defaultMethod={mainPayment?.method ?? "efectivo"} creditNote={electronic} /> : null}
+                {returnable && !waitingSunat ? <ReturnForm
+                    key={returns.length}
+                    saleId={sale.id}
+                    lines={lines}
+                    defaultMethod={mainPayment?.method ?? "efectivo"}
+                    creditNote={electronic}
+                    cashSessions={openCajas.map((c) => ({ id: c.id, label: `Caja #${c.number}${c.openedByName ? ` · ${c.openedByName}` : ""}` }))}
+                    defaultSessionId={openCajas.find((c) => c.openedBy === me.id)?.id ?? null}
+                  /> : null}
                 {voidable ? <VoidSaleForm saleId={sale.id} /> : null}
               </div>
               {voidable && sale.sunatStatus === "aceptado" ? <p className="text-xs text-subtle">Al anular se le pide a SUNAT la baja del comprobante.</p> : null}
