@@ -72,8 +72,9 @@ export async function teamRecipients(db: Db, settings: SiteSettings, excludeUser
     .select({ id: users.id, email: users.email })
     .from(users)
     .where(and(eq(users.role, "admin"), eq(users.isActive, true)));
-  const actor = admins.find((a) => a.id === excludeUserId)?.email.toLowerCase();
-  const all = [...admins.map((a) => a.email), settings.company.notificationEmail || settings.contact.email].map((e) => e.trim().toLowerCase());
+  const actor = admins.find((a) => a.id === excludeUserId)?.email?.toLowerCase();
+  // Un admin que entra con usuario (sin correo) no recibe avisos.
+  const all = [...admins.map((a) => a.email ?? ""), settings.company.notificationEmail || settings.contact.email].map((e) => e.trim().toLowerCase());
   return [...new Set(all)].filter((e) => e.includes("@") && e !== actor);
 }
 

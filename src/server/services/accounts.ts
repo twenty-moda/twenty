@@ -7,10 +7,14 @@
 import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { AddressInput, ProfileInput } from "@/lib/account-forms";
 import type { Courier } from "@/lib/couriers";
+import { accountLogin, isPanelRole, PANEL_ROLES, type PanelRole } from "@/lib/panel-access";
 import type { Db } from "../db/client";
 import { addresses, customers, districts, orderItems, orders, sessions, users, type UserRole } from "../db/schema";
 import type { FirebaseIdentity } from "./firebase-auth";
 import { ORDERS_ID } from "./orders";
+import { hashPassword, normalizeUsername, passwordProblem, USERNAME_PATTERN, verifyPassword } from "./passwords";
+
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export const MAX_ADDRESSES = 10;
 
@@ -286,10 +290,6 @@ export async function linkCustomerToAccount(db: Db, user: AccountUser, orderEmai
   await db.update(customers).set({ userId: user.id }).where(and(eq(customers.email, user.email), isNull(customers.userId)));
 }
 
-/**
- * Da acceso al panel a un email (crea la cuenta si no existe, sin contraseña). La persona entra en /admin/login con
- * Google o con correo y contraseña (si no tiene, la crea en /ingresar → Crear cuenta con ese email).
- */
 // ─── Equipo (quién entra al panel) ───────────────────────────────────────────
 
 /**
@@ -302,13 +302,23 @@ export async function grantAdmin(db: Db, input: { email: string; name: string })
   return { ...result.user, alreadyAdmin: result.previousRole === "admin" };
 }
 
-/** Roles que entran al panel: el admin ve todo; el vendedor, el punto de venta, la caja y las ventas en tienda. */
-export type PanelRole = Extract<UserRole, "admin" | "vendedor">;
-export const PANEL_ROLES: PanelRole[] = ["admin", "vendedor"];
+export { PANEL_ROLES, type PanelRole } from "@/lib/panel-access";
+
+type TeamFail = { ok: false; field?: "username" | "password"; message: string };
+const LAST_ADMIN = "Tiene que quedar al menos un admin.";
+
+/** Admins activos, bloqueados hasta el final de la transacción: dos cambios a la vez no dejan el panel sin admins. */
+const lockAdmins = (tx: Tx) =>
+  tx
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.role, "admin"), eq(users.isActive, true)))
+    .for("update");
 
 /**
- * Da acceso al panel con un rol (crea la cuenta o cambia el de una que ya existía, también la de un cliente). Pasar
- * a vendedor al único admin dejaría el panel sin nadie que lo maneje: no se permite.
+ * Da acceso al panel con un perfil a un correo (crea la cuenta o cambia el de una que ya existía, también la de un
+ * cliente). Entra con Google o con correo y contraseña de Firebase. Pasar a vendedor al único admin dejaría el panel
+ * sin nadie que lo maneje: no se permite.
  */
 export async function grantPanelAccess(
   db: Db,
@@ -316,20 +326,92 @@ export async function grantPanelAccess(
 ): Promise<{ ok: true; user: { id: string; email: string; name: string }; previousRole: UserRole | null } | { ok: false; message: string }> {
   const email = input.email.trim().toLowerCase();
   return db.transaction(async (tx) => {
-    const admins = await tx
-      .select({ id: users.id, email: users.email })
-      .from(users)
-      .where(and(eq(users.role, "admin"), eq(users.isActive, true)))
-      .for("update");
+    const admins = await lockAdmins(tx);
     const [before] = await tx.select({ role: users.role }).from(users).where(eq(users.email, email)).limit(1);
-    if (input.role !== "admin" && before?.role === "admin" && admins.length <= 1) return { ok: false as const, message: "Tiene que quedar al menos un admin." };
+    if (input.role !== "admin" && before?.role === "admin" && admins.length <= 1) return { ok: false as const, message: LAST_ADMIN };
     const [user] = await tx
       .insert(users)
       .values({ email, name: input.name.trim(), role: input.role })
       .onConflictDoUpdate({ target: users.email, set: { role: input.role, isActive: true, updatedAt: new Date() } })
-      .returning({ id: users.id, email: users.email, name: users.name });
-    return { ok: true as const, user, previousRole: before?.role ?? null };
+      .returning({ id: users.id, name: users.name });
+    return { ok: true as const, user: { ...user, email }, previousRole: before?.role ?? null };
   });
+}
+
+/**
+ * Cuenta del equipo con usuario y contraseña, sin correo (TWENTY no tiene correo corporativo). Si ese usuario existió
+ * y se le quitó el acceso, vuelve con la contraseña y el perfil nuevos.
+ */
+export async function createStaffAccount(
+  db: Db,
+  input: { username: string; name: string; role: PanelRole; password: string },
+): Promise<{ ok: true; user: { id: string; username: string; name: string }; reactivated: boolean } | TeamFail> {
+  const username = normalizeUsername(input.username);
+  if (!USERNAME_PATTERN.test(username)) {
+    return { ok: false, field: "username", message: "El usuario va en minúsculas, de 3 a 30 letras o números (puede llevar . - _), sin espacios ni @." };
+  }
+  const problem = passwordProblem(input.password, username);
+  if (problem) return { ok: false, field: "password", message: problem };
+  const panelPasswordHash = await hashPassword(input.password);
+  return db.transaction(async (tx) => {
+    const [existing] = await tx.select({ id: users.id, isActive: users.isActive, role: users.role }).from(users).where(eq(users.username, username)).for("update");
+    if (existing?.isActive && isPanelRole(existing.role)) return { ok: false as const, field: "username" as const, message: "Ya hay alguien del equipo con ese usuario." };
+    const values = { name: input.name.trim(), role: input.role, panelPasswordHash, isActive: true, updatedAt: new Date() };
+    const [user] = existing
+      ? await tx.update(users).set(values).where(eq(users.id, existing.id)).returning({ id: users.id, name: users.name })
+      : await tx
+          .insert(users)
+          .values({ ...values, username })
+          .returning({ id: users.id, name: users.name });
+    return { ok: true as const, user: { ...user, username }, reactivated: !!existing };
+  });
+}
+
+/** Entra al panel con usuario y contraseña. No dice qué falló (usuario, contraseña o cuenta sin acceso). */
+export async function signInWithPassword(
+  db: Db,
+  input: { username: string; password: string },
+  now = new Date(),
+): Promise<{ ok: true; userId: string; role: PanelRole } | { ok: false }> {
+  const username = normalizeUsername(input.username);
+  const [user] = USERNAME_PATTERN.test(username)
+    ? await db
+        .select({ id: users.id, role: users.role, isActive: users.isActive, hash: users.panelPasswordHash })
+        .from(users)
+        .where(eq(users.username, username))
+        .limit(1)
+    : [];
+  // verifyPassword tarda lo mismo aunque el usuario no exista.
+  const valid = await verifyPassword(input.password, user?.hash ?? null);
+  if (!user || !valid || !user.isActive || !isPanelRole(user.role)) return { ok: false };
+  await db.update(users).set({ lastLoginAt: now }).where(eq(users.id, user.id));
+  return { ok: true, userId: user.id, role: user.role };
+}
+
+/** El admin cambia el perfil de alguien del equipo (nunca deja el panel sin admins). */
+export async function setPanelRole(db: Db, userId: string, role: PanelRole): Promise<{ ok: true; name: string } | TeamFail> {
+  return db.transaction(async (tx) => {
+    const admins = await lockAdmins(tx);
+    const [target] = await tx.select({ name: users.name, role: users.role, isActive: users.isActive }).from(users).where(eq(users.id, userId)).for("update");
+    if (!target?.isActive || !isPanelRole(target.role)) return { ok: false as const, message: "Esa persona ya no tiene acceso al panel." };
+    if (target.role === "admin" && role !== "admin" && admins.length <= 1) return { ok: false as const, message: LAST_ADMIN };
+    await tx.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
+    return { ok: true as const, name: target.name };
+  });
+}
+
+/** Contraseña nueva para una cuenta con usuario: cierra sus sesiones del panel (tiene que volver a entrar). */
+export async function setPanelPassword(db: Db, userId: string, password: string): Promise<{ ok: true; username: string } | TeamFail> {
+  const [target] = await db.select({ username: users.username, role: users.role, isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!target?.username || !target.isActive || !isPanelRole(target.role)) return { ok: false, message: "Esa cuenta no entra con usuario y contraseña." };
+  const problem = passwordProblem(password, target.username);
+  if (problem) return { ok: false, field: "password", message: problem };
+  const panelPasswordHash = await hashPassword(password);
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ panelPasswordHash, updatedAt: new Date() }).where(eq(users.id, userId));
+    await tx.delete(sessions).where(and(eq(sessions.userId, userId), eq(sessions.scope, "admin")));
+  });
+  return { ok: true, username: target.username };
 }
 
 /** Admins activos (reciben los avisos de pedidos). */
@@ -341,32 +423,35 @@ export function listAdmins(db: Db) {
     .orderBy(users.name);
 }
 
-/** Quienes entran al panel, con su rol. */
+/** Quienes entran al panel, con su perfil. */
 export function listTeam(db: Db) {
   return db
-    .select({ id: users.id, name: users.name, email: users.email, role: users.role, lastLoginAt: users.lastLoginAt })
+    .select({ id: users.id, name: users.name, email: users.email, username: users.username, role: users.role, lastLoginAt: users.lastLoginAt })
     .from(users)
-    .where(and(inArray(users.role, PANEL_ROLES), eq(users.isActive, true)))
+    .where(and(inArray(users.role, [...PANEL_ROLES]), eq(users.isActive, true)))
     .orderBy(users.role, users.name);
 }
 
 /**
- * Quita el acceso al panel (admin o vendedor): la cuenta sigue siendo de cliente en la tienda y sus sesiones del
- * panel se cierran al instante. No se puede quitar el acceso propio ni dejar el panel sin admins.
+ * Quita el acceso al panel: una cuenta con correo vuelve a ser de cliente en la tienda; una con usuario se desactiva.
+ * Sus sesiones del panel se cierran al instante. No se puede quitar el acceso propio ni dejar el panel sin admins.
  */
-export async function revokeAdmin(db: Db, userId: string, actorId: string): Promise<{ ok: true; email: string } | { ok: false; message: string }> {
+export async function revokeAdmin(db: Db, userId: string, actorId: string): Promise<{ ok: true; login: string } | { ok: false; message: string }> {
   if (userId === actorId) return { ok: false, message: "No puedes quitarte el acceso a ti mismo: pídeselo a otro admin." };
   return db.transaction(async (tx) => {
     const team = await tx
-      .select({ id: users.id, email: users.email, role: users.role })
+      .select({ id: users.id, email: users.email, username: users.username, role: users.role })
       .from(users)
-      .where(and(inArray(users.role, PANEL_ROLES), eq(users.isActive, true)))
+      .where(and(inArray(users.role, [...PANEL_ROLES]), eq(users.isActive, true)))
       .for("update");
     const target = team.find((a) => a.id === userId);
     if (!target) return { ok: false as const, message: "Esa persona ya no tiene acceso al panel." };
-    if (target.role === "admin" && team.filter((a) => a.role === "admin").length <= 1) return { ok: false as const, message: "Tiene que quedar al menos un admin." };
-    await tx.update(users).set({ role: "customer", updatedAt: new Date() }).where(eq(users.id, userId));
+    if (target.role === "admin" && team.filter((a) => a.role === "admin").length <= 1) return { ok: false as const, message: LAST_ADMIN };
+    await tx
+      .update(users)
+      .set(target.email ? { role: "customer", updatedAt: new Date() } : { isActive: false, updatedAt: new Date() })
+      .where(eq(users.id, userId));
     await tx.delete(sessions).where(and(eq(sessions.userId, userId), eq(sessions.scope, "admin")));
-    return { ok: true as const, email: target.email };
+    return { ok: true as const, login: accountLogin(target) };
   });
 }

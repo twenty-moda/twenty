@@ -15,7 +15,7 @@ import { parseTrackingInput } from "@/lib/couriers";
 import { changeOrderStatus, getOrderById, getOrderCourier, setOrderTracking, updateInternalNote } from "@/server/services/orders";
 import { culqiFromEnv } from "@/server/services/payments";
 import { refundOrder, resolvePendingRefund, type RefundResult } from "@/server/services/refunds";
-import { requireAdmin } from "../../_lib/auth";
+import { requireAdmin, requireOrders } from "../../_lib/auth";
 import { failure, success, type ActionState } from "../../_lib/action-state";
 
 const statusSchema = z.enum(ORDER_STATUSES);
@@ -36,9 +36,10 @@ function revalidateStock(productSlugs: string[]) {
 }
 
 export async function changeStatusAction(orderId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  const admin = await requireAdmin();
+  const admin = await requireOrders();
   const to = statusSchema.safeParse(formData.get("to"));
   if (!to.success) return failure("Estado no válido.");
+  if (admin.role !== "admin" && formData.get("refund") === "on") return failure("Devolver el dinero lo hace el admin.");
   const note = String(formData.get("note") ?? "").slice(0, 500);
   const customerMessage = String(formData.get("customerMessage") ?? "").slice(0, 1000);
   const notifyCustomer = formData.get("notifyCustomer") === "on";
@@ -148,7 +149,7 @@ export async function resolveRefundAction(orderId: string, refundId: string, don
 }
 
 export async function saveTrackingAction(orderId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  await requireAdmin();
+  await requireOrders();
   const courier = await getOrderCourier(getDb(), orderId);
   if (!courier) return failure("Este pedido no va por Shalom ni por Olva.");
   const tracking = parseTrackingInput(courier, formData.get("trackingNumber"), formData.get("trackingCode"));
@@ -160,7 +161,7 @@ export async function saveTrackingAction(orderId: string, _: ActionState, formDa
 }
 
 export async function saveInternalNoteAction(orderId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  await requireAdmin();
+  await requireOrders();
   await updateInternalNote(getDb(), orderId, String(formData.get("note") ?? "").slice(0, 2000));
   refresh();
   return success("Nota guardada.");

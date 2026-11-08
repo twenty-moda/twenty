@@ -176,6 +176,13 @@
       "when": 1794165025744,
       "tag": "0024_variant-cost",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794165536893,
+      "tag": "0025_staff-username",
+      "breakpoints": true
     }
   ]
 }

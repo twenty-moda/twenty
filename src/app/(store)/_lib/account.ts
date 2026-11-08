@@ -17,7 +17,8 @@ export const getAccount = cache(async (): Promise<AccountUser | null> => {
   await connection();
   if (!token) return null;
   const user = await validateSession(getDb(), token, "cuenta");
-  return user ? { id: user.id, name: user.name, email: user.email } : null;
+  // Las cuentas del equipo sin correo (usuario y contraseña) no tienen cuenta en la tienda.
+  return user?.email ? { id: user.id, name: user.name, email: user.email } : null;
 });
 
 /** Para páginas de /cuenta: sin sesión, a /ingresar y de vuelta a donde estaba. */

@@ -5,7 +5,7 @@ import { formatPrice } from "@/lib/money";
 import { formatOrderNumber, ORDER_STATUSES, OPEN_STATUSES, STATUS_INFO, type OrderStatus } from "@/lib/order-status";
 import { getDb } from "@/server/db/client";
 import { countOrdersByStatus, listOrders } from "@/server/services/orders";
-import { requireAdmin } from "../../_lib/auth";
+import { requireOrders } from "../../_lib/auth";
 
 // Lista filtrada por la URL (estado, búsqueda, página): se arma en el servidor en cada visita.
 export const instant = false;
@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Pedidos" };
 const PAYMENT_LABEL = { yape_plin: "Yape/Plin QR", whatsapp: "WhatsApp", tarjeta: "Tarjeta/Yape (Culqi)" } as const;
 
 export default async function OrdersPage({ searchParams }: PageProps<"/admin/pedidos">) {
-  await requireAdmin();
+  await requireOrders();
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : undefined;
   const page = Number(params.pagina) || 1;

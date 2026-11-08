@@ -643,31 +643,42 @@ export const settings = pgTable("settings", {
 
 // ─── Usuarios y sesiones ─────────────────────────────────────────────────────
 
-/** "vendedor" = equipo de la tienda: en el panel solo ve el punto de venta, la caja y las ventas en tienda. */
-export const userRole = pgEnum("user_role", ["admin", "customer", "vendedor"]);
+/**
+ * Perfiles del panel: "vendedor" = venta presencial (punto de venta, caja, gastos y comprobantes de la tienda) y
+ * "vendedor_virtual" = venta virtual (lo mismo + los pedidos de la web). Ver src/lib/panel-access.ts.
+ */
+export const userRole = pgEnum("user_role", ["admin", "customer", "vendedor", "vendedor_virtual"]);
 export type UserRole = (typeof userRole.enumValues)[number];
 
-export const users = pgTable("users", {
-  id: uuid().primaryKey().defaultRandom(),
-  /** `users.id` (bigint) de la plataforma anterior, para enlazar pedidos migrados. */
-  legacyId: integer().unique(),
-  name: text().notNull(),
-  /** Siempre en minúsculas. */
-  email: text().notNull().unique(),
-  phone: text(),
-  /**
-   * Hash bcrypt de la web anterior (Laravel, `$2y$`). No se usa para entrar (las contraseñas viven en Firebase):
-   * sirve para pasar esas cuentas a Firebase con `firebase auth:import --hash-algo=BCRYPT` en la migración final.
-   */
-  passwordHash: text(),
-  /** Cuenta de Google vinculada (uid de Firebase Authentication). Los clientes entran solo con Google. */
-  firebaseUid: text().unique(),
-  photoUrl: text(),
-  role: userRole().notNull().default("customer"),
-  isActive: boolean().notNull().default(true),
-  lastLoginAt: timestamp({ withTimezone: true }),
-  ...timestamps,
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    /** `users.id` (bigint) de la plataforma anterior, para enlazar pedidos migrados. */
+    legacyId: integer().unique(),
+    name: text().notNull(),
+    /** Siempre en minúsculas. Vacío solo en las cuentas del equipo que entran con usuario y contraseña. */
+    email: text().unique(),
+    /** Usuario del panel (en minúsculas) para quien entra sin correo; su contraseña va en `panelPasswordHash`. */
+    username: text().unique(),
+    /** scrypt (ver server/services/passwords.ts). Solo cuentas con `username`: las de correo entran por Firebase. */
+    panelPasswordHash: text(),
+    phone: text(),
+    /**
+     * Hash bcrypt de la web anterior (Laravel, `$2y$`). No se usa para entrar (las contraseñas viven en Firebase):
+     * sirve para pasar esas cuentas a Firebase con `firebase auth:import --hash-algo=BCRYPT` en la migración final.
+     */
+    passwordHash: text(),
+    /** Cuenta de Google vinculada (uid de Firebase Authentication). Los clientes entran solo con Google. */
+    firebaseUid: text().unique(),
+    photoUrl: text(),
+    role: userRole().notNull().default("customer"),
+    isActive: boolean().notNull().default(true),
+    lastLoginAt: timestamp({ withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [check("users_email_or_username", sql`${t.email} is not null or ${t.username} is not null`)],
+);
 
 /** Sesiones en BD (revocables). El id es el SHA-256 del token de la cookie: el token nunca se guarda. */
 /** "admin" = panel (email + contraseña); "cuenta" = cuenta de cliente en la tienda (Google). Una no sirve para la otra. */

@@ -1,7 +1,7 @@
 /**
  * Sesiones en BD. La cookie guarda un token aleatorio; en la BD solo está su SHA-256, así que una filtración de la
  * tabla no permite entrar. Quién es la persona lo confirma Firebase (Google o correo y contraseña; ver
- * firebase-auth.ts y accounts.ts): aquí no se guardan ni se comparan contraseñas.
+ * firebase-auth.ts y accounts.ts) o, para el equipo que entra con usuario, su contraseña (passwords.ts).
  */
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, lt } from "drizzle-orm";
@@ -10,7 +10,7 @@ import { sessions, users, type UserRole } from "../db/schema";
 
 export const SESSION_DAYS = 30;
 
-export type SessionUser = { id: string; name: string; email: string; role: UserRole };
+export type SessionUser = { id: string; name: string; email: string | null; username: string | null; role: UserRole };
 /** "admin" = panel; "cuenta" = cuenta de cliente en la tienda. Cada cookie solo acepta sesiones de su tipo. */
 export type SessionScope = "admin" | "cuenta";
 
@@ -28,13 +28,13 @@ export async function createSession(db: Db, userId: string, userAgent: string | 
 /** Una sesión de la cuenta (tienda) nunca vale para el panel, aunque la persona sea admin: el panel pide entrar ahí. */
 export async function validateSession(db: Db, token: string, scope: SessionScope, now = new Date()): Promise<SessionUser | null> {
   const [row] = await db
-    .select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive })
+    .select({ id: users.id, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(and(eq(sessions.id, hashToken(token)), eq(sessions.scope, scope), gt(sessions.expiresAt, now)))
     .limit(1);
   if (!row || !row.isActive) return null;
-  return { id: row.id, name: row.name, email: row.email, role: row.role };
+  return { id: row.id, name: row.name, email: row.email, username: row.username, role: row.role };
 }
 
 export async function deleteSession(db: Db, token: string) {

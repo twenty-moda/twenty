@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { FirebaseSignIn } from "@/components/account/firebase-sign-in";
 import { Logo } from "@/components/store/logo";
 import { firebaseWebConfig } from "@/lib/firebase-config";
+import { panelHome } from "@/lib/panel-access";
 import { getStaff } from "../_lib/auth";
+import { LoginOptions } from "./login-options";
 
 // El admin se arma en el servidor en cada visita (lee la sesión): no se exige navegación instantánea.
 export const instant = false;
@@ -20,12 +21,9 @@ export default function AdminLoginPage() {
         </div>
         <Suspense fallback={<div className="h-96" aria-busy="true" />}>
           <RedirectIfLoggedIn>
-            <FirebaseSignIn config={firebaseWebConfig()} mode="admin" returnTo="/admin" />
+            <LoginOptions firebase={firebaseWebConfig()} />
           </RedirectIfLoggedIn>
         </Suspense>
-        <p className="mt-6 text-center text-xs text-subtle">
-          Es tu misma cuenta de la tienda. ¿Te dieron acceso y no tienes contraseña? Entra con Google o toca «Crear contraseña» con ese correo.
-        </p>
       </div>
     </main>
   );
@@ -33,6 +31,6 @@ export default function AdminLoginPage() {
 
 async function RedirectIfLoggedIn({ children }: { children: React.ReactNode }) {
   const user = await getStaff();
-  if (user) redirect(user.role === "admin" ? "/admin" : "/admin/pos");
+  if (user) redirect(panelHome(user.role));
   return children;
 }

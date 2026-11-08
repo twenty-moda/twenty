@@ -32,17 +32,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { canAccess, panelHome, type PanelAccess, type PanelRole } from "@/lib/panel-access";
 import { Logo } from "../store/logo";
 import { Sheet } from "../ui/sheet";
 
 type Badge = "orders" | "messages" | "complaints" | "sunat";
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: Badge };
+/** `access`: quién ve el enlace (por defecto, solo el admin; ver src/lib/panel-access.ts). */
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: Badge; access?: PanelAccess };
 
 /**
- * `staff`: el grupo que también ve el vendedor (el resto es solo del admin). El punto de venta no va en la lista: es el
+ * Cada perfil ve los enlaces que le tocan; un grupo sin enlaces no aparece. El punto de venta no va en la lista: es el
  * botón «Vender» de arriba, y en él no se ve el menú (modo caja).
  */
-const NAV_GROUPS: { title?: string; staff?: boolean; items: NavItem[] }[] = [
+const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
   {
     items: [
       { href: "/admin", label: "Resumen", icon: LayoutDashboard },
@@ -51,10 +53,9 @@ const NAV_GROUPS: { title?: string; staff?: boolean; items: NavItem[] }[] = [
   },
   {
     title: "Tienda",
-    staff: true,
     items: [
-      { href: "/admin/caja", label: "Caja", icon: Banknote },
-      { href: "/admin/ventas-tienda", label: "Ventas en tienda", icon: ReceiptText, badge: "sunat" },
+      { href: "/admin/caja", label: "Caja", icon: Banknote, access: "staff" },
+      { href: "/admin/ventas-tienda", label: "Ventas en tienda", icon: ReceiptText, badge: "sunat", access: "staff" },
     ],
   },
   {
@@ -69,7 +70,7 @@ const NAV_GROUPS: { title?: string; staff?: boolean; items: NavItem[] }[] = [
   {
     title: "Web",
     items: [
-      { href: "/admin/pedidos", label: "Pedidos", icon: ShoppingBag, badge: "orders" },
+      { href: "/admin/pedidos", label: "Pedidos", icon: ShoppingBag, badge: "orders", access: "orders" },
       { href: "/admin/clientes", label: "Clientes", icon: Users },
       { href: "/admin/mensajes", label: "Mensajes", icon: Inbox, badge: "messages" },
       { href: "/admin/reclamos", label: "Libro de Reclamaciones", icon: BookOpenText, badge: "complaints" },
@@ -101,11 +102,13 @@ const NAV_GROUPS: { title?: string; staff?: boolean; items: NavItem[] }[] = [
   },
 ];
 const NAV = NAV_GROUPS.flatMap((g) => g.items);
-const STAFF_GROUPS = NAV_GROUPS.filter((g) => g.staff);
+const groupsFor = (role: PanelRole) =>
+  NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => canAccess(role, i.access ?? "admin")) })).filter((g) => g.items.length > 0);
 
 type AdminShellProps = {
-  user: { name: string; email: string };
-  role: "admin" | "vendedor";
+  /** `login`: el correo o «usuario …» (las cuentas del equipo sin correo). */
+  user: { name: string; login: string };
+  role: PanelRole;
   openOrders: number;
   /** Pendientes por sección (se muestran como número en el menú). */
   badges: Record<Badge, number>;
@@ -126,7 +129,7 @@ export function AdminShell({ user, role, openOrders, badges, logout, children }:
         <Link href="/admin/pos" onClick={onNavigate} className="flex h-12 items-center justify-center gap-2 rounded-full bg-white font-extrabold text-black transition hover:bg-white/85">
           <ScanBarcode className="size-5" aria-hidden /> Vender
         </Link>
-        {(role === "admin" ? NAV_GROUPS : STAFF_GROUPS).map((group, gi) => (
+        {groupsFor(role).map((group, gi) => (
           <div key={group.title ?? gi}>
             {group.title ? <p className="mb-1 px-3 text-[11px] font-semibold tracking-widest text-subtle uppercase">{group.title}</p> : null}
             <ul className="space-y-1">
@@ -173,7 +176,7 @@ export function AdminShell({ user, role, openOrders, badges, logout, children }:
           <button type="submit" className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-muted hover:bg-raised hover:text-white">
             <LogOut className="size-[18px]" aria-hidden />
             <span className="min-w-0 flex-1">
-              Salir <span className="block truncate text-xs text-subtle">{user.email}</span>
+              Salir <span className="block truncate text-xs text-subtle">{user.login}</span>
             </span>
           </button>
         </form>
@@ -184,7 +187,7 @@ export function AdminShell({ user, role, openOrders, badges, logout, children }:
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[256px_minmax(0,1fr)]">
       <aside className="sticky top-0 hidden h-dvh flex-col overflow-y-auto border-r border-line bg-surface pt-5 lg:flex">
-        <Link href={role === "admin" ? "/admin" : "/admin/pos"} className="mb-6 px-6">
+        <Link href={panelHome(role)} className="mb-6 px-6">
           <Logo className="w-28" />
         </Link>
         {nav()}

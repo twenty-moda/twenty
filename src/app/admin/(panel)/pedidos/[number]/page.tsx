@@ -20,7 +20,7 @@ import { getOrderByNumber } from "@/server/services/orders";
 import { listPaymentProofs } from "@/server/services/payment-proofs";
 import { listOrderPayments } from "@/server/services/payments";
 import { getRefundOptions } from "@/server/services/refunds";
-import { requireAdmin } from "../../../_lib/auth";
+import { requireOrders } from "../../../_lib/auth";
 import { PendingRefundActions, RefundLauncher } from "./refund-panel";
 import { InternalNoteForm, StatusChanger, TrackingForm } from "./status-changer";
 
@@ -33,7 +33,8 @@ export async function generateMetadata({ params }: PageProps<"/admin/pedidos/[nu
 export const instant = false;
 
 export default async function AdminOrderPage({ params }: PageProps<"/admin/pedidos/[number]">) {
-  await requireAdmin();
+  // Venta virtual también atiende pedidos; devolver dinero y ver el historial del cliente son del admin.
+  const admin = (await requireOrders()).role === "admin";
   const { number } = await params;
   const n = Number(number);
   if (!Number.isInteger(n)) notFound();
@@ -109,11 +110,11 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
               whatsappHref={whatsappUrl(order.phone.startsWith("51") ? order.phone : `51${order.phone}`, message)}
               emailEnabled={emailConfigured()}
               guide={courier ? { courier, tracking } : null}
-              refund={refundOptions}
+              refund={admin ? refundOptions : null}
             />
           </Card>
 
-          {refundOptions.paidCents > 0 || order.refunds.length ? (
+          {admin && (refundOptions.paidCents > 0 || order.refunds.length) ? (
             <Card title="Devoluciones">
               <div className="space-y-4">
                 {order.refunds.length ? (
@@ -278,9 +279,11 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
           <Card
             title="Cliente"
             actions={
-              <Link href={`/admin/clientes/${order.customerId}`} className="text-sm text-muted hover:text-white">
-                Ver historial
-              </Link>
+              admin ? (
+                <Link href={`/admin/clientes/${order.customerId}`} className="text-sm text-muted hover:text-white">
+                  Ver historial
+                </Link>
+              ) : null
             }
           >
             <div className="space-y-2 text-sm">

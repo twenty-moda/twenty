@@ -8,38 +8,48 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
+import { canAccess, isPanelRole, type PanelAccess, type PanelRole } from "@/lib/panel-access";
 import { getDb } from "@/server/db/client";
 import { createSession, deleteSession, validateSession, type SessionUser } from "@/server/services/auth";
 
 const SESSION_COOKIE = "twenty_session";
 
-/** Quien entra al panel: admin (todo) o vendedor (punto de venta, caja y ventas en tienda). */
-export const getStaff = cache(async (): Promise<SessionUser | null> => {
+export type StaffUser = SessionUser & { role: PanelRole };
+
+/** Quien entra al panel: admin (todo) o un vendedor (venta presencial o virtual; ver src/lib/panel-access.ts). */
+export const getStaff = cache(async (): Promise<StaffUser | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   // Todo lo que sigue (vencimiento de la sesión, datos del panel) depende de la hora actual: es por request.
   await connection();
   if (!token) return null;
   const user = await validateSession(getDb(), token, "admin");
-  return user?.role === "admin" || user?.role === "vendedor" ? user : null;
+  return user && isPanelRole(user.role) ? { ...user, role: user.role } : null;
 });
 
-export const getAdmin = cache(async (): Promise<SessionUser | null> => {
+export const getAdmin = cache(async (): Promise<StaffUser | null> => {
   const user = await getStaff();
   return user?.role === "admin" ? user : null;
 });
 
-/** Páginas y acciones de la tienda (punto de venta, caja, ventas en tienda): admin o vendedor. */
-export async function requireStaff(): Promise<SessionUser> {
-  const user = await getStaff();
-  if (!user) redirect("/admin/login");
-  return user;
+/** Páginas y acciones de la tienda (punto de venta, caja, comprobantes, gastos): todo el equipo. */
+export async function requireStaff(): Promise<StaffUser> {
+  return requireAccess("staff");
 }
 
 /** Todo lo demás del panel. Un vendedor que llega aquí vuelve al punto de venta. */
-export async function requireAdmin(): Promise<SessionUser> {
+export async function requireAdmin(): Promise<StaffUser> {
+  return requireAccess("admin");
+}
+
+/** Pedidos de la web: el admin y la venta virtual. */
+export async function requireOrders(): Promise<StaffUser> {
+  return requireAccess("orders");
+}
+
+async function requireAccess(access: PanelAccess): Promise<StaffUser> {
   const user = await getStaff();
   if (!user) redirect("/admin/login");
-  if (user.role !== "admin") redirect("/admin/pos");
+  if (!canAccess(user.role, access)) redirect("/admin/pos");
   return user;
 }
 

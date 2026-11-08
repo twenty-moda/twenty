@@ -248,7 +248,7 @@ describe("equipo del panel", () => {
     const { token } = await createSession(db, b.id, null, "admin");
 
     expect(await accounts.revokeAdmin(db, a.id, a.id)).toMatchObject({ ok: false });
-    expect(await accounts.revokeAdmin(db, b.id, a.id)).toEqual({ ok: true, email: "b@example.com" });
+    expect(await accounts.revokeAdmin(db, b.id, a.id)).toEqual({ ok: true, login: "b@example.com" });
     expect(await validateSession(db, token, "admin")).toBeNull();
     const [user] = await db.select().from(schema.users).where(eq(schema.users.id, b.id));
     expect(user).toMatchObject({ role: "customer", isActive: true });
@@ -275,7 +275,54 @@ describe("equipo del panel", () => {
     expect(await accounts.grantPanelAccess(db, { email: "jefa@example.com", name: "Jefa", role: "vendedor" })).toEqual({ ok: false, message: "Tiene que quedar al menos un admin." });
 
     // Quitarle el acceso a un vendedor no depende de cuántos admins hay.
-    expect(await accounts.revokeAdmin(db, seller.user.id, admin.id)).toEqual({ ok: true, email: "vende@example.com" });
+    expect(await accounts.revokeAdmin(db, seller.user.id, admin.id)).toEqual({ ok: true, login: "vende@example.com" });
     expect((await accounts.listTeam(db)).map((t) => t.email)).toEqual(["jefa@example.com"]);
+  });
+
+  it("venta presencial y virtual con usuario y contraseña, sin correo", async () => {
+    const admin = await accounts.grantAdmin(db, { email: "duena@example.com", name: "Dueña" });
+    const bad = await accounts.createStaffAccount(db, { username: "ana@gmail.com", name: "Ana", role: "vendedor", password: "gamarra-1288" });
+    expect(bad).toMatchObject({ ok: false, field: "username" });
+    expect(await accounts.createStaffAccount(db, { username: "tienda1", name: "Ana", role: "vendedor", password: "corta" })).toMatchObject({ ok: false, field: "password" });
+
+    const ana = await accounts.createStaffAccount(db, { username: " Tienda1 ", name: "Ana", role: "vendedor", password: "gamarra-1288" });
+    const luis = await accounts.createStaffAccount(db, { username: "virtual", name: "Luis", role: "vendedor_virtual", password: "pedidos-web-9" });
+    if (!ana.ok || !luis.ok) throw new Error("no se crearon las cuentas");
+    expect(ana.user.username).toBe("tienda1");
+    expect(await accounts.createStaffAccount(db, { username: "tienda1", name: "Otra", role: "vendedor", password: "gamarra-1288" })).toMatchObject({ ok: false, field: "username" });
+
+    // Entra con usuario (sin importar mayúsculas) y la contraseña exacta.
+    expect(await accounts.signInWithPassword(db, { username: "TIENDA1", password: "gamarra-1288" })).toEqual({ ok: true, userId: ana.user.id, role: "vendedor" });
+    expect(await accounts.signInWithPassword(db, { username: "tienda1", password: "Gamarra-1288" })).toEqual({ ok: false });
+    expect(await accounts.signInWithPassword(db, { username: "nadie", password: "gamarra-1288" })).toEqual({ ok: false });
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.id, ana.user.id));
+    expect(row).toMatchObject({ email: null, username: "tienda1" });
+    expect(row.panelPasswordHash?.startsWith("scrypt$")).toBe(true);
+
+    expect((await accounts.listTeam(db)).map((t) => [t.email ?? t.username, t.role])).toEqual([
+      ["duena@example.com", "admin"],
+      ["tienda1", "vendedor"],
+      ["virtual", "vendedor_virtual"],
+    ]);
+    // No reciben avisos de pedidos (no son admin ni tienen correo).
+    expect((await accounts.listAdmins(db)).map((a) => a.email)).toEqual(["duena@example.com"]);
+
+    // Contraseña nueva: la anterior deja de servir y se cierran sus sesiones.
+    const { token } = await createSession(db, ana.user.id, null, "admin");
+    expect(await accounts.setPanelPassword(db, ana.user.id, "nueva-clave-77")).toEqual({ ok: true, username: "tienda1" });
+    expect(await validateSession(db, token, "admin")).toBeNull();
+    expect(await accounts.signInWithPassword(db, { username: "tienda1", password: "gamarra-1288" })).toEqual({ ok: false });
+    expect(await accounts.signInWithPassword(db, { username: "tienda1", password: "nueva-clave-77" })).toMatchObject({ ok: true });
+    expect(await accounts.setPanelPassword(db, admin.id, "nueva-clave-77")).toMatchObject({ ok: false });
+
+    // Cambiar el perfil; al único admin no se le baja.
+    expect(await accounts.setPanelRole(db, luis.user.id, "vendedor")).toEqual({ ok: true, name: "Luis" });
+    expect(await accounts.setPanelRole(db, admin.id, "vendedor")).toEqual({ ok: false, message: "Tiene que quedar al menos un admin." });
+
+    // Quitar el acceso a una cuenta con usuario la desactiva; si vuelve, es con la contraseña nueva.
+    expect(await accounts.revokeAdmin(db, ana.user.id, admin.id)).toEqual({ ok: true, login: "usuario tienda1" });
+    expect(await accounts.signInWithPassword(db, { username: "tienda1", password: "nueva-clave-77" })).toEqual({ ok: false });
+    expect(await accounts.createStaffAccount(db, { username: "tienda1", name: "Ana", role: "vendedor_virtual", password: "otra-clave-55" })).toMatchObject({ ok: true, reactivated: true });
+    expect(await accounts.signInWithPassword(db, { username: "tienda1", password: "otra-clave-55" })).toEqual({ ok: true, userId: ana.user.id, role: "vendedor_virtual" });
   });
 });

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { OPEN_STATUSES } from "@/lib/order-status";
+import { accountLogin, canAccess } from "@/lib/panel-access";
 import { getDb } from "@/server/db/client";
 import { countPendingComplaints } from "@/server/services/complaints";
 import { countNewMessages } from "@/server/services/messages";
@@ -21,21 +22,19 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
 async function PanelShell({ children }: { children: React.ReactNode }) {
   const user = await requireStaff();
   const db = getDb();
-  // El vendedor solo ve la tienda: no hacen falta los contadores de pedidos, mensajes y reclamos.
-  if (user.role !== "admin") {
-    const sunat = await countSunatIssues(db);
-    return (
-      <AdminShell user={{ name: user.name, email: user.email }} role="vendedor" openOrders={0} badges={{ orders: 0, messages: 0, complaints: 0, sunat }} logout={logoutAction}>
-        {children}
-      </AdminShell>
-    );
-  }
-  const [byStatus, messages, complaints, sunat] = await Promise.all([countOrdersByStatus(db), countNewMessages(db), countPendingComplaints(db), countSunatIssues(db)]);
+  const admin = user.role === "admin";
+  // Cada perfil cuenta solo lo que ve: los vendedores no tienen mensajes ni reclamos; la venta presencial, tampoco pedidos.
+  const [byStatus, messages, complaints, sunat] = await Promise.all([
+    canAccess(user.role, "orders") ? countOrdersByStatus(db) : Promise.resolve({} as Awaited<ReturnType<typeof countOrdersByStatus>>),
+    admin ? countNewMessages(db) : 0,
+    admin ? countPendingComplaints(db) : 0,
+    countSunatIssues(db),
+  ]);
   const openOrders = OPEN_STATUSES.filter((s) => s !== "enviado").reduce((sum, s) => sum + (byStatus[s] ?? 0), 0);
   return (
     <AdminShell
-      user={{ name: user.name, email: user.email }}
-      role="admin"
+      user={{ name: user.name, login: accountLogin(user) }}
+      role={user.role}
       openOrders={openOrders}
       badges={{ orders: openOrders, messages, complaints, sunat }}
       logout={logoutAction}
