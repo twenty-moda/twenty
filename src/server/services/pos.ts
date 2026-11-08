@@ -37,7 +37,7 @@ type Fail = { ok: false; message: string };
 // ─── Series ──────────────────────────────────────────────────────────────────
 
 type DocumentType = (typeof posDocumentType.enumValues)[number];
-const SERIES_PREFIX: Record<DocumentType, string> = { nota_venta: "NV", boleta: "B", factura: "F", nota_credito_boleta: "BC", nota_credito_factura: "FC" };
+const SERIES_PREFIX: Record<DocumentType, string> = { nota_venta: "NV", boleta: "B", factura: "F", nota_credito_boleta: "BC", nota_credito_factura: "FC", guia_remision: "T" };
 /** Las series empiezan en 05: Insaga usa 03 (Gamarra) y 04 (San Juan de Miraflores), y un comprobante no puede repetir serie y número. */
 const FIRST_SERIES = 5;
 

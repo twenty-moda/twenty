@@ -22,6 +22,7 @@ export const POS_DOCUMENT_LABEL = {
   factura: "Factura",
   nota_credito_boleta: "Nota de crédito",
   nota_credito_factura: "Nota de crédito",
+  guia_remision: "Guía de remisión",
 } as const;
 
 /**

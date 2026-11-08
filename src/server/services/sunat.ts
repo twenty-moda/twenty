@@ -34,6 +34,8 @@ export type SunatClient = {
   voidDocument(input: { documento: "boleta" | "factura"; serie: string; numero: number; motivo: string }): Promise<{ status: string; message: string | null }>;
   /** Razón social y dirección por el RUC (padrón de SUNAT). */
   lookupRuc(ruc: string): Promise<{ name: string; address: string | null } | null>;
+  /** Estado de un comprobante ya emitido (si quedó pendiente, la API le vuelve a preguntar a SUNAT). Lo usa la guía. */
+  status?(input: { documento: string; serie: string; numero: number }): Promise<SunatResult>;
 };
 
 const ESTADO: Record<string, SunatResult["status"]> = { ACEPTADO: "aceptado", RECHAZADO: "rechazado" };
@@ -54,22 +56,27 @@ export function sunatClient(baseUrl: string, apiKey: string, fetchImpl: typeof f
     }
     return body ?? {};
   };
+  const result = (body: Record<string, unknown>): SunatResult => {
+    const p = (body.payload ?? {}) as Record<string, unknown>;
+    const sunat = (p.sunat ?? {}) as Record<string, unknown>;
+    const pdf = (p.pdf ?? {}) as Record<string, unknown>;
+    return {
+      status: ESTADO[String(p.estado)] ?? "pendiente",
+      code: text(sunat.codigo),
+      message: text(sunat.descripcion) ?? text(body.message),
+      hash: text(p.hash),
+      ticketUrl: text(pdf.ticket),
+      pdfUrl: text(pdf.a4),
+      xmlUrl: text(p.xml),
+      cdrUrl: text(p.cdr),
+    };
+  };
   return {
     async emit(payload, idempotencyKey) {
-      const body = await call("/sunat/documents", { method: "POST", body: JSON.stringify(payload), headers: { "Idempotency-Key": idempotencyKey } });
-      const p = (body.payload ?? {}) as Record<string, unknown>;
-      const sunat = (p.sunat ?? {}) as Record<string, unknown>;
-      const pdf = (p.pdf ?? {}) as Record<string, unknown>;
-      return {
-        status: ESTADO[String(p.estado)] ?? "pendiente",
-        code: text(sunat.codigo),
-        message: text(sunat.descripcion) ?? text(body.message),
-        hash: text(p.hash),
-        ticketUrl: text(pdf.ticket),
-        pdfUrl: text(pdf.a4),
-        xmlUrl: text(p.xml),
-        cdrUrl: text(p.cdr),
-      };
+      return result(await call("/sunat/documents", { method: "POST", body: JSON.stringify(payload), headers: { "Idempotency-Key": idempotencyKey } }));
+    },
+    async status(input) {
+      return result(await call("/sunat/status", { method: "POST", body: JSON.stringify(input) }));
     },
     async voidDocument({ documento, serie, numero, motivo }) {
       const body = await call("/sunat/voided", { method: "POST", body: JSON.stringify({ motivo, documento_afectado: { documento, serie, numero } }) });

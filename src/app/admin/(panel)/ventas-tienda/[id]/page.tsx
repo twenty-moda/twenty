@@ -7,11 +7,14 @@ import { cn } from "@/lib/cn";
 import { formatDocNumber, POS_DOCUMENT_LABEL, returnLines } from "@/lib/pos";
 import { getDb } from "@/server/db/client";
 import { getSiteSettings } from "@/server/services/content";
+import { listSaleGuides } from "@/server/services/dispatch-guides";
+import { sunatFromEnv } from "@/server/services/sunat";
 import { getPosSale, listOpenSessions } from "@/server/services/pos";
 import { listSaleReturns } from "@/server/services/pos-returns";
 import { requireStaff } from "../../../_lib/auth";
 import { SunatStatus } from "../sunat-status";
 import { ReprintButton, ReturnForm, VoidSaleForm } from "./sale-actions";
+import { SaleGuides } from "./sale-guides";
 import { SaleReturns } from "./sale-returns";
 
 export const metadata: Metadata = { title: "Venta en tienda" };
@@ -25,7 +28,7 @@ export default async function StoreSalePage({ params }: PageProps<"/admin/ventas
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const db = getDb();
-  const [sale, settings, returns] = await Promise.all([getPosSale(db, id), getSiteSettings(db), listSaleReturns(db, id)]);
+  const [sale, settings, returns, guides] = await Promise.all([getPosSale(db, id), getSiteSettings(db), listSaleReturns(db, id), listSaleGuides(db, id)]);
   if (!sale) notFound();
   const company = { legalName: settings.company.legalName, ruc: settings.company.ruc };
   const fontClass = `${displayFont.variable} ${monoFont.variable}`;
@@ -65,6 +68,9 @@ export default async function StoreSalePage({ params }: PageProps<"/admin/ventas
                 </span>
               </p>
             </Card>
+          ) : null}
+          {electronic ? (
+            <SaleGuides saleId={sale.id} guides={guides} canCreate={sale.status === "pagada" && sale.sunatStatus === "aceptado" && sunatFromEnv() !== null && lines.some((l) => l.returnedQty < l.soldQty)} />
           ) : null}
           {returns.length ? <SaleReturns returns={returns} /> : null}
           {!returnable && !voidable ? null : me.role !== "admin" ? (

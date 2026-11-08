@@ -306,8 +306,11 @@ export const stockOperations = pgTable(
 
 // ─── Tienda: punto de venta y caja ───────────────────────────────────────────
 
-/** Las notas de crédito tienen su propia serie por tienda: BC05 (de boletas) y FC05 (de facturas). */
-export const posDocumentType = pgEnum("pos_document_type", ["nota_venta", "boleta", "factura", "nota_credito_boleta", "nota_credito_factura"]);
+/**
+ * Las notas de crédito tienen su propia serie por tienda: BC05 (de boletas) y FC05 (de facturas). La guía de
+ * remisión, T005 (`guia_remision`: solo da la serie, no es una venta).
+ */
+export const posDocumentType = pgEnum("pos_document_type", ["nota_venta", "boleta", "factura", "nota_credito_boleta", "nota_credito_factura", "guia_remision"]);
 
 /** Series de cada tienda (NV05, B005, F005…). El correlativo sale de `next_number` en la transacción de la venta. */
 export const documentSeries = pgTable(
@@ -520,6 +523,69 @@ export const expenses = pgTable(
     index("expenses_issued_idx").on(t.issuedOn),
     index("expenses_session_idx").on(t.cashSessionId),
     check("expenses_amount_positive", sql`${t.amountCents} > 0`),
+  ],
+);
+
+export type DispatchGuideItem = { sku: string; description: string; quantity: number };
+
+/**
+ * Guía de remisión electrónica (remitente) de una boleta o factura, cuando el cliente la pide (pedido de TWENTY,
+ * 08/11/2026). Se manda a SUNAT por la API de Mathyu's Solutions; SUNAT la procesa aparte (puede quedar pendiente y
+ * se consulta su estado). Las prendas se copian de la venta (`items`).
+ */
+export const dispatchGuides = pgTable(
+  "dispatch_guides",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    series: text().notNull(),
+    number: integer().notNull(),
+    warehouseId: uuid()
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    saleId: uuid().references(() => posSales.id, { onDelete: "set null" }),
+    /** Catálogo 20 de SUNAT: 01 = venta. */
+    reasonCode: text().notNull().default("01"),
+    /** Catálogo 18: 01 = transporte público (empresa de transporte o agencia), 02 = privado. */
+    transportMode: text().notNull(),
+    transferDate: date({ mode: "string" }).notNull(),
+    carrierRuc: text(),
+    carrierName: text(),
+    /** Privado en auto o moto (categoría M1 o L): SUNAT no pide placa ni conductor. */
+    vehicleM1L: boolean().notNull().default(false),
+    vehiclePlate: text(),
+    driverDocumentNumber: text(),
+    driverFirstName: text(),
+    driverLastName: text(),
+    driverLicense: text(),
+    recipientDocumentType: documentType().notNull(),
+    recipientDocumentNumber: text().notNull(),
+    recipientName: text().notNull(),
+    /** Ubigeos del INEI (src/lib/ubigeo-inei.ts). */
+    originUbigeo: text().notNull(),
+    originAddress: text().notNull(),
+    destinationUbigeo: text().notNull(),
+    destinationAddress: text().notNull(),
+    weightGrams: integer().notNull(),
+    packages: integer().notNull().default(1),
+    note: text(),
+    items: jsonb().$type<DispatchGuideItem[]>().notNull(),
+    sunatStatus: posSunatStatus().notNull().default("pendiente"),
+    /** La API ya la recibió (aunque SUNAT no responda): los reintentos consultan el estado en vez de volver a mandarla. */
+    sunatSubmitted: boolean().notNull().default(false),
+    sunatCode: text(),
+    sunatMessage: text(),
+    sunatPdfUrl: text(),
+    sunatXmlUrl: text(),
+    sunatCdrUrl: text(),
+    sunatSentAt: timestamp({ withTimezone: true }),
+    userId: uuid().references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    uniqueIndex("dispatch_guides_series_number_uq").on(t.series, t.number),
+    index("dispatch_guides_sale_idx").on(t.saleId),
+    index("dispatch_guides_created_idx").on(t.createdAt),
+    check("dispatch_guides_weight_positive", sql`${t.weightGrams} > 0`),
   ],
 );
 
