@@ -10,6 +10,7 @@ import {
   ChartNoAxesCombined,
   ExternalLink,
   FileSpreadsheet,
+  FileText,
   FolderTree,
   Inbox,
   LayoutDashboard,
@@ -58,6 +59,7 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/admin/caja", label: "Caja", icon: Banknote, access: "staff" },
       { href: "/admin/ventas-tienda", label: "Comprobantes", icon: ReceiptText, badge: "sunat", access: "staff" },
       { href: "/admin/gastos", label: "Gastos", icon: Wallet, access: "staff" },
+      { href: "/admin/cotizaciones", label: "Cotizaciones", icon: FileText, access: "staff" },
     ],
   },
   {

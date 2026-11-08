@@ -17,6 +17,7 @@ import { DOCUMENT_LABEL } from "@/lib/order-status";
 import { checkCustomer, formatDocNumber, PAYMENT_LABEL, PAYMENT_METHODS, POS_DOCUMENT_LABEL, saleTotal, settlePayments, type PaymentMethod, type PosDocumentType } from "@/lib/pos";
 import { priceLines } from "@/lib/pricing";
 import type { PosSaleDetail, PosVariant } from "@/server/services/pos";
+import type { PosQuote } from "@/server/services/quotes";
 import { SunatStatus } from "../ventas-tienda/sunat-status";
 import { findCustomerAction, lookupRucAction, registerSaleAction } from "./actions";
 
@@ -81,14 +82,28 @@ type PosScreenProps = {
   fontClass: string;
   /** Sin la API de SUNAT conectada (`MATHYU_SUNAT_API_KEY`), solo se vende con nota de venta. */
   sunatEnabled: boolean;
+  /** Cotización que se vende (`?cotizacion=`): sus prendas, el cliente y el descuento que la deja en su total. */
+  quote?: PosQuote | null;
 };
+
+/** Lo que arranca la venta de una cotización: sus prendas que siguen en la tienda y el descuento hasta su total. */
+function quoteStart(quote: PosQuote | null | undefined, variants: PosVariant[]) {
+  if (!quote) return null;
+  const byId = new Map(variants.map((v) => [v.variantId, v]));
+  const lines = quote.lines.filter((l) => byId.has(l.variantId));
+  const pricing = priceLines(lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity, unitPriceCents: byId.get(l.variantId)!.priceCents, promotion: byId.get(l.variantId)!.promotion })));
+  const discountCents = Math.max(0, pricing.totalCents - quote.totalCents);
+  return { lines, discount: discountCents ? soles(discountCents) : "", above: quote.totalCents > pricing.totalCents };
+}
 
 /**
  * Modo caja: escanear, elegir el comprobante, el cliente y cobrar sin salir de la pantalla. Atajos: F2 enfoca el
  * buscador, F8 cobra y, con la venta lista, Enter empieza la siguiente.
  */
-export function PosScreen({ warehouse, variants, company, fontClass, sunatEnabled }: PosScreenProps) {
-  const [lines, setLines] = useState<Line[]>([]);
+export function PosScreen({ warehouse, variants, company, fontClass, sunatEnabled, quote }: PosScreenProps) {
+  const [start] = useState(() => quoteStart(quote, variants));
+  const [activeQuote, setActiveQuote] = useState(quote ?? null);
+  const [lines, setLines] = useState<Line[]>(start?.lines ?? []);
   const [query, setQuery] = useState("");
   const [chooser, setChooser] = useState<string | null>(null);
   const [lastAdded, setLastAdded] = useState<string | null>(null);
@@ -97,10 +112,14 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
   const savedDocType = useSyncExternalStore(subscribeStorage, readSavedDocType, () => null);
   const [pickedDocType, setPickedDocType] = useState<PosDocumentType | null>(null);
   const docType = sunatEnabled ? (pickedDocType ?? savedDocType ?? "boleta") : "nota_venta";
-  const [customer, setCustomer] = useState<{ documentType: DocType; documentNumber: string; name: string; address: string }>({ documentType: "dni", documentNumber: "", name: "", address: "" });
-  const [discount, setDiscount] = useState("");
+  const [customer, setCustomer] = useState<{ documentType: DocType; documentNumber: string; name: string; address: string }>(() =>
+    quote
+      ? { documentType: quote.customer.documentType ?? "dni", documentNumber: quote.customer.documentNumber ?? "", name: quote.customer.name, address: quote.customer.address ?? "" }
+      : { documentType: "dni", documentNumber: "", name: "", address: "" },
+  );
+  const [discount, setDiscount] = useState(start?.discount ?? "");
   const [shipping, setShipping] = useState("");
-  const [extras, setExtras] = useState({ discount: false, shipping: false });
+  const [extras, setExtras] = useState({ discount: !!start?.discount, shipping: false });
   const [method, setMethod] = useState<PaymentMethod>("efectivo");
   const [received, setReceived] = useState("");
   const [reference, setReference] = useState("");
@@ -226,6 +245,7 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
         shippingCents,
         payments: paymentInputs,
         note: null,
+        quoteId: activeQuote?.id ?? null,
       });
       if (!result.ok) return setState(failure(result.message));
       setDone(result.sale);
@@ -235,6 +255,7 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
 
   const reset = () => {
     setDone(null);
+    setActiveQuote(null);
     setLines([]);
     setCustomer({ documentType: "dni", documentNumber: "", name: "", address: "" });
     setDiscount("");
@@ -356,6 +377,22 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
           )}
         </div>
 
+        {activeQuote ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border border-offer/60 bg-offer/10 px-4 py-3 text-sm">
+            <span className="font-semibold">
+              Cotización COT-{String(activeQuote.number).padStart(5, "0")} · total cotizado {formatPrice(activeQuote.totalCents)}
+            </span>
+            <span className="text-muted">
+              {start?.above ? "Con las promos de hoy sale más barata que lo cotizado: se cobra el precio de hoy." : start?.discount ? "El descuento la deja en el total cotizado." : ""}
+              {activeQuote.missing ? ` ${activeQuote.missing} prenda(s) ya no existen y no entran.` : ""}
+            </span>
+            <span className="flex-1" />
+            <button type="button" onClick={() => setActiveQuote(null)} className="text-xs underline underline-offset-4 hover:text-muted">
+              Vender sin enlazar la cotización
+            </button>
+          </div>
+        ) : null}
+
         {last ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border border-info/50 bg-info/15 px-4 py-3" aria-live="polite">
             <Check className="size-5 shrink-0" aria-hidden />
@@ -420,7 +457,11 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
                     </span>
                     <span className="mt-1 flex flex-wrap items-center gap-2">
                       {priced.discountCents ? <span className="rounded-full bg-offer px-2 py-0.5 font-mono text-[11px] font-semibold text-black uppercase">{v.promotion?.name}</span> : null}
-                      {left <= 2 ? <span className="text-xs text-warning">{left === 0 ? "Era la última en la tienda" : `Quedan ${left} en la tienda`}</span> : null}
+                      {left < 0 ? (
+                        <span className="text-xs text-danger">Faltan {-left} en la tienda</span>
+                      ) : left <= 2 ? (
+                        <span className="text-xs text-warning">{left === 0 ? "Era la última en la tienda" : `Quedan ${left} en la tienda`}</span>
+                      ) : null}
                     </span>
                   </span>
                   <div className="flex h-12 items-center rounded-xl border border-line bg-raised">

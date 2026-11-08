@@ -10,6 +10,7 @@ import { getDb } from "@/server/db/client";
 import { getSiteSettings } from "@/server/services/content";
 import { listWarehouses } from "@/server/services/inventory";
 import { expectedCash, getOpenSession, getSessionTotals, listPosVariants } from "@/server/services/pos";
+import { quoteForPos } from "@/server/services/quotes";
 import { sunatFromEnv } from "@/server/services/sunat";
 import { requireStaff } from "../../_lib/auth";
 import { OpenCashForm } from "./open-cash-form";
@@ -25,11 +26,13 @@ export const metadata: Metadata = { title: "Punto de venta" };
  */
 export default async function PosPage({ searchParams }: PageProps<"/admin/pos">) {
   const user = await requireStaff();
-  const { tienda } = await searchParams;
+  const { tienda, cotizacion } = await searchParams;
   const db = getDb();
   const warehouses = (await listWarehouses(db)).filter((w) => w.isActive);
-  // Por defecto, la tienda que vende en la web (Gamarra).
-  const warehouse = warehouses.find((w) => w.id === tienda) ?? warehouses.find((w) => w.sellsOnline) ?? warehouses[0];
+  // Vender una cotización: sus prendas, el cliente y el descuento hasta su total (solo si sigue vigente).
+  const quote = typeof cotizacion === "string" && /^\d+$/.test(cotizacion) ? await quoteForPos(db, Number(cotizacion)) : null;
+  // Por defecto, la de la cotización o la tienda que vende en la web (Gamarra).
+  const warehouse = warehouses.find((w) => w.id === tienda) ?? warehouses.find((w) => w.id === quote?.warehouseId) ?? warehouses.find((w) => w.sellsOnline) ?? warehouses[0];
   if (!warehouse) return <AdminPage title="Punto de venta"><EmptyState title="No hay tiendas activas" /></AdminPage>;
   // Cada vendedor vende en su caja.
   const session = await getOpenSession(db, warehouse.id, user.id);
@@ -98,6 +101,7 @@ export default async function PosPage({ searchParams }: PageProps<"/admin/pos">)
           company={{ legalName: settings.company.legalName, ruc: settings.company.ruc }}
           fontClass={`${displayFont.variable} ${monoFont.variable}`}
           sunatEnabled={sunatFromEnv() !== null}
+          quote={quote?.warehouseId === warehouse.id ? quote : null}
         />
       </div>
     </>

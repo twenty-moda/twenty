@@ -523,6 +523,67 @@ export const expenses = pgTable(
   ],
 );
 
+/** "vigente" hasta que se vende o se anula; si pasa `validUntil` sin venderse se muestra como vencida. */
+export const quoteStatus = pgEnum("quote_status", ["vigente", "vendida", "anulada"]);
+
+/**
+ * Cotización para clientes mayoristas (pedido de TWENTY, 08/11/2026): prendas con un precio por unidad que puede ser
+ * menor que el de lista. No mueve stock ni va a SUNAT; al venderla se abre el punto de venta con sus prendas y el
+ * descuento que la deja en el total cotizado, y la venta queda enlazada (`posSaleId`).
+ */
+export const quotes = pgTable(
+  "quotes",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    number: integer().notNull().unique().generatedAlwaysAsIdentity({ startWith: 1 }),
+    warehouseId: uuid()
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    customerDocumentType: documentType(),
+    customerDocumentNumber: text(),
+    customerName: text().notNull(),
+    customerPhone: text(),
+    customerEmail: text(),
+    customerAddress: text(),
+    validUntil: date({ mode: "string" }).notNull(),
+    /** Condiciones: forma de pago, entrega, tiempo de confección… */
+    note: text(),
+    status: quoteStatus().notNull().default("vigente"),
+    /** A precio de lista. */
+    subtotalCents: integer().notNull(),
+    /** Lo cotizado. */
+    totalCents: integer().notNull(),
+    userId: uuid().references(() => users.id, { onDelete: "set null" }),
+    posSaleId: uuid().references(() => posSales.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("quotes_created_idx").on(t.createdAt), check("quotes_total_non_negative", sql`${t.totalCents} >= 0`)],
+);
+
+export const quoteItems = pgTable(
+  "quote_items",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    quoteId: uuid()
+      .notNull()
+      .references(() => quotes.id, { onDelete: "cascade" }),
+    variantId: uuid().references(() => productVariants.id, { onDelete: "set null" }),
+    productId: uuid().references(() => products.id, { onDelete: "set null" }),
+    sku: text().notNull(),
+    productName: text().notNull(),
+    colorName: text().notNull(),
+    sizeLabel: text().notNull(),
+    quantity: integer().notNull(),
+    /** Precio de lista el día de la cotización. */
+    listPriceCents: integer().notNull(),
+    /** Precio cotizado por unidad. */
+    unitPriceCents: integer().notNull(),
+    totalCents: integer().notNull(),
+    position: integer().notNull().default(0),
+  },
+  (t) => [index("quote_items_quote_idx").on(t.quoteId), check("quote_items_quantity_positive", sql`${t.quantity} > 0`), check("quote_items_price_positive", sql`${t.unitPriceCents} > 0`)],
+);
+
 /**
  * Devolución de prendas de una venta en tienda (cambio de talla, fallas): el stock vuelve a la tienda, el dinero sale
  * de la caja abierta y, si la venta fue boleta o factura, va una nota de crédito a SUNAT. Una venta puede tener varias.

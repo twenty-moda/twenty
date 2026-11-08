@@ -20,6 +20,7 @@ import {
   posSales,
   products,
   productVariants,
+  quotes,
   sizes,
   users,
   warehouses,
@@ -336,8 +337,10 @@ export const saleInputSchema = z.object({
     .min(1, "Falta el pago.")
     .max(5),
   note: z.string().trim().max(300).nullable(),
+  /** Cotización que se está vendiendo: queda como vendida y enlazada a la venta. */
+  quoteId: z.uuid().nullish(),
 });
-export type SaleInput = z.infer<typeof saleInputSchema>;
+export type SaleInput = z.input<typeof saleInputSchema>;
 
 export type RegisterSaleResult =
   | { ok: true; saleId: string; series: string; number: number; totalCents: number; changeCents: number; productSlugs: string[]; soldOut: boolean }
@@ -390,6 +393,11 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
       // La venta entra en la caja de quien vende.
       const [session] = await tx.select({ id: cashSessions.id }).from(cashSessions).where(openOf(input.warehouseId, sellerId)).for("share");
       if (!session) return { ok: false as const, message: "Tu caja en esta tienda está cerrada. Ábrela para vender." };
+      if (input.quoteId) {
+        // FOR UPDATE: la misma cotización no se vende dos veces.
+        const [quote] = await tx.select({ status: quotes.status }).from(quotes).where(eq(quotes.id, input.quoteId)).for("update");
+        if (quote?.status !== "vigente") return { ok: false as const, message: "Esa cotización ya se vendió o se anuló." };
+      }
 
       const { series, number } = await takeNumber(tx, input.warehouseId, input.documentType);
       const [sale] = await tx
@@ -416,6 +424,7 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
           note: input.note?.trim() || null,
         })
         .returning({ id: posSales.id });
+      if (input.quoteId) await tx.update(quotes).set({ status: "vendida", posSaleId: sale.id, updatedAt: new Date() }).where(eq(quotes.id, input.quoteId));
       await tx.insert(posSaleItems).values(
         pricing.lines.map((line) => {
           const v = byId.get(line.variantId)!;
