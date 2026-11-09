@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { WALLET_PROOF_WINDOW_HOURS } from "@/lib/order-status";
 import type { Db } from "../db/client";
 import type { CulqiClient, CulqiResponse } from "./payments";
 
@@ -157,7 +158,7 @@ describe("expireUnpaidOrders (cron)", () => {
     expect(await stockNow()).toBe(before + 1);
   });
 
-  it("anula los de Yape/Plin sin captura a las 24 horas; los que tienen captura o se coordinan por WhatsApp siguen", async () => {
+  it("anula los de Yape/Plin sin captura al vencer el plazo (2 horas); los que tienen captura o se coordinan por WhatsApp siguen", async () => {
     const { expireUnpaidOrders } = await import("./orders");
     const wallet = await newOrder();
     const withProof = await newOrder();
@@ -166,8 +167,9 @@ describe("expireUnpaidOrders (cron)", () => {
     await db.update(schema.orders).set({ paymentMethod: "whatsapp" }).where(eq(schema.orders.id, whatsapp.orderId));
     const before = await stockNow();
 
-    expect((await expireUnpaidOrders(db, later(23 * 60))).numbers).toEqual([]);
-    const expired = await expireUnpaidOrders(db, later(25 * 60));
+    expect(WALLET_PROOF_WINDOW_HOURS).toBe(2);
+    expect((await expireUnpaidOrders(db, later(WALLET_PROOF_WINDOW_HOURS * 60 - 5))).numbers).toEqual([]);
+    const expired = await expireUnpaidOrders(db, later(WALLET_PROOF_WINDOW_HOURS * 60 + 5));
     expect(expired.numbers).toEqual([wallet.number]);
     expect(expired.changes).toMatchObject([{ orderId: wallet.orderId, from: "pendiente", to: "anulado", changedBy: null, paymentMethod: "yape_plin", restocked: true }]);
     expect(planOrderEmails({ type: "status", change: expired.changes[0] })).toEqual({ customer: "expirado", team: "anulado" });

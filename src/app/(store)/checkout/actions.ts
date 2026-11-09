@@ -65,7 +65,7 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   }
 
   // Antes de vender, se libera el stock de los pedidos vencidos sin pagar (tarjeta a los 60 minutos, Yape/Plin a las
-  // 24 horas): en el plan Hobby de Vercel el cron corre solo una vez al día; así el stock no queda retenido.
+  // 2 horas): el cron corre cada 15 minutos; así, en el momento de comprar, el stock nunca queda retenido de más.
   const expired = await expireUnpaidOrders(db);
   for (const slug of expired.productSlugs) revalidateTag(cacheTags.product(slug), "max");
   if (expired.productSlugs.length) revalidateTag(cacheTags.catalog, "max");

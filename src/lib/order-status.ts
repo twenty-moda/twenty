@@ -75,5 +75,8 @@ export const progressIndex = (s: OrderStatus) => (s === "por_verificar" ? 0 : OR
 export const PAYMENT_METHOD_LABEL = { yape_plin: "Yape o Plin (QR)", whatsapp: "Coordinar por WhatsApp", tarjeta: "Tarjeta o Yape (Culqi)" } as const;
 export const DOCUMENT_LABEL = { dni: "DNI", ce: "C.E.", pasaporte: "Pasaporte", ruc: "RUC" } as const;
 
-/** Horas que un pedido con Yape/Plin (QR) espera la captura del pago antes de anularse y liberar su stock. */
-export const WALLET_PROOF_WINDOW_HOURS = 24;
+/**
+ * Horas que un pedido con Yape/Plin (QR) espera la captura del pago antes de anularse y liberar su stock. Pedido de
+ * TWENTY (09/11/2026): 2 horas, antes 24, para que un pedido sin pagar no deje trabada una prenda única.
+ */
+export const WALLET_PROOF_WINDOW_HOURS = 2;
