@@ -20,6 +20,18 @@ export const RATE_LIMITS = {
   staffUser: { limit: 8, windowMinutes: 15 },
   /** Probar un cupón en el checkout (que no se puedan adivinar códigos). */
   coupon: { limit: 15, windowMinutes: 15 },
+  /**
+   * Crear pedidos en el checkout. Cada pedido aparta stock (el de Yape/Plin, hasta que el equipo lo anule) y manda
+   * emails: sin límite, un script podría dejar la web agotada con pedidos falsos. Por IP es alto: en los celulares
+   * muchos clientes salen por la misma IP de su operador.
+   */
+  order: { limit: 30, windowMinutes: 60 },
+  /** Lo mismo por comprador: cada email, celular y documento, por separado (no depende de la IP). */
+  orderBuyer: { limit: 5, windowMinutes: 60 },
+  /** Cobrar con Culqi en /pedido/[id], por IP: frena a quien prueba tarjetas robadas contra la tienda. */
+  cardPayment: { limit: 30, windowMinutes: 60 },
+  /** Lo mismo por pedido (aunque cambie de IP). Cada pago con 3-D Secure son dos llamadas. */
+  cardPaymentOrder: { limit: 10, windowMinutes: 60 },
 } satisfies Record<string, RateLimit>;
 
 /**

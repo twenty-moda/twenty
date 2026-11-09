@@ -6,6 +6,7 @@ import { getDb } from "@/server/db/client";
 import { notifyAfterResponse } from "@/server/order-events";
 import { InvalidProofError, processProofImage, submitPaymentProof } from "@/server/services/payment-proofs";
 import { culqiFromEnv, payOrderWithCulqi, type PayResult } from "@/server/services/payments";
+import { consumeRateLimit, RATE_LIMITS } from "@/server/services/rate-limit";
 import { allowRequest } from "../../_lib/request";
 
 const payInputSchema = z.object({
@@ -30,8 +31,12 @@ export async function payWithCulqiAction(input: unknown): Promise<PayResult> {
   if (!parsed.success) return { status: "declined", message: "No se pudo leer el pago. Vuelve a intentarlo." };
   const client = culqiFromEnv();
   if (!client) return { status: "not_payable", message: "El pago con tarjeta no está disponible ahora." };
+  const db = getDb();
+  if (!(await allowRequest("cardPayment")) || !(await consumeRateLimit(db, `cardPaymentOrder:${parsed.data.orderId}`, RATE_LIMITS.cardPaymentOrder))) {
+    return { status: "declined", message: "Hubo muchos intentos de pago seguidos. Espera un rato o escríbenos por WhatsApp y te ayudamos." };
+  }
   try {
-    const result = await payOrderWithCulqi(getDb(), client, parsed.data);
+    const result = await payOrderWithCulqi(db, client, parsed.data);
     if (result.status !== "paid") return result;
     if (result.change) notifyAfterResponse({ type: "status", change: result.change });
     return { status: "paid" };

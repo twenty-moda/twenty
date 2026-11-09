@@ -37,3 +37,6 @@ npm-debug.log*
 .pnpm-debug.log*
 *.pem
 .neon
+
+# Notas locales de Claude Code (cuentas de TWENTY): el repo es público
+CLAUDE.local.md

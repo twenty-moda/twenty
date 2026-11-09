@@ -50,7 +50,7 @@ Decisiones tomadas al convertir el catálogo anterior al modelo nuevo. Revisar c
 
 ## Contenido (blog, páginas legales, Nosotros)
 
-- Empresa: Multiventa Peruano S.A.C. (RUC 20612934020), dirección de la tienda como domicilio. Los avisos de reclamos llegan a twentymodagamarra@gmail.com (correo corporativo). Confirmar con TWENTY.
+- Empresa: Multiventa Peruano S.A.C. (RUC 20612934020), dirección de la tienda como domicilio. Los avisos de reclamos llegan al correo corporativo de TWENTY. Confirmar con TWENTY.
 - La política de privacidad publicada era una plantilla genérica con campos sin llenar ([Nombre de tu Tienda], [Fecha actual]…) y la nota del generador. Se completó con los datos de TWENTY y se quitó la nota. Debe revisarla un abogado (Ley 29733 de Protección de Datos Personales).
 - Los términos y condiciones dan otro WhatsApp de contacto (973018261) y un horario de 11:00 a 7:00; la web usa De Lunes a Domingo de 10:00am a 8:00pm. Confirmar con TWENTY.
 - La tabla de la política de envíos se veía aplastada en un solo párrafo; se reescribió como lista con los mismos datos. Dice delivery Lima S/ 15 fijo, pero el checkout cobra por distrito (Admin → Envíos). Confirmar con TWENTY.

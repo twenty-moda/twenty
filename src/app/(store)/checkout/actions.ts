@@ -17,7 +17,7 @@ import { resolveAgency } from "@/server/services/couriers";
 import { agencyLabel, methodCourier } from "@/lib/couriers";
 import { getCourierAgencies } from "../_data";
 import { getAccount } from "../_lib/account";
-import { allowRequest } from "../_lib/request";
+import { allowBuyer, allowRequest } from "../_lib/request";
 
 export type PlaceOrderState =
   | { ok: true; orderId: string; payNow: boolean }
@@ -57,6 +57,11 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   }
   if (parsed.data.paymentMethod === "yape_plin" && !payments.walletEnabled) {
     return { ok: false, errors: { paymentMethod: "El pago con Yape o Plin por QR no está disponible ahora. Elige otra forma de pago." } };
+  }
+  const { email, phone, documentNumber } = parsed.data;
+  const [ipOk, buyerOk] = await Promise.all([allowRequest("order"), allowBuyer("orderBuyer", [email, phone, documentNumber])]);
+  if (!ipOk || !buyerOk) {
+    return { ok: false, errors: { form: "Hiciste muchos pedidos seguidos. Espera un rato o escríbenos por WhatsApp y te ayudamos." } };
   }
 
   // Antes de vender, se libera el stock de los pedidos con tarjeta que no se pagaron en 60 minutos

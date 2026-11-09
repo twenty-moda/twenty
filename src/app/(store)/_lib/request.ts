@@ -12,5 +12,20 @@ export async function allowRequest(action: keyof typeof RATE_LIMITS): Promise<bo
   return consumeRateLimit(getDb(), `${action}:${hash}`, RATE_LIMITS[action]);
 }
 
+/**
+ * Limita por un dato de quien compra (email, celular o documento) en vez de por IP: así no se bloquean entre sí los
+ * clientes que comparten la IP de su operador. También se guarda solo el hash. Pasa si todos están dentro del límite.
+ */
+export async function allowBuyer(action: keyof typeof RATE_LIMITS, values: string[]): Promise<boolean> {
+  const db = getDb();
+  const results = await Promise.all(
+    values.map((value) => {
+      const hash = createHash("sha256").update(`twenty:${action}:${value.trim().toLowerCase()}`).digest("hex").slice(0, 32);
+      return consumeRateLimit(db, `${action}:${hash}`, RATE_LIMITS[action]);
+    }),
+  );
+  return results.every(Boolean);
+}
+
 /** Enlace absoluto para emails y constancias (ver appUrl). */
 export const absoluteUrl = (path: string) => `${appUrl()}${path}`;

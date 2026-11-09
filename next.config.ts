@@ -37,6 +37,21 @@ function siteRedirects(): Redirect[] {
   ];
 }
 
+/**
+ * Cabeceras de seguridad de todas las rutas. Sin CSP para scripts: con el prerender y 'use cache' haría falta un nonce
+ * por request; aquí va solo lo que no toca a Culqi, Firebase ni los mapas de Google.
+ */
+const securityHeaders = [
+  // Nadie puede mostrar la tienda ni el panel dentro de un iframe de otro sitio (clickjacking).
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  // El enlace del pedido (/pedido/<id>) da acceso a sus datos: a otros sitios solo les llega el dominio.
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // La ubicación la usa el checkout para la agencia más cercana; cámara y micrófono no se usan.
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self), browsing-topics=()" },
+];
+
 const nextConfig: NextConfig = {
   // Modelo de caché de Next 16: 'use cache' + cacheTag. Catálogo estático en CDN,
   // invalidado por tag desde el admin (updateTag / revalidateTag).
@@ -52,6 +67,9 @@ const nextConfig: NextConfig = {
     // Fotos del admin: el navegador las achica antes, pero una foto grande puede pasar de 1 MB.
     // Se queda bajo el límite de 4.5 MB por request de Vercel.
     serverActions: { bodySizeLimit: "4mb" },
+  },
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
   },
   async redirects() {
     return [...siteRedirects(), ...legacyRedirects()];

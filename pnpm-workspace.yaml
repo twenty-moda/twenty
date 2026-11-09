@@ -4,3 +4,10 @@ allowBuilds:
   protobufjs: false
   sharp: false
   unrs-resolver: false
+
+# Parches de seguridad de dependencias transitivas (pnpm audit, 09/11/2026). Vienen de Firestore y de PostCSS: la
+# tienda no usa Firestore, pero así el lockfile queda limpio. Se pueden quitar cuando las librerías de arriba suban.
+overrides:
+  '@grpc/grpc-js@<1.13.6': 1.13.7
+  re2js@<2.8.7: 2.8.8
+  source-map-js@<1.2.2: 1.2.2

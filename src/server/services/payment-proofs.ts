@@ -17,11 +17,15 @@ export const MAX_PROOFS_PER_ORDER = 5;
 /** Una captura de pantalla se lee bien a este tamaño y pesa poco. */
 const MAX_SIZE = 1400;
 
+/** El navegador la achica antes a 1600 px; esto deja pasar también una foto de celular sin achicar. */
+const MAX_INPUT_PIXELS = 50_000_000;
+
 export class InvalidProofError extends Error {}
 
 export async function processProofImage(input: ArrayBuffer | Buffer): Promise<{ image: Buffer; width: number; height: number }> {
   try {
-    const { data, info } = await sharp(Buffer.from(input as ArrayBuffer))
+    // La sube cualquiera con el enlace del pedido: un PNG chico que se descomprime en miles de megapíxeles no pasa.
+    const { data, info } = await sharp(Buffer.from(input as ArrayBuffer), { limitInputPixels: MAX_INPUT_PIXELS })
       .rotate()
       .resize({ width: MAX_SIZE, height: MAX_SIZE, fit: "inside", withoutEnlargement: true })
       .webp({ quality: 80 })
