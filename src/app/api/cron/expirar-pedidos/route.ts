@@ -8,7 +8,7 @@ import { expireUnpaidOrders } from "@/server/services/orders";
 
 /**
  * Vercel Cron (vercel.json, una vez al día: es lo que deja el plan Hobby) llama aquí con `Authorization: Bearer
- * <CRON_SECRET>`, y el workflow `expirar-pedidos.yml` de GitHub Actions cada 15 minutos con su token OIDC.
+ * <CRON_SECRET>`, y el workflow `expirar-pedidos.yml` de GitHub Actions cada 30 minutos con su token OIDC.
  */
 export async function GET(request: Request) {
   await connection();

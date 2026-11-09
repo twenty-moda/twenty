@@ -2,12 +2,13 @@ name: Liberar stock de pedidos vencidos
 
 # Anula los pedidos sin pagar que ya vencieron (Yape/Plin sin captura a las 2 horas, tarjeta a los 60 minutos) y
 # devuelve sus prendas al stock. Vercel Hobby solo deja un cron al día (vercel.json, que sigue de respaldo); este
-# corre cada 15 minutos. No usa secretos: la tienda verifica el token OIDC que firma GitHub
+# corre cada 30 minutos (cada llamada despierta la BD de Neon: más seguido cuesta más). No usa secretos: la tienda
+# verifica el token OIDC que firma GitHub
 # (src/server/services/github-actions-auth.ts). Los logs del repo son públicos: no se imprime la respuesta.
 on:
   schedule:
     # Fuera del minuto 0, que es cuando GitHub tiene más cola y más atrasa los horarios.
-    - cron: "7,22,37,52 * * * *"
+    - cron: "7,37 * * * *"
   workflow_dispatch:
 
 permissions:

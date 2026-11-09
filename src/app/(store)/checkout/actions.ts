@@ -65,7 +65,7 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
   }
 
   // Antes de vender, se libera el stock de los pedidos vencidos sin pagar (tarjeta a los 60 minutos, Yape/Plin a las
-  // 2 horas): el cron corre cada 15 minutos; así, en el momento de comprar, el stock nunca queda retenido de más.
+  // 2 horas): el cron corre cada 30 minutos; así, en el momento de comprar, el stock nunca queda retenido de más.
   const expired = await expireUnpaidOrders(db);
   for (const slug of expired.productSlugs) revalidateTag(cacheTags.product(slug), "max");
   if (expired.productSlugs.length) revalidateTag(cacheTags.catalog, "max");

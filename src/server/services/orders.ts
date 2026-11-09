@@ -721,7 +721,7 @@ export async function updateCustomerNotes(db: Db, id: string, notes: string | nu
 export const CARD_PAYMENT_WINDOW_MINUTES = 60;
 
 /**
- * Anula los pedidos sin pagar y devuelve su stock (lo corren el cron, cada 15 minutos, y cada pedido nuevo): con tarjeta
+ * Anula los pedidos sin pagar y devuelve su stock (lo corren el cron, cada 30 minutos, y cada pedido nuevo): con tarjeta
  * a los 60 minutos y con Yape/Plin a las `WALLET_PROOF_WINDOW_HOURS` horas sin captura (con captura pasan a "Pago por
  * verificar" y no vencen). Los de "Coordinar por WhatsApp" no se anulan solos: el equipo decide.
  */
