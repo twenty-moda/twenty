@@ -323,6 +323,8 @@ export const saleInputSchema = z.object({
     .array(z.object({ variantId: z.uuid(), quantity: z.number().int().positive().max(999) }))
     .min(1, "Agrega al menos una prenda.")
     .max(200),
+  /** Promos "N x S/" de la web. Apagadas, se cobra el precio regular (y el descuento, si hay, lo pone la caja). */
+  applyPromotions: z.boolean().default(true),
   manualDiscountCents: z.number().int().min(0),
   shippingCents: z.number().int().min(0),
   payments: z
@@ -375,7 +377,7 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
     .where(inArray(productVariants.id, variantIds));
   if (rows.length !== variantIds.length) return { ok: false, message: "Una de las prendas ya no existe. Recarga la página." };
   const byId = new Map(rows.map((r) => [r.id, r]));
-  const promotions = await activePromotionsByProduct(db, [...new Set(rows.map((r) => r.productId))], new Date());
+  const promotions = input.applyPromotions === false ? new Map<string, PricedPromotion>() : await activePromotionsByProduct(db, [...new Set(rows.map((r) => r.productId))], new Date());
   const pricing = priceLines(
     variantIds.map((id) => ({ variantId: id, quantity: quantities.get(id)!, unitPriceCents: byId.get(id)!.priceCents, promotion: promotions.get(byId.get(id)!.productId) ?? null })),
   );

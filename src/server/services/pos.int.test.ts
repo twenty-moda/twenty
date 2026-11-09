@@ -92,6 +92,21 @@ describe("registerSale", () => {
     expect([detail?.subtotalCents, detail?.promoDiscountCents, detail?.items[0].promotionName]).toEqual([14000, 4000, "2 X 100"]);
   });
 
+  it("con las promos quitadas cobra el precio regular y solo el descuento que pone la caja", async () => {
+    await db.insert(schema.promotions).values({ id: ids.promo, name: "2 X 100", type: "bundle_price", quantity: 2, bundlePriceCents: 10000 });
+    await db.insert(schema.promotionProducts).values({ promotionId: ids.promo, productId: ids.product });
+    const result = await sale({
+      lines: [{ variantId: ids.variant, quantity: 2 }],
+      applyPromotions: false,
+      manualDiscountCents: 1500,
+      payments: [{ method: "efectivo", amountCents: 12500, receivedCents: 12500, reference: null }],
+    });
+    expect(result).toMatchObject({ ok: true, totalCents: 12500 });
+    if (!result.ok) return;
+    const detail = await getPosSale(db, result.saleId);
+    expect([detail?.subtotalCents, detail?.promoDiscountCents, detail?.manualDiscountCents, detail?.items[0].discountCents, detail?.items[0].promotionName]).toEqual([14000, 0, 1500, 0, null]);
+  });
+
   it("sin caja abierta no vende", async () => {
     const session = await getOpenSession(db, store, null);
     await closeCashSession(db, { sessionId: session!.id, countedCashCents: 10000, note: null, userId: null });

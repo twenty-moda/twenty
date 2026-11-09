@@ -152,6 +152,8 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
       ? { documentType: quote.customer.documentType ?? "dni", documentNumber: quote.customer.documentNumber ?? "", name: quote.customer.name, address: quote.customer.address ?? "" }
       : { documentType: "dni", documentNumber: "", name: "", address: "" },
   );
+  // Promos "N x S/" de la web: la caja las puede quitar en una venta (precio regular). Cada venta empieza con ellas.
+  const [promosOn, setPromosOn] = useState(true);
   const [discount, setDiscount] = useState(start?.discount ?? "");
   const [shipping, setShipping] = useState("");
   const [extras, setExtras] = useState({ discount: !!start?.discount, shipping: false });
@@ -191,7 +193,10 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
     };
   }, [variants]);
 
-  const pricing = priceLines(lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity, unitPriceCents: byId.get(l.variantId)!.priceCents, promotion: byId.get(l.variantId)!.promotion })));
+  const pricingLines = lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity, unitPriceCents: byId.get(l.variantId)!.priceCents, promotion: byId.get(l.variantId)!.promotion }));
+  // Con las promos (lo que se quita si se apagan) y lo que se cobra.
+  const promoPricing = priceLines(pricingLines);
+  const pricing = promosOn ? promoPricing : priceLines(pricingLines.map((l) => ({ ...l, promotion: null })));
   const manualDiscountCents = cents(discount) ?? 0;
   const shippingCents = cents(shipping) ?? 0;
   const total = saleTotal({ itemsTotalCents: pricing.totalCents, manualDiscountCents, shippingCents });
@@ -248,6 +253,19 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
     setLines((ls) => (quantity <= 0 ? ls.filter((l) => l.variantId !== variantId) : ls.map((l) => (l.variantId === variantId ? { ...l, quantity } : l))));
   };
 
+  // Sin promos se cobra el precio regular y se abre el descuento, por si la caja quiere dar otro. Con una cotización, el
+  // descuento se vuelve a calcular para que siga en el total cotizado.
+  const togglePromos = () => {
+    const next = !promosOn;
+    setPromosOn(next);
+    setReceived("");
+    if (activeQuote) {
+      const gap = Math.max(0, (next ? promoPricing.totalCents : promoPricing.subtotalCents) - activeQuote.totalCents);
+      setDiscount(gap ? soles(gap) : "");
+      if (gap) setExtras((x) => ({ ...x, discount: true }));
+    } else if (!next) setExtras((x) => ({ ...x, discount: true }));
+  };
+
   const lookup = (documentNumber: string) =>
     startTransition(async () => {
       if (docType === "factura") {
@@ -276,6 +294,7 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
         documentType: docType,
         customer: saleCustomer,
         lines,
+        applyPromotions: promosOn,
         manualDiscountCents,
         shippingCents,
         payments: paymentInputs,
@@ -294,6 +313,7 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
     setActiveQuote(null);
     setLines([]);
     setCustomer({ documentType: "dni", documentNumber: "", name: "", address: "" });
+    setPromosOn(true);
     setDiscount("");
     setShipping("");
     setExtras({ discount: false, shipping: false });
@@ -422,7 +442,15 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
               Cotización COT-{String(activeQuote.number).padStart(5, "0")} · total cotizado {formatPrice(activeQuote.totalCents)}
             </span>
             <span className="text-muted">
-              {start?.above ? "Con las promos de hoy sale más barata que lo cotizado: se cobra el precio de hoy." : start?.discount ? "El descuento la deja en el total cotizado." : ""}
+              {promosOn
+                ? start?.above
+                  ? "Con las promos de hoy sale más barata que lo cotizado: se cobra el precio de hoy."
+                  : start?.discount
+                    ? "El descuento la deja en el total cotizado."
+                    : ""
+                : manualDiscountCents
+                  ? "El descuento la deja en el total cotizado."
+                  : ""}
               {activeQuote.missing ? ` ${activeQuote.missing} prenda(s) ya no existen y no entran.` : ""}
             </span>
             <span className="flex-1" />
@@ -483,6 +511,7 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
             {lines.map((l) => {
               const v = byId.get(l.variantId)!;
               const priced = pricing.lines.find((p) => p.variantId === l.variantId)!;
+              const promoRemoved = !promosOn && !!promoPricing.lines.find((p) => p.variantId === l.variantId)?.discountCents;
               const left = v.stock - l.quantity;
               return (
                 <li key={l.variantId} className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-line bg-surface p-3 sm:px-4">
@@ -495,7 +524,11 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
                       <span className="font-mono text-xs text-subtle">{v.sku}</span>
                     </span>
                     <span className="mt-1 flex flex-wrap items-center gap-2">
-                      {priced.discountCents ? <span className="rounded-full bg-offer px-2 py-0.5 font-mono text-[11px] font-semibold text-black uppercase">{v.promotion?.name}</span> : null}
+                      {priced.discountCents ? (
+                        <span className="rounded-full bg-offer px-2 py-0.5 font-mono text-[11px] font-semibold text-black uppercase">{v.promotion?.name}</span>
+                      ) : promoRemoved ? (
+                        <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-subtle uppercase line-through">{v.promotion?.name}</span>
+                      ) : null}
                       {left < 0 ? (
                         <span className="text-xs text-danger">Faltan {-left} en la tienda</span>
                       ) : left <= 2 ? (
@@ -643,13 +676,27 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
               </dt>
               <dd className="tabular-nums">{formatPrice(pricing.subtotalCents)}</dd>
             </div>
-            {pricing.discountCents ? (
-              <div className="flex justify-between">
-                <dt className="text-muted">Promociones</dt>
-                <dd className="text-success tabular-nums">−{formatPrice(pricing.discountCents)}</dd>
+            {promoPricing.discountCents ? (
+              <div className="flex items-center justify-between gap-3">
+                <dt>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={promosOn}
+                    onClick={togglePromos}
+                    className="-ml-1 flex min-h-10 items-center gap-2.5 rounded-lg px-1 text-muted hover:text-white"
+                  >
+                    <span aria-hidden className={cn("relative h-5 w-9 shrink-0 rounded-full border transition", promosOn ? "border-success bg-success" : "border-line bg-raised")}>
+                      <span className={cn("absolute top-0.5 left-0.5 size-3.5 rounded-full transition", promosOn ? "translate-x-4 bg-black" : "bg-muted")} />
+                    </span>
+                    Promociones
+                  </button>
+                </dt>
+                <dd className={cn("tabular-nums", promosOn ? "text-success" : "text-subtle line-through")}>−{formatPrice(promoPricing.discountCents)}</dd>
               </div>
             ) : null}
           </dl>
+          {!promosOn && promoPricing.discountCents ? <p className="text-xs text-warning">Promos quitadas: se cobra el precio regular. Si le das un descuento, escríbelo abajo.</p> : null}
           {extras.discount || extras.shipping ? (
             <div className="flex gap-2 text-sm">
               {extras.discount ? (
