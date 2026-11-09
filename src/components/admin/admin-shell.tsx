@@ -35,7 +35,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { canAccess, panelHome, type PanelAccess, type PanelRole } from "@/lib/panel-access";
-import { InstallAppButton } from "../install-app";
+import { InstallAppButton, InstallAppNotice } from "./install-app";
 import { Logo } from "../store/logo";
 import { Sheet } from "../ui/sheet";
 
@@ -126,7 +126,14 @@ export function AdminShell({ user, role, openOrders, badges, logout, children }:
   const [menuOpen, setMenuOpen] = useState(false);
   const current = NAV.find((n) => (n.href === "/admin" ? pathname === "/admin" : pathname.startsWith(n.href)));
   // Modo caja: el punto de venta ocupa toda la pantalla y trae su propia barra (tienda, caja, salir).
-  if (pathname === "/admin/pos") return <main className="min-h-dvh min-w-0">{children}</main>;
+  // El aviso de la app va a la izquierda: a la derecha está el botón de cobrar.
+  if (pathname === "/admin/pos")
+    return (
+      <>
+        <main className="min-h-dvh min-w-0">{children}</main>
+        <InstallAppNotice side="left" />
+      </>
+    );
 
   const nav = (onNavigate?: () => void) => (
     <nav aria-label="Panel" className="flex flex-1 flex-col">
@@ -215,6 +222,7 @@ export function AdminShell({ user, role, openOrders, badges, logout, children }:
       </Sheet>
 
       <main className="min-w-0">{children}</main>
+      <InstallAppNotice />
     </div>
   );
 }

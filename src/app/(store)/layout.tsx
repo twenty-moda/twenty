@@ -1,5 +1,5 @@
 import { CartProvider } from "@/components/cart/cart-provider";
-import { QuietInstallPrompt } from "@/components/install-app";
+import { QuietInstallPrompt } from "@/components/store/quiet-install-prompt";
 import { AnnouncementBar } from "@/components/store/announcement-bar";
 import { SiteFooter } from "@/components/store/site-footer";
 import { SiteHeader } from "@/components/store/site-header";
