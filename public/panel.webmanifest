@@ -1,0 +1,27 @@
+{
+  "id": "/admin",
+  "name": "TWENTY Panel",
+  "short_name": "TWENTY Panel",
+  "description": "Punto de venta, caja, stock y pedidos de TWENTY.",
+  "lang": "es-PE",
+  "dir": "ltr",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "categories": ["business", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "/icons/panel-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/panel-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/panel-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/panel-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Vender", "url": "/admin/pos" },
+    { "name": "Caja", "url": "/admin/caja" },
+    { "name": "Stock por talla", "url": "/admin/stock" },
+    { "name": "Pedidos de la web", "url": "/admin/pedidos" }
+  ]
+}

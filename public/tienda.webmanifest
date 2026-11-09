@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "TWENTY | Moda urbana juvenil",
+  "short_name": "TWENTY",
+  "description": "Moda urbana joven: baggy jeans, polos, hoodies y más. Envío en 24 a 48 horas en Lima y a todo el Perú.",
+  "lang": "es-PE",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "categories": ["shopping", "lifestyle"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "/icons/tienda-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/tienda-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/tienda-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/tienda-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Catálogo", "url": "/catalogo" },
+    { "name": "Promos", "url": "/promos" },
+    { "name": "Seguir mi pedido", "url": "/tracking" },
+    { "name": "Mis pedidos", "url": "/cuenta" }
+  ]
+}

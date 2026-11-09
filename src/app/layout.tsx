@@ -19,6 +19,9 @@ export const metadata: Metadata = {
   applicationName: "TWENTY",
   openGraph: { siteName: "TWENTY", locale: "es_PE", type: "website", description },
   twitter: { card: "summary_large_image" },
+  // Se instala como app (Android: «Instalar app»; iPhone: Compartir → «Agregar a inicio»). El panel tiene la suya.
+  manifest: "/tienda.webmanifest",
+  appleWebApp: { capable: true, title: "TWENTY", statusBarStyle: "black" },
 };
 
 export const viewport: Viewport = {

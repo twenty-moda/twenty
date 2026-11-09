@@ -35,6 +35,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { canAccess, panelHome, type PanelAccess, type PanelRole } from "@/lib/panel-access";
+import { InstallAppButton } from "../install-app";
 import { Logo } from "../store/logo";
 import { Sheet } from "../ui/sheet";
 
@@ -173,6 +174,7 @@ export function AdminShell({ user, role, openOrders, badges, logout, children }:
         ))}
       </div>
       <div className="mt-auto space-y-1 border-t border-line px-3 pt-3 pb-4">
+        <InstallAppButton />
         <a href="/" target="_blank" rel="noopener noreferrer" className="flex h-11 items-center gap-3 rounded-xl px-3 text-sm text-muted hover:bg-raised hover:text-white">
           <ExternalLink className="size-[18px]" aria-hidden /> Ver la tienda
         </a>
