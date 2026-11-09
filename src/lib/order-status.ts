@@ -74,3 +74,6 @@ export const progressIndex = (s: OrderStatus) => (s === "por_verificar" ? 0 : OR
 
 export const PAYMENT_METHOD_LABEL = { yape_plin: "Yape o Plin (QR)", whatsapp: "Coordinar por WhatsApp", tarjeta: "Tarjeta o Yape (Culqi)" } as const;
 export const DOCUMENT_LABEL = { dni: "DNI", ce: "C.E.", pasaporte: "Pasaporte", ruc: "RUC" } as const;
+
+/** Horas que un pedido con Yape/Plin (QR) espera la captura del pago antes de anularse y liberar su stock. */
+export const WALLET_PROOF_WINDOW_HOURS = 24;

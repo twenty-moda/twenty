@@ -50,6 +50,7 @@ describe("planOrderEmails", () => {
   });
 
   it("anular o rechazar avisa a los dos; la anulación automática de un pago con tarjeta pendiente solo al cliente", () => {
+    expect(status({ from: "pendiente", to: "anulado", changedBy: null, paymentMethod: "yape_plin" })).toEqual({ customer: "expirado", team: "anulado" });
     expect(status({ from: "pagado", to: "anulado" })).toEqual({ customer: "anulado", team: "anulado" });
     expect(status({ from: "por_verificar", to: "rechazado" })).toEqual({ customer: "rechazado", team: "rechazado" });
     expect(status({ from: "pendiente", to: "anulado", changedBy: null, paymentMethod: "tarjeta" })).toEqual({ customer: "expirado", team: null });

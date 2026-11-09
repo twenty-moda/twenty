@@ -47,8 +47,10 @@ export function planOrderEmails(event: OrderEvent): { customer: CustomerEmailKin
     const automatic = changedBy === null;
     switch (to) {
       case "anulado":
-        // Solo la tienda anula sola, y solo los pedidos con tarjeta sin pagar a los 60 minutos: el equipo nunca los vio.
+        // La tienda anula sola los pedidos sin pagar. Los de tarjeta el equipo nunca los vio; los de Yape/Plin sí (le
+        // llegó el pedido nuevo) y se le avisa, por si el cliente mandó la captura por WhatsApp.
         if (automatic && from === "pendiente" && paymentMethod === "tarjeta") return { customer: "expirado", team: null };
+        if (automatic && from === "pendiente" && paymentMethod === "yape_plin") return { customer: "expirado", team: "anulado" };
         return { customer: "anulado", team: "anulado" };
       case "rechazado":
         return { customer: "rechazado", team: "rechazado" };

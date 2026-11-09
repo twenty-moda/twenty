@@ -133,27 +133,48 @@ describe("payOrderWithCulqi", () => {
   });
 });
 
-describe("expireUnpaidCardOrders (cron)", () => {
-  it("anula solo los pedidos con tarjeta sin pagar después de 60 minutos y devuelve el stock", async () => {
-    const { expireUnpaidCardOrders } = await import("./orders");
+describe("expireUnpaidOrders (cron)", () => {
+  const stockNow = async () =>
+    (await db.select({ stock: schema.productVariants.stock }).from(schema.productVariants).where(eq(schema.productVariants.id, variantId)))[0].stock;
+  const later = (minutes: number) => new Date(Date.now() + minutes * 60 * 1000);
+
+  it("anula los pedidos con tarjeta sin pagar después de 60 minutos y devuelve el stock", async () => {
+    const { expireUnpaidOrders } = await import("./orders");
     const card = await newOrder();
     await db.update(schema.orders).set({ paymentMethod: "tarjeta" }).where(eq(schema.orders.id, card.orderId));
-    const whatsapp = await newOrder();
-    const [{ stock: before }] = await db.select({ stock: schema.productVariants.stock }).from(schema.productVariants).where(eq(schema.productVariants.id, variantId));
+    const wallet = await newOrder();
+    const before = await stockNow();
 
-    const in30 = new Date(Date.now() + 30 * 60 * 1000);
-    expect((await expireUnpaidCardOrders(db, in30)).numbers).toEqual([]);
-    const in90 = new Date(Date.now() + 90 * 60 * 1000);
-    const expired = await expireUnpaidCardOrders(db, in90);
+    expect((await expireUnpaidOrders(db, later(30))).numbers).toEqual([]);
+    const expired = await expireUnpaidOrders(db, later(90));
     expect(expired.numbers).toEqual([card.number]);
     // Anulación automática: el plan de emails la reconoce por changedBy null + tarjeta + pendiente.
     expect(expired.changes).toMatchObject([{ orderId: card.orderId, from: "pendiente", to: "anulado", changedBy: null, paymentMethod: "tarjeta", restocked: true }]);
     expect(planOrderEmails({ type: "status", change: expired.changes[0] })).toEqual({ customer: "expirado", team: null });
 
     expect((await getOrderByNumber(db, card.number))?.status).toBe("anulado");
+    expect((await getOrderByNumber(db, wallet.number))?.status).toBe("pendiente");
+    expect(await stockNow()).toBe(before + 1);
+  });
+
+  it("anula los de Yape/Plin sin captura a las 24 horas; los que tienen captura o se coordinan por WhatsApp siguen", async () => {
+    const { expireUnpaidOrders } = await import("./orders");
+    const wallet = await newOrder();
+    const withProof = await newOrder();
+    await db.update(schema.orders).set({ status: "por_verificar" }).where(eq(schema.orders.id, withProof.orderId));
+    const whatsapp = await newOrder();
+    await db.update(schema.orders).set({ paymentMethod: "whatsapp" }).where(eq(schema.orders.id, whatsapp.orderId));
+    const before = await stockNow();
+
+    expect((await expireUnpaidOrders(db, later(23 * 60))).numbers).toEqual([]);
+    const expired = await expireUnpaidOrders(db, later(25 * 60));
+    expect(expired.numbers).toEqual([wallet.number]);
+    expect(expired.changes).toMatchObject([{ orderId: wallet.orderId, from: "pendiente", to: "anulado", changedBy: null, paymentMethod: "yape_plin", restocked: true }]);
+    expect(planOrderEmails({ type: "status", change: expired.changes[0] })).toEqual({ customer: "expirado", team: "anulado" });
+
+    expect((await getOrderByNumber(db, withProof.number))?.status).toBe("por_verificar");
     expect((await getOrderByNumber(db, whatsapp.number))?.status).toBe("pendiente");
-    const [{ stock: after }] = await db.select({ stock: schema.productVariants.stock }).from(schema.productVariants).where(eq(schema.productVariants.id, variantId));
-    expect(after).toBe(before + 1);
+    expect(await stockNow()).toBe(before + 1);
   });
 });
 

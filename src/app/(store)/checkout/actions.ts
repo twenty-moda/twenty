@@ -12,7 +12,7 @@ import { notifyAfterResponse } from "@/server/order-events";
 import { linkCustomerToAccount, rememberCheckoutAddress } from "@/server/services/accounts";
 import { getSiteSettings } from "@/server/services/content";
 import { checkCoupon } from "@/server/services/coupons";
-import { expireUnpaidCardOrders, placeOrder } from "@/server/services/orders";
+import { expireUnpaidOrders, placeOrder } from "@/server/services/orders";
 import { resolveAgency } from "@/server/services/couriers";
 import { agencyLabel, methodCourier } from "@/lib/couriers";
 import { getCourierAgencies } from "../_data";
@@ -64,9 +64,9 @@ export async function placeOrderAction(raw: unknown): Promise<PlaceOrderState> {
     return { ok: false, errors: { form: "Hiciste muchos pedidos seguidos. Espera un rato o escríbenos por WhatsApp y te ayudamos." } };
   }
 
-  // Antes de vender, se libera el stock de los pedidos con tarjeta que no se pagaron en 60 minutos
-  // (en el plan Hobby de Vercel el cron corre solo una vez al día; así el stock no queda retenido).
-  const expired = await expireUnpaidCardOrders(db);
+  // Antes de vender, se libera el stock de los pedidos vencidos sin pagar (tarjeta a los 60 minutos, Yape/Plin a las
+  // 24 horas): en el plan Hobby de Vercel el cron corre solo una vez al día; así el stock no queda retenido.
+  const expired = await expireUnpaidOrders(db);
   for (const slug of expired.productSlugs) revalidateTag(cacheTags.product(slug), "max");
   if (expired.productSlugs.length) revalidateTag(cacheTags.catalog, "max");
   notifyAfterResponse(...expired.changes.map((change) => ({ type: "status" as const, change })));

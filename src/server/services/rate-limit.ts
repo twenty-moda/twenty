@@ -21,7 +21,7 @@ export const RATE_LIMITS = {
   /** Probar un cupón en el checkout (que no se puedan adivinar códigos). */
   coupon: { limit: 15, windowMinutes: 15 },
   /**
-   * Crear pedidos en el checkout. Cada pedido aparta stock (el de Yape/Plin, hasta que el equipo lo anule) y manda
+   * Crear pedidos en el checkout. Cada pedido aparta stock (el de Yape/Plin, hasta 24 horas) y manda
    * emails: sin límite, un script podría dejar la web agotada con pedidos falsos. Por IP es alto: en los celulares
    * muchos clientes salen por la misma IP de su operador.
    */

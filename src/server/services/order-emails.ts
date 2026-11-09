@@ -6,7 +6,7 @@
 import { GUIDE_FIELDS, guideCodeText, orderCourier } from "@/lib/couriers";
 import { whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
-import { DOCUMENT_LABEL, formatOrderNumber, ORDER_PROGRESS, PAYMENT_METHOD_LABEL, progressIndex, type OrderStatus } from "@/lib/order-status";
+import { DOCUMENT_LABEL, formatOrderNumber, ORDER_PROGRESS, PAYMENT_METHOD_LABEL, progressIndex, WALLET_PROOF_WINDOW_HOURS, type OrderStatus } from "@/lib/order-status";
 import { groupOrderItems } from "@/lib/outfits";
 import { REFUND_REASON_INFO, soldOutUnits } from "@/lib/refunds";
 import type { SiteSettings } from "./content";
@@ -167,7 +167,10 @@ export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, 
       if (order.paymentMethod === "yape_plin") {
         const { walletQr, walletName, walletDescription } = settings.payments;
         return make(`Recibimos tu pedido ${number}: falta tu pago`, `Paga ${total} con Yape o Plin y sube la captura en la página de tu pedido.`, `¡Gracias, ${name}!`, [
-          { type: "text", text: `Recibimos tu pedido ${number}. Para confirmarlo, paga ${total} con Yape o Plin y sube la captura del pago en la página de tu pedido. Te guardamos las prendas mientras tanto.` },
+          {
+            type: "text",
+            text: `Recibimos tu pedido ${number}. Para confirmarlo, paga ${total} con Yape o Plin y sube la captura del pago en la página de tu pedido. Te guardamos las prendas ${WALLET_PROOF_WINDOW_HOURS} horas: si no llega la captura, el pedido se anula.`,
+          },
           progressBlock(order.status),
           {
             type: "box",
@@ -318,8 +321,20 @@ export function customerOrderEmail(kind: CustomerEmailKind, order: OrderDetail, 
         "Si todavía quieres tus prendas, puedes volver a comprarlas.",
         "Tu pedido se anuló",
         [
-          { type: "text", text: `Hola ${name}, no recibimos el pago con tarjeta de tu pedido ${number}, así que lo anulamos y liberamos las prendas.` },
-          { type: "text", text: "Si todavía las quieres, vuelve a comprarlas mientras haya stock. Si tuviste algún problema para pagar, escríbenos y te ayudamos." },
+          {
+            type: "text",
+            text:
+              order.paymentMethod === "yape_plin"
+                ? `Hola ${name}, no recibimos la captura del pago con Yape o Plin de tu pedido ${number} en ${WALLET_PROOF_WINDOW_HOURS} horas, así que lo anulamos y liberamos las prendas.`
+                : `Hola ${name}, no recibimos el pago con tarjeta de tu pedido ${number}, así que lo anulamos y liberamos las prendas.`,
+          },
+          {
+            type: "text",
+            text:
+              order.paymentMethod === "yape_plin"
+                ? "Si ya pagaste, escríbenos por WhatsApp con la captura y lo resolvemos. Si todavía quieres las prendas, vuelve a comprarlas mientras haya stock."
+                : "Si todavía las quieres, vuelve a comprarlas mientras haya stock. Si tuviste algún problema para pagar, escríbenos y te ayudamos.",
+          },
           { type: "button", label: "Volver a la tienda", url: `${baseUrl}/catalogo` },
           ...whatsappButton(`Hola TWENTY, tuve un problema al pagar mi pedido ${number}.`, "Escribir por WhatsApp", true),
           summaryBox(order),

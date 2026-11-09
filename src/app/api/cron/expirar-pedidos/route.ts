@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { cacheTags } from "@/lib/cache-tags";
 import { getDb } from "@/server/db/client";
 import { notifyAfterResponse } from "@/server/order-events";
-import { expireUnpaidCardOrders } from "@/server/services/orders";
+import { expireUnpaidOrders } from "@/server/services/orders";
 
 /** Vercel Cron (vercel.json) llama aquí con `Authorization: Bearer <CRON_SECRET>`. */
 export async function GET(request: Request) {
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) return new Response("No autorizado", { status: 401 });
 
-  const result = await expireUnpaidCardOrders(getDb());
+  const result = await expireUnpaidOrders(getDb());
   for (const slug of result.productSlugs) revalidateTag(cacheTags.product(slug), "max");
   if (result.productSlugs.length) revalidateTag(cacheTags.catalog, "max");
   notifyAfterResponse(...result.changes.map((change) => ({ type: "status" as const, change })));

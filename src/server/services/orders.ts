@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql } fro
 import { normalizePhone, type CheckoutInput } from "@/lib/checkout-schema";
 import { COURIER_NAME, orderCourier, type Courier, type CourierGuide } from "@/lib/couriers";
 import { allocateCouponDiscount } from "@/lib/coupons";
-import { canTransition, OPEN_STATUSES, PAID_STATUSES, RESTOCK_STATUSES, type OrderStatus } from "@/lib/order-status";
+import { canTransition, OPEN_STATUSES, PAID_STATUSES, RESTOCK_STATUSES, WALLET_PROOF_WINDOW_HOURS, type OrderStatus } from "@/lib/order-status";
 import { allocateOutfitPrice, outfitLineKey } from "@/lib/outfits";
 import { priceLines } from "@/lib/pricing";
 import { shippingOptions, type ShippingKind } from "@/lib/shipping";
@@ -721,15 +721,26 @@ export async function updateCustomerNotes(db: Db, id: string, notes: string | nu
 export const CARD_PAYMENT_WINDOW_MINUTES = 60;
 
 /**
- * Anula los pedidos con tarjeta que no se pagaron a tiempo y devuelve su stock (lo corre el cron).
- * Los de Yape con QR y WhatsApp no se anulan solos: el equipo decide, porque suelen pagar más tarde.
+ * Anula los pedidos sin pagar y devuelve su stock (lo corre el cron y cada pedido nuevo): con tarjeta a los 60 minutos
+ * y con Yape/Plin a las 24 horas sin captura (con captura pasan a "Pago por verificar" y no vencen). Los de "Coordinar
+ * por WhatsApp" no se anulan solos: el equipo decide.
  */
-export async function expireUnpaidCardOrders(db: Db, now = new Date()): Promise<{ numbers: number[]; productSlugs: string[]; changes: StatusChange[] }> {
-  const before = new Date(now.getTime() - CARD_PAYMENT_WINDOW_MINUTES * 60 * 1000);
+export async function expireUnpaidOrders(db: Db, now = new Date()): Promise<{ numbers: number[]; productSlugs: string[]; changes: StatusChange[] }> {
+  const cardBefore = new Date(now.getTime() - CARD_PAYMENT_WINDOW_MINUTES * 60 * 1000);
+  const walletBefore = new Date(now.getTime() - WALLET_PROOF_WINDOW_HOURS * 60 * 60 * 1000);
   const stale = await db
-    .select({ id: orders.id, number: orders.number })
+    .select({ id: orders.id, number: orders.number, paymentMethod: orders.paymentMethod })
     .from(orders)
-    .where(and(eq(orders.status, "pendiente"), eq(orders.paymentMethod, "tarjeta"), lte(orders.createdAt, before), isNull(orders.stockRestoredAt)));
+    .where(
+      and(
+        eq(orders.status, "pendiente"),
+        isNull(orders.stockRestoredAt),
+        or(
+          and(eq(orders.paymentMethod, "tarjeta"), lte(orders.createdAt, cardBefore)),
+          and(eq(orders.paymentMethod, "yape_plin"), lte(orders.createdAt, walletBefore)),
+        ),
+      ),
+    );
   const numbers: number[] = [];
   const productSlugs = new Set<string>();
   const changes: StatusChange[] = [];
@@ -737,7 +748,10 @@ export async function expireUnpaidCardOrders(db: Db, now = new Date()): Promise<
     const result = await changeOrderStatus(db, {
       orderId: order.id,
       to: "anulado",
-      note: `Anulado automáticamente: no se recibió el pago con tarjeta en ${CARD_PAYMENT_WINDOW_MINUTES} minutos.`,
+      note:
+        order.paymentMethod === "tarjeta"
+          ? `Anulado automáticamente: no se recibió el pago con tarjeta en ${CARD_PAYMENT_WINDOW_MINUTES} minutos.`
+          : `Anulado automáticamente: no se subió la captura del pago con Yape o Plin en ${WALLET_PROOF_WINDOW_HOURS} horas.`,
       userId: null,
     });
     if (result.ok) {

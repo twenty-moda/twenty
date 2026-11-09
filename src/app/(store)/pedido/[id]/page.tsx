@@ -12,7 +12,7 @@ import { orderCourier, type Courier } from "@/lib/couriers";
 import { culqiConfig } from "@/lib/culqi-config";
 import { absoluteMediaUrl, whatsappUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
-import { formatOrderNumber, STATUS_INFO } from "@/lib/order-status";
+import { formatOrderNumber, STATUS_INFO, WALLET_PROOF_WINDOW_HOURS } from "@/lib/order-status";
 import { groupOrderItems } from "@/lib/outfits";
 import { REFUND_REASON_INFO, soldOutUnits } from "@/lib/refunds";
 import { getDb } from "@/server/db/client";
@@ -122,6 +122,9 @@ async function OrderView({ params, searchParams }: Pick<PageProps<"/pedido/[id]"
             <li>2. Paga exactamente {formatPrice(order.totalCents)}.</li>
             <li>3. Sube aquí la captura del pago.</li>
           </ol>
+          <p className="mx-auto mt-3 max-w-sm text-xs text-black/70">
+            Te guardamos las prendas {WALLET_PROOF_WINDOW_HOURS} horas. Si no llega la captura, el pedido se anula.
+          </p>
           <PaymentProofUpload orderId={order.id} tone="light" whatsappHref={proofWhatsapp} />
         </section>
       ) : null}
