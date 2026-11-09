@@ -17,7 +17,7 @@ export async function GET(request: Request, { params }: RouteContext<"/api/email
 
   const source = await fetch(absoluteMediaUrl(key, new URL(request.url).origin), { signal: AbortSignal.timeout(15_000) }).catch(() => null);
   if (!source?.ok) return new Response("No encontrado", { status: 404 });
-  const jpeg = await sharp(Buffer.from(await source.arrayBuffer()))
+  const jpeg = await sharp(Buffer.from(await source.arrayBuffer()), { limitInputPixels: 50_000_000 })
     .resize({ width, withoutEnlargement: true })
     .flatten({ background: "#ffffff" })
     .jpeg({ quality: 82, mozjpeg: true })

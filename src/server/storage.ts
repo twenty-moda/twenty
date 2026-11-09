@@ -98,7 +98,7 @@ export class InvalidImageError extends Error {}
 export async function saveImage(input: ArrayBuffer | Buffer, folder: string, baseName: string): Promise<string> {
   let webp: Buffer;
   try {
-    webp = await sharp(Buffer.from(input as ArrayBuffer))
+    webp = await sharp(Buffer.from(input as ArrayBuffer), { limitInputPixels: 50_000_000 })
       .rotate() // respeta la orientación de las fotos del celular
       .resize({ width: MAX_SIZE, height: MAX_SIZE, fit: "inside", withoutEnlargement: true })
       .webp({ quality: 82 })
