@@ -2,6 +2,7 @@
 
 import { Printer, ScanBarcode, Trash2 } from "lucide-react";
 import { memo, useMemo, useState } from "react";
+import { CameraScan } from "@/components/admin/camera-scanner";
 import { Combobox } from "@/components/admin/combobox";
 import { FormAlert } from "@/components/admin/form-controls";
 import { PrintSheet, usePrintSheet } from "@/components/admin/print-sheet";
@@ -104,16 +105,18 @@ export function LabelSheet({ variants, warehouses, initialLines, initialWarehous
         <p className="mb-1.5 flex items-center gap-2 text-sm font-medium">
           <ScanBarcode className="size-4" aria-hidden /> Prendas
         </p>
-        <Combobox
-          options={options}
-          value={query}
-          onChange={setQuery}
-          onPick={pick}
-          maxResults={40}
-          label="Buscar prenda o escanear el código"
-          placeholder="Escanea el código o busca una prenda o producto"
-        />
-        <p className="mt-1.5 text-xs text-muted">Cada lectura suma una etiqueta. Si eliges un producto, entran todas sus tallas y colores.</p>
+        <CameraScan onScan={pick}>
+          <Combobox
+            options={options}
+            value={query}
+            onChange={setQuery}
+            onPick={pick}
+            maxResults={40}
+            label="Buscar prenda o escanear el código"
+            placeholder="Escanea el código o busca una prenda o producto"
+          />
+        </CameraScan>
+        <p className="mt-1.5 text-xs text-muted">Cada lectura (pistola o cámara) suma una etiqueta. Si eliges un producto, entran todas sus tallas y colores.</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-line p-4">

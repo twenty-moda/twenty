@@ -3,6 +3,7 @@
 import { Check, Minus, Plus, Printer, ScanBarcode, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
+import { CameraScan, isCameraScanOn } from "@/components/admin/camera-scanner";
 import { Combobox } from "@/components/admin/combobox";
 import { FormAlert } from "@/components/admin/form-controls";
 import { PrintSheet, usePrintSheet } from "@/components/admin/print-sheet";
@@ -322,9 +323,9 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, []);
-  // Al empezar una venta, el lector ya escribe en el buscador.
+  // Al empezar una venta, el lector ya escribe en el buscador. Con la cámara no: en la tablet abriría el teclado encima.
   useEffect(() => {
-    if (!done) focusSearch();
+    if (!done && !isCameraScanOn()) focusSearch();
   }, [done]);
 
   if (done) {
@@ -387,29 +388,31 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
   return (
     <div className={cn("grid grid-cols-1 gap-6 pb-10 lg:grid-cols-[minmax(0,1fr)_25rem]", fontClass)}>
       <div className="min-w-0 space-y-4">
-        <div ref={searchRef}>
-          <div className="relative">
-            <ScanBarcode className="pointer-events-none absolute top-1/2 left-5 z-10 size-6 -translate-y-1/2 text-muted" aria-hidden />
-            <Combobox
-              options={options}
-              value={query}
-              onChange={setQuery}
-              onPick={pick}
-              maxResults={40}
-              label="Escanear o buscar prenda"
-              placeholder="Escanea la etiqueta o escribe nombre, color o código"
-              className={cn(fieldClass, "h-16 w-full border-2 border-white bg-surface pr-16 pl-14 text-lg")}
-            />
-            <span className="pointer-events-none absolute top-1/2 right-12 hidden -translate-y-1/2 sm:block">
-              <Kbd>F2</Kbd>
-            </span>
-          </div>
+        <div ref={searchRef} className="space-y-2">
+          <CameraScan onScan={pick} size="lg">
+            <div className="relative">
+              <ScanBarcode className="pointer-events-none absolute top-1/2 left-5 z-10 size-6 -translate-y-1/2 text-muted" aria-hidden />
+              <Combobox
+                options={options}
+                value={query}
+                onChange={setQuery}
+                onPick={pick}
+                maxResults={40}
+                label="Escanear o buscar prenda"
+                placeholder="Escanea la etiqueta o escribe nombre, color o código"
+                className={cn(fieldClass, "h-16 w-full border-2 border-white bg-surface pr-16 pl-14 text-lg")}
+              />
+              <span className="pointer-events-none absolute top-1/2 right-12 hidden -translate-y-1/2 sm:block">
+                <Kbd>F2</Kbd>
+              </span>
+            </div>
+          </CameraScan>
           {scanError ? (
-            <p role="alert" className="mt-2 text-sm font-semibold text-danger">
+            <p role="alert" className="text-sm font-semibold text-danger">
               {scanError}
             </p>
           ) : (
-            <p className="mt-2 text-sm text-muted">Cada lectura suma una prenda. Si eliges un producto, eliges el color y la talla.</p>
+            <p className="text-sm text-muted">Cada lectura (pistola o cámara) suma una prenda. Si eliges un producto, eliges el color y la talla.</p>
           )}
         </div>
 

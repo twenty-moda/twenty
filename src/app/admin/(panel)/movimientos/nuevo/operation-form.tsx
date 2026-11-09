@@ -2,6 +2,7 @@
 
 import { ScanBarcode, Trash2 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
+import { CameraScan } from "@/components/admin/camera-scanner";
 import { Combobox } from "@/components/admin/combobox";
 import { FormAlert } from "@/components/admin/form-controls";
 import { buttonClass } from "@/components/admin/ui";
@@ -129,16 +130,18 @@ export function OperationForm({ warehouses, variants, initialKind }: { warehouse
         <p className="mb-1.5 flex items-center gap-2 text-sm font-medium">
           <ScanBarcode className="size-4" aria-hidden /> Prendas
         </p>
-        <Combobox
-          options={options}
-          value={query}
-          onChange={setQuery}
-          onPick={pick}
-          maxResults={40}
-          label="Buscar prenda o escanear el código"
-          placeholder="Escanea el código o busca por nombre, color o SKU"
-        />
-        <p className="mt-1.5 text-xs text-muted">Con el lector de códigos: cada lectura suma una unidad.</p>
+        <CameraScan onScan={pick}>
+          <Combobox
+            options={options}
+            value={query}
+            onChange={setQuery}
+            onPick={pick}
+            maxResults={40}
+            label="Buscar prenda o escanear el código"
+            placeholder="Escanea el código o busca por nombre, color o SKU"
+          />
+        </CameraScan>
+        <p className="mt-1.5 text-xs text-muted">Con la pistola o la cámara: cada lectura suma una unidad.</p>
       </div>
 
       {lines.length ? (

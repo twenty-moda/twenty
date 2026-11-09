@@ -48,9 +48,12 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   // El enlace del pedido (/pedido/<id>) da acceso a sus datos: a otros sitios solo les llega el dominio.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // La ubicación la usa el checkout para la agencia más cercana; cámara y micrófono no se usan.
+  // La ubicación la usa el checkout para la agencia más cercana; la tienda no usa cámara ni micrófono.
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self), browsing-topics=()" },
 ];
+
+/** El panel lee las etiquetas con la cámara del teléfono o la tablet (punto de venta, movimientos y etiquetas). */
+const panelHeaders = [{ key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self), browsing-topics=()" }];
 
 const nextConfig: NextConfig = {
   // Modelo de caché de Next 16: 'use cache' + cacheTag. Catálogo estático en CDN,
@@ -69,7 +72,13 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: "4mb" },
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // Va después: si dos reglas ponen la misma cabecera, gana la última.
+      { source: "/admin/:path*", headers: panelHeaders },
+      // El lector de códigos en WebAssembly lleva la versión en el nombre: nunca cambia.
+      { source: "/vendor/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
+    ];
   },
   async redirects() {
     return [...siteRedirects(), ...legacyRedirects()];
