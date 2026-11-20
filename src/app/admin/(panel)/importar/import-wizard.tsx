@@ -2,8 +2,7 @@
 
 import { CheckCircle2, CircleAlert, FileSpreadsheet, Upload } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { startTransition, useActionState, useRef, useState } from "react";
 import { Badge, buttonClass } from "@/components/admin/ui";
 import { Segmented } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
@@ -20,10 +19,20 @@ const ACTION_LABEL: Record<ImportAction, { label: string; tone: "success" | "inf
 export function ImportWizard() {
   const [preview, previewAction, previewing] = useActionState(previewImportAction, { status: "idle" } as ImportState);
   const [applied, applyAction, applying] = useActionState(applyImportAction, { status: "idle" } as ImportState);
-  const previewButton = useRef<HTMLButtonElement>(null);
+  // El archivo se guarda aquí y se manda a mano: si fuera la acción de un <form>, React vacía el formulario al
+  // terminar la vista previa y «Importar» llegaba sin archivo («Elige el archivo de Excel»).
+  const file = useRef<File | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [showUnchanged, setShowUnchanged] = useState(false);
   const [target, setTarget] = useState<ImportTarget>("tienda");
+
+  const send = (dispatch: (fd: FormData) => void, to: ImportTarget = target) => {
+    if (!file.current) return;
+    const fd = new FormData();
+    fd.set("file", file.current);
+    fd.set("target", to);
+    startTransition(() => dispatch(fd));
+  };
 
   if (applied.status === "done") {
     const s = applied.plan.summary;
@@ -59,18 +68,16 @@ export function ImportWizard() {
   const toApply = plan ? plan.summary.newVariants + plan.summary.updated : 0;
 
   return (
-    // Un solo <form>: el archivo elegido sirve para la vista previa y para importar.
-    <form className="space-y-5">
+    <div className="space-y-5">
       <div>
         <span className="mb-1.5 block text-sm font-medium">¿Dónde se venden los productos nuevos?</span>
-        <input type="hidden" name="target" value={target} />
         <Segmented
           label="Dónde se venden"
           value={target}
           onChange={(next) => {
-            // flushSync: el campo oculto ya lleva el destino nuevo cuando se vuelve a armar la vista previa.
-            flushSync(() => setTarget(next));
-            if (fileName) previewButton.current?.form?.requestSubmit(previewButton.current);
+            setTarget(next);
+            // Con un archivo ya elegido, la vista previa se vuelve a armar con el destino nuevo.
+            send(previewAction, next);
           }}
           options={[
             { value: "tienda", label: "Solo tienda" },
@@ -99,13 +106,13 @@ export function ImportWizard() {
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           className="sr-only"
           onChange={(e) => {
-            setFileName(e.target.files?.[0]?.name ?? null);
-            if (e.target.files?.length) e.currentTarget.form?.requestSubmit(previewButton.current);
+            const chosen = e.target.files?.[0] ?? null;
+            if (!chosen) return;
+            file.current = chosen;
+            setFileName(chosen.name);
+            send(previewAction);
           }}
         />
-        <button ref={previewButton} type="submit" formAction={previewAction} className="sr-only" tabIndex={-1}>
-          Ver vista previa
-        </button>
       </label>
 
       {previewing ? <p className="text-sm text-muted">Leyendo el archivo…</p> : null}
@@ -185,13 +192,13 @@ export function ImportWizard() {
             </ul>
           </div>
 
-          <button type="submit" formAction={applyAction} disabled={applying || toApply === 0} className={buttonClass("primary")}>
+          <button type="button" onClick={() => send(applyAction)} disabled={applying || toApply === 0} className={buttonClass("primary")}>
             <Upload className="size-4" aria-hidden />
             {applying ? "Importando…" : toApply ? `Importar ${toApply} ${toApply === 1 ? "fila" : "filas"}` : "No hay cambios para importar"}
           </button>
         </div>
       ) : null}
-    </form>
+    </div>
   );
 }
 
