@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { AdminPage, Badge, buttonClass, EmptyState, FilterTabs, SearchBox } from "@/components/admin/ui";
 import { formatPrice } from "@/lib/money";
+import { PRODUCT_STATUS_LABEL, type ProductStatus } from "@/lib/product-status";
 import { getDb } from "@/server/db/client";
 import { getCatalogOptions, listAdminProducts, type AdminProductFilter } from "@/server/services/admin-products";
 import { requireAdmin } from "../../_lib/auth";
@@ -11,7 +12,8 @@ import { requireAdmin } from "../../_lib/auth";
 export const instant = false;
 export const metadata: Metadata = { title: "Productos" };
 
-const STATUS = { active: { label: "Publicado", tone: "success" }, draft: { label: "Borrador", tone: "neutral" }, archived: { label: "Archivado", tone: "neutral" } } as const;
+const STATUS_TONE = { active: "success", pos_only: "info", draft: "neutral", archived: "neutral" } as const satisfies Record<ProductStatus, string>;
+const VIEW_STATUS: Record<string, ProductStatus> = { publicados: "active", "solo-tienda": "pos_only", borradores: "draft", archivados: "archived" };
 
 export default async function ProductsPage({ searchParams }: PageProps<"/admin/productos">) {
   await requireAdmin();
@@ -22,7 +24,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
   const filter: AdminProductFilter = {
     q,
     category,
-    status: vista === "publicados" ? "active" : vista === "borradores" ? "draft" : vista === "archivados" ? "archived" : undefined,
+    status: vista ? VIEW_STATUS[vista] : undefined,
     problem: vista === "sin-fotos" || vista === "sin-stock" ? vista : undefined,
   };
   const db = getDb();
@@ -37,6 +39,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
   const views = [
     { key: undefined, label: "Todos" },
     { key: "publicados", label: "Publicados" },
+    { key: "solo-tienda", label: "Solo tienda" },
     { key: "borradores", label: "Borradores" },
     { key: "sin-fotos", label: "Sin fotos" },
     { key: "sin-stock", label: "Sin stock" },
@@ -114,7 +117,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
                       </span>
                     </span>
                   )}
-                  <Badge tone={STATUS[p.status].tone}>{STATUS[p.status].label}</Badge>
+                  <Badge tone={STATUS_TONE[p.status]}>{PRODUCT_STATUS_LABEL[p.status]}</Badge>
                 </Link>
               </li>
             ))}

@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parsePhotoName, parseProductSheet, TEMPLATE_COLUMNS } from "@/lib/product-import";
 import type { Db } from "../db/client";
@@ -58,6 +58,56 @@ describe("carga masiva", () => {
     expect(updated).toMatchObject({ priceCents: 8900, compareAtPriceCents: null, costCents: 4000, stock: 0, isActive: false });
 
     expect((await planImport(db, second)).rows[0].action).toBe("sin-cambios");
+  });
+});
+
+describe("carga masiva «Solo tienda»", () => {
+  it("nada sale en la web: producto nuevo solo de tienda, talla nueva de uno publicado apagada y la visibilidad de lo que ya existe no cambia", async () => {
+    const { listProductCards, getProductDetail } = await import("./catalog");
+    const { listPosVariants } = await import("./pos");
+    const { getVariantSnapshots } = await import("./cart");
+    const [webWarehouse] = await db.select({ id: schema.warehouses.id }).from(schema.warehouses).where(eq(schema.warehouses.sellsOnline, true));
+
+    // Un producto publicado con una talla visible.
+    const web = parseProductSheet([header, ["Cargo Web", "Pantalones", "", "Verde", "30", "TMW-9101", 90, "", "", 3, "", "sí"]]);
+    await applyImport(db, web, null, "web");
+    expect((await listProductCards(db)).some((c) => c.slug === "cargo-web")).toBe(true);
+
+    const sheet = parseProductSheet([
+      header,
+      ["Jogger Insaga", "Pantalones", "", "Negro", "Única", "", 75, "", 30, 12, "", "sí"],
+      ["Cargo Web", "Pantalones", "", "Verde", "32", "", 90, "", "", 4, "", "sí"],
+      ["Cargo Web", "Pantalones", "", "Verde", "30", "TMW-9101", 95, "", "", 3, "", "no"],
+    ]);
+    const plan = await planImport(db, sheet, "tienda");
+    expect(plan.target).toBe("tienda");
+    expect(plan.rows.map((r) => [r.action, r.changes])).toEqual([
+      ["crear-producto", ["S/ 75 · Stock 12"]],
+      ["crear-variante", ["S/ 90 · Stock 4", "Apagada en la web"]],
+      ["actualizar", ["Precio S/ 90 → S/ 95"]], // «Visible = no» no cuenta
+    ]);
+    await applyImport(db, sheet, null, "tienda");
+
+    const [jogger] = await db.select().from(schema.products).where(eq(schema.products.slug, "jogger-insaga"));
+    expect(jogger.status).toBe("pos_only");
+    const [cargo] = await db.select().from(schema.products).where(eq(schema.products.slug, "cargo-web"));
+    const variants = await db.select().from(schema.productVariants).where(inArray(schema.productVariants.productId, [jogger.id, cargo.id]));
+    const cargo32 = variants.find((v) => v.productId === cargo.id && v.sku !== "TMW-9101")!;
+    expect(cargo32.isActive).toBe(false);
+    expect(variants.find((v) => v.sku === "TMW-9101")?.isActive).toBe(true);
+
+    // En la web: el producto de tienda no existe y el publicado sigue solo con su talla 30.
+    expect((await listProductCards(db)).some((c) => c.slug === "jogger-insaga")).toBe(false);
+    expect(await getProductDetail(db, "jogger-insaga")).toBeNull();
+    expect((await listProductCards(db)).find((c) => c.slug === "cargo-web")?.sizes).toEqual(["30"]);
+    const joggerVariant = variants.find((v) => v.productId === jogger.id)!;
+    const snapshots = await getVariantSnapshots(db, [joggerVariant.id, cargo32.id]);
+    expect(snapshots.map((v) => v.available)).toEqual([false, false]);
+
+    // En el punto de venta: se venden los dos.
+    const pos = await listPosVariants(db, webWarehouse.id);
+    expect(pos.find((v) => v.variantId === joggerVariant.id)).toMatchObject({ stock: 12, priceCents: 7500 });
+    expect(pos.find((v) => v.variantId === cargo32.id)).toMatchObject({ stock: 4 });
   });
 });
 

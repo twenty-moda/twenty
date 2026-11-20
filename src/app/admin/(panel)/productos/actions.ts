@@ -4,6 +4,7 @@ import { refresh, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { cacheTags } from "@/lib/cache-tags";
+import { canBeOutfitPiece } from "@/lib/product-status";
 import { getDb } from "@/server/db/client";
 import {
   addProductImage,
@@ -55,8 +56,8 @@ export async function saveProductAction(productId: string | null, _: ActionState
   if (!productId) redirect(`/admin/productos/${result.id}?nuevo=1`);
   refresh();
   const saved = result.previousSlug ? `Guardado. La dirección anterior /product/${result.previousSlug} redirige a la nueva.` : "Producto guardado.";
-  // Una prenda archivada deja sin vender los conjuntos que la llevan (en borrador sí: se vende solo dentro del conjunto).
-  const outfits = parsed.data.status === "archived" ? await outfitsUsing(db, result.id) : [];
+  // Una prenda archivada o solo de tienda deja sin vender los conjuntos que la llevan (en borrador sí: se vende solo dentro del conjunto).
+  const outfits = canBeOutfitPiece(parsed.data.status) ? [] : await outfitsUsing(db, result.id);
   if (outfits.length) {
     for (const o of outfits) refreshStore(await getProductSlug(db, o.id));
     return success(`${saved} Ojo: es parte de ${outfits.map((o) => `“${o.name}”`).join(", ")}; ese conjunto no se vende hasta que cambies esa pieza.`);

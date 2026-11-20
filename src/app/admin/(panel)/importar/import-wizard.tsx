@@ -3,9 +3,11 @@
 import { CheckCircle2, CircleAlert, FileSpreadsheet, Upload } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Badge, buttonClass } from "@/components/admin/ui";
+import { Segmented } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
-import type { ImportAction } from "@/server/services/product-import";
+import type { ImportAction, ImportTarget } from "@/server/services/product-import";
 import { applyImportAction, previewImportAction, type ImportState } from "./actions";
 
 const ACTION_LABEL: Record<ImportAction, { label: string; tone: "success" | "info" | "warning" | "neutral" }> = {
@@ -21,6 +23,7 @@ export function ImportWizard() {
   const previewButton = useRef<HTMLButtonElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [showUnchanged, setShowUnchanged] = useState(false);
+  const [target, setTarget] = useState<ImportTarget>("tienda");
 
   if (applied.status === "done") {
     const s = applied.plan.summary;
@@ -29,13 +32,20 @@ export function ImportWizard() {
         <CheckCircle2 className="size-8 text-success" aria-hidden />
         <h2 className="mt-3 text-lg font-bold">Carga lista</h2>
         <p className="mt-1 text-sm">
-          {s.newProducts} productos nuevos, {s.newVariants} variantes nuevas y {s.updated} actualizadas. La tienda ya muestra los cambios.
+          {s.newProducts} productos nuevos, {s.newVariants} variantes nuevas y {s.updated} actualizadas.{" "}
+          {applied.plan.target === "tienda" ? "Ya se venden en el punto de venta; en la web no aparecen." : "La tienda ya muestra los cambios."}
           {s.skipped ? ` Se omitieron ${s.skipped} filas con errores.` : ""}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Link href="/admin/productos?vista=sin-fotos" className={buttonClass("primary")}>
-            Ver productos sin fotos
-          </Link>
+          {applied.plan.target === "tienda" ? (
+            <Link href="/admin/productos?vista=solo-tienda" className={buttonClass("primary")}>
+              Ver productos solo tienda
+            </Link>
+          ) : (
+            <Link href="/admin/productos?vista=sin-fotos" className={buttonClass("primary")}>
+              Ver productos sin fotos
+            </Link>
+          )}
           <button type="button" onClick={() => window.location.reload()} className={buttonClass("secondary")}>
             Subir otro archivo
           </button>
@@ -51,6 +61,29 @@ export function ImportWizard() {
   return (
     // Un solo <form>: el archivo elegido sirve para la vista previa y para importar.
     <form className="space-y-5">
+      <div>
+        <span className="mb-1.5 block text-sm font-medium">¿Dónde se venden los productos nuevos?</span>
+        <input type="hidden" name="target" value={target} />
+        <Segmented
+          label="Dónde se venden"
+          value={target}
+          onChange={(next) => {
+            // flushSync: el campo oculto ya lleva el destino nuevo cuando se vuelve a armar la vista previa.
+            flushSync(() => setTarget(next));
+            if (fileName) previewButton.current?.form?.requestSubmit(previewButton.current);
+          }}
+          options={[
+            { value: "tienda", label: "Solo tienda" },
+            { value: "web", label: "Web y tienda" },
+          ]}
+        />
+        <span className="mt-1.5 block text-xs text-muted">
+          {target === "tienda"
+            ? "Se venden en el punto de venta (boleta, factura o nota de venta) y no aparecen en la web. Una talla o color nuevo de un producto que ya está en la web se crea apagado, y a lo que ya existe no se le cambia si se ve o no."
+            : "Los productos nuevos se publican en la web (los de Visible = No quedan en borrador) y también se venden en el punto de venta."}
+        </span>
+      </div>
+
       <label
         className={cn(
           "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-6 py-10 text-center transition hover:border-white/50",
@@ -95,7 +128,10 @@ export function ImportWizard() {
             <SummaryTile label="Se actualizan" value={plan.summary.updated} />
             <SummaryTile label="Filas con error" value={plan.summary.skipped} danger={plan.summary.skipped > 0} />
           </div>
-          <p className="text-xs text-muted">Formato detectado: {plan.format === "legacy" ? "plantilla anterior (con Es Maestro / Atributos)" : "plantilla nueva"}.</p>
+          <p className="text-xs text-muted">
+            Formato detectado: {plan.format === "legacy" ? "plantilla anterior (con Es Maestro / Atributos)" : "plantilla nueva"}.{" "}
+            {plan.target === "tienda" ? "Destino: solo tienda (nada de esta carga sale en la web)." : "Destino: web y tienda."}
+          </p>
 
           {plan.newColors.length || plan.newSizes.length || plan.newFits.length ? (
             <p className="rounded-xl bg-info/15 px-4 py-3 text-sm">

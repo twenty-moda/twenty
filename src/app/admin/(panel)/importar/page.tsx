@@ -19,7 +19,7 @@ export default async function ImportPage() {
             <li>
               1. Descarga la plantilla (una fila por color y talla) o el catálogo actual para editarlo.
             </li>
-            <li>2. Llénalo en Excel y súbelo aquí. Antes de guardar verás qué se crea y qué se actualiza.</li>
+            <li>2. Elige si los productos nuevos van a la web o solo a la tienda, y sube el Excel. Antes de guardar verás qué se crea y qué se actualiza.</li>
             <li>3. Si el SKU ya existe, se actualizan precio, stock y visibilidad. Si lo dejas vacío, se genera uno.</li>
           </ol>
           <div className="mb-5 flex flex-wrap gap-2">

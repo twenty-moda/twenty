@@ -26,7 +26,8 @@ const timestamps = {
     .$onUpdate(() => new Date()),
 };
 
-export const productStatus = pgEnum("product_status", ["active", "draft", "archived"]);
+/** `pos_only` = «Solo tienda»: se vende en el punto de venta y no aparece en la web (ver `src/lib/product-status.ts`). */
+export const productStatus = pgEnum("product_status", ["active", "draft", "archived", "pos_only"]);
 export const gender = pgEnum("gender", ["hombre", "mujer", "unisex"]);
 export const promotionType = pgEnum("promotion_type", ["bundle_price"]);
 export const couponType = pgEnum("coupon_type", ["porcentaje", "monto"]);

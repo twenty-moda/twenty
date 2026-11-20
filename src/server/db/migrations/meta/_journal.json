@@ -218,6 +218,13 @@
       "when": 1794175001471,
       "tag": "0030_order-emails",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795139385263,
+      "tag": "0031_product-status-pos-only",
+      "breakpoints": true
     }
   ]
 }

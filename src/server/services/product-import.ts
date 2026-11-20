@@ -3,6 +3,10 @@
  * Regla: el SKU manda. Si el SKU existe se actualizan precio, stock y visibilidad; si no, se crea la
  * variante (y el producto si su nombre no existe). Las categorías deben existir; fits, colores y tallas
  * nuevos se crean solos.
+ *
+ * Destino «Solo tienda» (pedido de TWENTY, 19/11/2026): nada de la carga sale en la web. Los productos nuevos
+ * quedan `pos_only`, las variantes nuevas de un producto publicado se crean apagadas (el punto de venta las vende
+ * igual) y a las que ya existen no se les cambia la visibilidad (la columna Visible no cuenta).
  */
 import { and, eq, sql } from "drizzle-orm";
 import { formatPrice } from "@/lib/money";
@@ -17,9 +21,13 @@ type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Conn = Db | Tx;
 
 export type ImportAction = "crear-producto" | "crear-variante" | "actualizar" | "sin-cambios";
+/** Dónde se venden los productos de la carga: en la web y la tienda (como siempre) o solo en el punto de venta. */
+export const IMPORT_TARGETS = ["web", "tienda"] as const;
+export type ImportTarget = (typeof IMPORT_TARGETS)[number];
 export type ImportPlanRow = { row: number; action: ImportAction; product: string; variant: string; changes: string[] };
 export type ImportPlan = {
   format: ParsedSheet["format"];
+  target: ImportTarget;
   rows: ImportPlanRow[];
   issues: ImportIssue[];
   summary: { newProducts: number; newVariants: number; updated: number; unchanged: number; skipped: number };
@@ -36,7 +44,7 @@ async function loadExisting(db: Conn) {
     db.select({ id: fits.id, name: fits.name, slug: fits.slug }).from(fits),
     db.select({ id: colors.id, slug: colors.slug }).from(colors),
     db.select({ id: sizes.id, label: sizes.label }).from(sizes),
-    db.select({ id: products.id, slug: products.slug, name: products.name, kind: products.kind }).from(products),
+    db.select({ id: products.id, slug: products.slug, name: products.name, kind: products.kind, status: products.status }).from(products),
     db
       .select({
         id: productVariants.id,
@@ -70,9 +78,18 @@ async function loadExisting(db: Conn) {
   return { categoryNames: categoryRows.map((c) => c.name), category, fit, product, color, size, bySku, byOption };
 }
 
-type Resolved = { row: ImportRow; plan: ImportPlanRow; variantId: string | null; categoryId: string; productSlug: string };
+type Resolved = {
+  row: ImportRow;
+  plan: ImportPlanRow;
+  variantId: string | null;
+  categoryId: string;
+  productSlug: string;
+  /** Variante nueva: si se ve en la web. Existente: si se le cambia la visibilidad (null = no se toca). */
+  isActive: boolean | null;
+};
 
-function resolve(parsed: ParsedSheet, existing: Existing) {
+function resolve(parsed: ParsedSheet, existing: Existing, target: ImportTarget) {
+  const posOnly = target === "tienda";
   const issues: ImportIssue[] = [...parsed.issues];
   const resolved: Resolved[] = [];
   const newProducts = new Set<string>();
@@ -107,12 +124,13 @@ function resolve(parsed: ParsedSheet, existing: Existing) {
       }
       if (row.costCents !== null && variant.costCents !== row.costCents) changes.push(`Costo ${formatPrice(row.costCents)}`);
       if (variant.stock !== row.stock) changes.push(`Stock ${variant.stock} → ${row.stock}`);
-      if (variant.isActive !== row.visible) changes.push(row.visible ? "Se muestra" : "Se oculta");
+      if (!posOnly && variant.isActive !== row.visible) changes.push(row.visible ? "Se muestra" : "Se oculta");
       resolved.push({
         row,
         variantId: variant.id,
         categoryId: category.id,
         productSlug,
+        isActive: posOnly ? null : row.visible,
         plan: { row: row.row, action: changes.length ? "actualizar" : "sin-cambios", product: row.product, variant: variantLabel, changes },
       });
       continue;
@@ -129,17 +147,20 @@ function resolve(parsed: ParsedSheet, existing: Existing) {
     if (row.fit && !existing.fit.has(slugify(row.fit))) newFits.set(slugify(row.fit), row.fit);
     const createsProduct = !product && !newProducts.has(productSlug);
     if (!product) newProducts.add(productSlug);
+    // Solo tienda: una talla o color nuevo de un producto que ya está en la web se crea apagado.
+    const hiddenOnWeb = posOnly && product?.status === "active";
     resolved.push({
       row,
       variantId: null,
       categoryId: category.id,
       productSlug,
+      isActive: hiddenOnWeb ? false : row.visible,
       plan: {
         row: row.row,
         action: createsProduct ? "crear-producto" : "crear-variante",
         product: row.product,
         variant: variantLabel,
-        changes: [`${formatPrice(row.priceCents)} · Stock ${row.stock}`],
+        changes: [`${formatPrice(row.priceCents)} · Stock ${row.stock}`, ...(hiddenOnWeb ? ["Apagada en la web"] : [])],
       },
     });
   }
@@ -147,6 +168,7 @@ function resolve(parsed: ParsedSheet, existing: Existing) {
   const count = (a: ImportAction) => resolved.filter((r) => r.plan.action === a).length;
   const plan: ImportPlan = {
     format: parsed.format,
+    target,
     rows: resolved.map((r) => r.plan),
     issues: issues.sort((a, b) => a.row - b.row),
     summary: {
@@ -163,15 +185,20 @@ function resolve(parsed: ParsedSheet, existing: Existing) {
   return { plan, resolved };
 }
 
-export async function planImport(db: Db, parsed: ParsedSheet): Promise<ImportPlan> {
-  return resolve(parsed, await loadExisting(db)).plan;
+export async function planImport(db: Db, parsed: ParsedSheet, target: ImportTarget = "web"): Promise<ImportPlan> {
+  return resolve(parsed, await loadExisting(db), target).plan;
 }
 
 /** Aplica la carga (las filas con errores se omiten). Devuelve los slugs afectados para refrescar la tienda. */
-export async function applyImport(db: Db, parsed: ParsedSheet, userId: string | null = null): Promise<{ plan: ImportPlan; productSlugs: string[] }> {
+export async function applyImport(
+  db: Db,
+  parsed: ParsedSheet,
+  userId: string | null = null,
+  target: ImportTarget = "web",
+): Promise<{ plan: ImportPlan; productSlugs: string[] }> {
   return db.transaction(async (tx) => {
     const existing = await loadExisting(tx);
-    const { plan, resolved } = resolve(parsed, existing);
+    const { plan, resolved } = resolve(parsed, existing, target);
     const productIds = new Map([...existing.product.entries()].map(([slug, p]) => [slug, p.id]));
     const fitIds = new Map(existing.fit);
     const taken = new Set(existing.bySku.keys());
@@ -186,7 +213,12 @@ export async function applyImport(db: Db, parsed: ParsedSheet, userId: string | 
         if (r.plan.action === "sin-cambios") continue;
         await tx
           .update(productVariants)
-          .set({ priceCents: row.priceCents, compareAtPriceCents: row.compareAtCents, isActive: row.visible, ...(row.costCents !== null ? { costCents: row.costCents } : {}) })
+          .set({
+            priceCents: row.priceCents,
+            compareAtPriceCents: row.compareAtCents,
+            ...(r.isActive !== null ? { isActive: r.isActive } : {}),
+            ...(row.costCents !== null ? { costCents: row.costCents } : {}),
+          })
           .where(eq(productVariants.id, r.variantId));
         stockTargets.push({ variantId: r.variantId, quantity: row.stock });
         continue;
@@ -210,7 +242,7 @@ export async function applyImport(db: Db, parsed: ParsedSheet, userId: string | 
             categoryId: r.categoryId,
             fitId,
             description: row.description,
-            status: row.visible ? "active" : "draft",
+            status: target === "tienda" ? "pos_only" : row.visible ? "active" : "draft",
           })
           .returning({ id: products.id });
         productIds.set(r.productSlug, productId);
@@ -236,7 +268,7 @@ export async function applyImport(db: Db, parsed: ParsedSheet, userId: string | 
           priceCents: row.priceCents,
           compareAtPriceCents: row.compareAtCents,
           costCents: row.costCents,
-          isActive: row.visible,
+          isActive: r.isActive ?? row.visible,
           position,
         })
         .returning({ id: productVariants.id });

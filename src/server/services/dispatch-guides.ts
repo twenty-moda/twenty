@@ -8,7 +8,7 @@
  */
 import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
-import { checkCustomer } from "@/lib/pos";
+import { checkCustomer, garmentDescription } from "@/lib/pos";
 import { findInei, ineiDistricts } from "@/lib/ubigeo-inei";
 import type { Db } from "../db/client";
 import { dispatchGuides, documentType, type DispatchGuideItem } from "../db/schema";
@@ -70,7 +70,7 @@ async function guideItems(db: Db, saleId: string, items: { id: string; sku: stri
   return items
     .map((i) => ({
       sku: i.sku,
-      description: `${i.productName} ${i.colorName} T${i.sizeLabel}`.toUpperCase().slice(0, 250),
+      description: garmentDescription(i.productName, i.colorName, i.sizeLabel).slice(0, 250),
       quantity: i.quantity - returned.filter((r) => r.saleItemId === i.id).reduce((s, r) => s + r.quantity, 0),
     }))
     .filter((i) => i.quantity > 0);

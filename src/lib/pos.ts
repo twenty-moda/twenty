@@ -1,6 +1,7 @@
 /** Punto de venta: medios de pago, documentos y las cuentas de cobro (las usan la pantalla y el servidor). */
 import { formatPrice } from "./money";
 import { allocateOutfitPrice } from "./outfits";
+import { normalizeText } from "./slug";
 
 export const PAYMENT_METHODS = ["efectivo", "yape", "plin", "tarjeta", "transferencia"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
@@ -133,4 +134,27 @@ export function settlePayments(totalCents: number, payments: PaymentInput[]): { 
     changeCents += p.receivedCents - p.amountCents;
   }
   return { ok: true, changeCents };
+}
+
+// ─── Prendas por modelo ──────────────────────────────────────────────────────
+
+/**
+ * Insaga llevaba el stock por modelo, sin color ni talla. Lo que se pasó así (pedido de TWENTY, 19/11/2026) tiene una
+ * sola variante, color «Surtido» y talla «Única», que no se imprimen en la boleta ni en el ticket.
+ */
+export const MODEL_COLOR = "Surtido";
+export const ONE_SIZE = "ÚNICA";
+const isModelColor = (color: string) => normalizeText(color.trim()) === "surtido";
+const isOneSize = (size: string) => normalizeText(size.trim()) === "unica";
+
+/** Color y talla para mostrar (sin los de una prenda por modelo): ["Negro", "T 30"]. */
+export function garmentOptions(colorName: string, sizeLabel: string): string[] {
+  return [isModelColor(colorName) ? null : colorName, isOneSize(sizeLabel) ? null : `T ${sizeLabel}`].filter((x): x is string => Boolean(x));
+}
+
+/** Descripción de la línea en la boleta, factura o guía: "BAGGY ÁNGEL NEGRO T30" (o solo "BAGGY CRUZ" si es por modelo). */
+export function garmentDescription(productName: string, colorName: string, sizeLabel: string): string {
+  const color = isModelColor(colorName) ? "" : ` ${colorName}`;
+  const size = isOneSize(sizeLabel) ? "" : ` T${sizeLabel}`;
+  return `${productName}${color}${size}`.toUpperCase();
 }

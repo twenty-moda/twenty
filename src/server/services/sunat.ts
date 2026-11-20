@@ -6,7 +6,7 @@
  * Cada venta se manda con su número (lo pone nuestra serie) y con `Idempotency-Key` = id de la venta: si se corta la
  * conexión y se reintenta, la API devuelve el mismo comprobante y no emite otro.
  */
-import { netLineTotals, type PosDocumentType } from "@/lib/pos";
+import { garmentDescription, netLineTotals, type PosDocumentType } from "@/lib/pos";
 
 export type SunatResult = {
   status: "pendiente" | "aceptado" | "rechazado";
@@ -170,7 +170,7 @@ function garment(item: Garment, cents: number): Record<string, unknown> {
   return {
     unidad_de_medida: "NIU",
     codigo_interno: item.sku,
-    descripcion: `${item.productName} ${item.colorName} T${item.sizeLabel}`.toUpperCase().slice(0, 500),
+    descripcion: garmentDescription(item.productName, item.colorName, item.sizeLabel).slice(0, 500),
     cantidad: String(item.quantity),
     precio_unitario: unitPrice(cents, item.quantity),
     porcentaje_igv: "18",

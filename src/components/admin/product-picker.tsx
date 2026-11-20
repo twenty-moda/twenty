@@ -74,7 +74,7 @@ export function ProductPicker({
                 <span className="block truncate">{x.name}</span>
                 <span className="block text-xs text-muted">
                   {x.categoryName}
-                  {x.status !== "active" ? " · no publicado" : ""}
+                  {x.status === "pos_only" ? " · solo tienda" : x.status !== "active" ? " · no publicado" : ""}
                 </span>
               </span>
               <span className="text-muted">{x.minPrice ? formatPrice(x.minPrice) : "—"}</span>

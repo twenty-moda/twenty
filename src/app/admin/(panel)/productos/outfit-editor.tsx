@@ -8,10 +8,11 @@ import { fieldClass, SelectWrap, selectClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { discountPercent, formatPrice } from "@/lib/money";
 import { MAX_OUTFIT_PIECES, MIN_OUTFIT_PIECES, pieceLabel } from "@/lib/outfits";
+import type { ProductStatus } from "@/lib/product-status";
 import { idle, type ActionState } from "../../_lib/action-state";
 import { saveOutfitAction } from "./actions";
 
-type Candidate = { id: string; name: string; status: "active" | "draft" | "archived"; categoryName: string; minPrice: number | null; totalStock: number };
+type Candidate = { id: string; name: string; status: ProductStatus; categoryName: string; minPrice: number | null; totalStock: number };
 type Piece = { productId: string; label: string };
 
 /** "70", "69.90", "S/ 70" → céntimos (NaN si no es un número). */

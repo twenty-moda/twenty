@@ -2,6 +2,7 @@ import { CheckCircle2, ExternalLink } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AdminPage, Badge, buttonClass, Card } from "@/components/admin/ui";
+import { outfitPieceProblem, PRODUCT_STATUS_LABEL } from "@/lib/product-status";
 import { getDb } from "@/server/db/client";
 import { getAdminProduct, getCatalogOptions, listOutfitCandidates } from "@/server/services/admin-products";
 import { requireAdmin } from "../../../_lib/auth";
@@ -33,9 +34,13 @@ export default async function EditProductPage({ params, searchParams }: PageProp
   const missing = (
     outfit
       ? [pieces.length < 2 && "prendas", !product.outfitPriceCents && "precio", images.length === 0 && "fotos"]
-      : [activeVariants === 0 && "variantes activas", images.length === 0 && "fotos"]
+      : product.status === "pos_only"
+        ? // Solo para el punto de venta: no necesita fotos y vende también las variantes apagadas.
+          [variants.length === 0 && "variantes"]
+        : [activeVariants === 0 && "variantes activas", images.length === 0 && "fotos"]
   ).filter(Boolean);
-  const piecesProblem = pieces.find((p) => p.status === "archived" || p.totalStock === 0);
+  const piecesProblem = pieces.find((p) => outfitPieceProblem(p.status) || p.totalStock === 0);
+  const piecesProblemText = piecesProblem ? outfitPieceProblem(piecesProblem.status) : null;
 
   return (
     <AdminPage
@@ -43,14 +48,13 @@ export default async function EditProductPage({ params, searchParams }: PageProp
       title={product.name}
       description={
         <span className="flex flex-wrap items-center gap-2">
-          <Badge tone={product.status === "active" ? "success" : "neutral"}>
-            {product.status === "active" ? "Publicado" : product.status === "draft" ? "Borrador" : "Archivado"}
-          </Badge>
+          <Badge tone={product.status === "active" ? "success" : product.status === "pos_only" ? "info" : "neutral"}>{PRODUCT_STATUS_LABEL[product.status]}</Badge>
+          {product.status === "pos_only" ? <span className="text-muted">Se vende en el punto de venta; no aparece en la web.</span> : null}
           {outfit ? <Badge>Conjunto</Badge> : null}
           {missing.length ? <span className="text-warning">Falta: {missing.join(", ").replace(/, ([^,]*)$/, " y $1")}</span> : null}
           {!missing.length && piecesProblem ? (
             <span className="text-warning">
-              {piecesProblem.status === "archived" ? `“${piecesProblem.name}” está archivada: el conjunto no se vende.` : `“${piecesProblem.name}” no tiene stock: el conjunto sale agotado.`}
+              {piecesProblemText ? `“${piecesProblem.name}” ${piecesProblemText}: el conjunto no se vende.` : `“${piecesProblem.name}” no tiene stock: el conjunto sale agotado.`}
             </span>
           ) : null}
         </span>

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { formatPrice } from "@/lib/money";
 import { DOCUMENT_LABEL } from "@/lib/order-status";
-import { formatDocNumber, PAYMENT_LABEL, POS_DOCUMENT_LABEL } from "@/lib/pos";
+import { formatDocNumber, garmentOptions, PAYMENT_LABEL, POS_DOCUMENT_LABEL } from "@/lib/pos";
 import type { PosSaleDetail } from "@/server/services/pos";
 
 export type TicketCompany = { legalName: string; ruc: string };
@@ -59,9 +59,7 @@ export function PosTicket({ sale, company }: { sale: PosSaleDetail; company: Tic
       {sale.items.map((item) => (
         <div key={item.id} style={{ marginBottom: "1.5mm" }}>
           <div style={{ fontWeight: 700, textTransform: "uppercase" }}>{item.productName}</div>
-          <div>
-            {item.colorName} · T {item.sizeLabel} · {item.sku}
-          </div>
+          <div>{[...garmentOptions(item.colorName, item.sizeLabel), item.sku].join(" · ")}</div>
           <TicketRow label={`${item.quantity} × ${formatPrice(item.unitPriceCents)}`} value={formatPrice(item.unitPriceCents * item.quantity)} />
           {item.discountCents ? <TicketRow label={`  Promo ${item.promotionName ?? ""}`} value={`−${formatPrice(item.discountCents)}`} /> : null}
         </div>

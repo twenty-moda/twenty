@@ -184,4 +184,25 @@ describe("admin", () => {
     expect(pieces.map((p) => p.label)).toEqual([null, "Pantalón"]);
     await db.update(schema.products).set({ outfitPriceCents: 11000 }).where(eq(schema.products.id, ids.outfit));
   });
+
+  it("una pieza «Solo tienda» deja el conjunto sin vender en la web (como una archivada)", async () => {
+    await db.update(schema.products).set({ status: "pos_only" }).where(eq(schema.products.id, ids.pants));
+    try {
+      expect((await listProductCards(db)).some((c) => c.slug === "conjunto-lino")).toBe(false);
+      expect(await getProductDetail(db, "conjunto-lino")).toBeNull();
+      expect((await getOutfitSnapshots(db, [{ outfitId: ids.outfit, variantIds: [ids.shirtM, ids.pants30] }]))[0]?.available).toBe(false);
+      expect(await placeOrder(db, checkout([outfitItem()]))).toMatchObject({ ok: false });
+      const saved = await saveOutfit(db, ids.outfit, { priceCents: 11000, pieces: [{ productId: ids.shirt, label: null }, { productId: ids.pants, label: "Pantalón" }] });
+      expect(saved).toMatchObject({ ok: false, message: "“Pantalón Lino” es solo de tienda: publícala o elige otra." });
+    } finally {
+      await db.update(schema.products).set({ status: "draft" }).where(eq(schema.products.id, ids.pants));
+    }
+  });
+
+  it("un conjunto no puede ser «Solo tienda»", async () => {
+    const { saveProduct } = await import("./admin-products");
+    const input = { name: "Conjunto Lino", slug: "conjunto-lino", categoryId: ids.outfits, status: "pos_only", isFeatured: false, kind: "outfit" } as const;
+    expect(await saveProduct(db, ids.outfit, input)).toMatchObject({ ok: false });
+    expect(await saveProduct(db, null, { ...input, name: "Otro conjunto", slug: "otro-conjunto" })).toMatchObject({ ok: false });
+  });
 });

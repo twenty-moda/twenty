@@ -5,7 +5,7 @@ import { readSheet } from "read-excel-file/node";
 import { cacheTags } from "@/lib/cache-tags";
 import { parsePhotoName, parseProductSheet, type ParsedSheet } from "@/lib/product-import";
 import { getDb } from "@/server/db/client";
-import { applyImport, attachPhoto, findVariantForPhoto, planImport, type ImportPlan } from "@/server/services/product-import";
+import { applyImport, attachPhoto, findVariantForPhoto, planImport, type ImportPlan, type ImportTarget } from "@/server/services/product-import";
 import { InvalidImageError, saveImage } from "@/server/storage";
 import { requireAdmin } from "../../_lib/auth";
 
@@ -14,6 +14,9 @@ export type ImportState =
   | { status: "error"; message: string }
   | { status: "preview"; plan: ImportPlan; fileName: string }
   | { status: "done"; plan: ImportPlan };
+
+/** Si no llega, «Solo tienda»: que nada salga en la web sin querer. */
+const readTarget = (fd: FormData): ImportTarget => (fd.get("target") === "web" ? "web" : "tienda");
 
 async function readUpload(fd: FormData): Promise<{ parsed: ParsedSheet; name: string } | { error: string }> {
   const file = fd.get("file");
@@ -33,14 +36,14 @@ export async function previewImportAction(_: ImportState, fd: FormData): Promise
   const upload = await readUpload(fd);
   if ("error" in upload) return { status: "error", message: upload.error };
   if (upload.parsed.rows.length === 0 && upload.parsed.issues.length === 0) return { status: "error", message: "La hoja no tiene filas de productos." };
-  return { status: "preview", plan: await planImport(getDb(), upload.parsed), fileName: upload.name };
+  return { status: "preview", plan: await planImport(getDb(), upload.parsed, readTarget(fd)), fileName: upload.name };
 }
 
 export async function applyImportAction(_: ImportState, fd: FormData): Promise<ImportState> {
   const admin = await requireAdmin();
   const upload = await readUpload(fd);
   if ("error" in upload) return { status: "error", message: upload.error };
-  const { plan, productSlugs } = await applyImport(getDb(), upload.parsed, admin.id);
+  const { plan, productSlugs } = await applyImport(getDb(), upload.parsed, admin.id, readTarget(fd));
   for (const slug of productSlugs) updateTag(cacheTags.product(slug));
   updateTag(cacheTags.catalog);
   refresh();

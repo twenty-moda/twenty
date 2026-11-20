@@ -2,8 +2,9 @@
 
 import { useActionState, useState } from "react";
 import { FieldError, FormAlert, SubmitButton, Toggle } from "@/components/admin/form-controls";
-import { inputClass, Segmented, SelectWrap, selectClass } from "@/components/ui/form";
+import { inputClass, SelectWrap, selectClass } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
+import { PRODUCT_STATUS_LABEL, PRODUCT_STATUSES, type ProductStatus } from "@/lib/product-status";
 import { slugify } from "@/lib/slug";
 import { idle } from "../../_lib/action-state";
 import { saveProductAction } from "./actions";
@@ -22,7 +23,7 @@ type ProductFormProps = {
     fitId: string | null;
     description: string | null;
     sizeGuide: string | null;
-    status: "active" | "draft" | "archived";
+    status: ProductStatus;
     isFeatured: boolean;
     metaTitle: string | null;
     metaDescription: string | null;
@@ -34,7 +35,7 @@ export function ProductForm({ productId, kind, categories, fits, initial }: Prod
   // Un conjunto nuevo va en la categoría Conjuntos si existe.
   const defaultCategory = initial?.categoryId ?? (outfit ? categories.find((c) => c.slug === "conjuntos")?.id : undefined) ?? "";
   const [state, action] = useActionState(saveProductAction.bind(null, productId), idle);
-  const [status, setStatus] = useState(initial?.status ?? "draft");
+  const [status, setStatus] = useState<ProductStatus>(initial?.status ?? "draft");
   const [name, setName] = useState(initial?.name ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
   const shownSlug = slug || slugify(name);
@@ -111,26 +112,33 @@ export function ProductForm({ productId, kind, categories, fits, initial }: Prod
 
       <div>
         <span className="mb-1.5 block text-sm font-medium">Estado</span>
-        <Segmented
-          label="Estado"
-          value={status}
-          onChange={setStatus}
-          options={[
-            { value: "active", label: "Publicado" },
-            { value: "draft", label: "Borrador" },
-            { value: "archived", label: "Archivado" },
-          ]}
-        />
+        {/* Un conjunto no se vende en el punto de venta: no tiene «Solo tienda». */}
+        <div role="radiogroup" aria-label="Estado" className={cn("grid gap-1 rounded-xl border border-line bg-raised p-1", outfit ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4")}>
+          {(outfit ? PRODUCT_STATUSES.filter((s) => s !== "pos_only") : PRODUCT_STATUSES).map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="radio"
+              aria-checked={status === s}
+              onClick={() => setStatus(s)}
+              className={cn("h-10 rounded-lg text-sm font-semibold transition", status === s ? "bg-white text-black" : "text-muted")}
+            >
+              {PRODUCT_STATUS_LABEL[s]}
+            </button>
+          ))}
+        </div>
         <span className="mt-1.5 block text-xs text-muted">
           {status === "active"
             ? outfit
-              ? "Se ve en la tienda (si tiene precio y al menos 2 prendas)."
-              : "Se ve en la tienda (si tiene variantes activas)."
-            : status === "draft"
-              ? outfit
-                ? "No se ve en la tienda: útil mientras eliges las prendas y subes fotos."
-                : "No se ve en la tienda. Si es pieza de un conjunto, igual se vende dentro del conjunto."
-              : "Retirado de la tienda; se conserva para los pedidos."}
+              ? "Se ve en la web (si tiene precio y al menos 2 prendas)."
+              : "Se ve en la web (si tiene variantes activas) y se vende en el punto de venta."
+            : status === "pos_only"
+              ? "Se vende en el punto de venta (boleta, factura o nota de venta), pero no aparece en la web. No necesita fotos. Cuando quieras venderlo en la web, cámbialo a Publicado."
+              : status === "draft"
+                ? outfit
+                  ? "No se ve en la web: útil mientras eliges las prendas y subes fotos."
+                  : "No se ve en la web: útil mientras subes fotos y textos. Si es pieza de un conjunto, igual se vende dentro del conjunto."
+                : "Retirado de la web; se conserva para los pedidos."}
         </span>
       </div>
 

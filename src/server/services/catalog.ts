@@ -1,6 +1,7 @@
-import { and, asc, eq, gt, inArray, isNull, lte, min, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, min, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { pieceLabel } from "@/lib/outfits";
+import { canBeOutfitPiece, OUTFIT_PIECE_STATUSES } from "@/lib/product-status";
 import { compareSizes } from "@/lib/sizes";
 import type { Db } from "../db/client";
 import {
@@ -178,7 +179,7 @@ export async function listProductCards(db: Db, now = new Date()): Promise<Produc
         .select({ outfitId: outfitPieces.outfitId, productId: outfitPieces.productId })
         .from(outfitPieces)
         .innerJoin(products, eq(products.id, outfitPieces.productId))
-        .where(and(inArray(outfitPieces.outfitId, outfitIds), ne(products.status, "archived")))
+        .where(and(inArray(outfitPieces.outfitId, outfitIds), inArray(products.status, OUTFIT_PIECE_STATUSES)))
         .orderBy(asc(outfitPieces.position))
     : [];
   const variantProductIds = [...new Set([...ids, ...pieces.map((p) => p.productId)])];
@@ -442,7 +443,7 @@ async function getOutfitDetail(
       .where(eq(productImages.productId, common.id))
       .orderBy(asc(productImages.position)),
   ]);
-  if (pieceRows.length < 2 || pieceRows.some((r) => r.status === "archived")) return null;
+  if (pieceRows.length < 2 || pieceRows.some((r) => !canBeOutfitPiece(r.status))) return null;
   const pieces = await Promise.all(
     pieceRows.map(async (r) => ({
       label: pieceLabel(r.label, r.categoryName),

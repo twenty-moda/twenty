@@ -2,6 +2,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { OutfitLinePiece, VariantSnapshot } from "@/lib/cart";
 import { outfitLineKey, outfitStock, pieceLabel } from "@/lib/outfits";
+import { canBeOutfitPiece } from "@/lib/product-status";
 import type { Db } from "../db/client";
 import { categories, colors, outfitPieces, productImages, products, productVariants, sizes } from "../db/schema";
 import { activePromotionsByProduct } from "./catalog";
@@ -172,11 +173,11 @@ export async function getOutfitSnapshots(db: Db, requests: OutfitRequest[]): Pro
       stock: outfitStock(linePieces),
       promotion: null,
       outfit: { id: outfit.id, pieces: linePieces },
-      // Una pieza puede estar en borrador (se vende solo en el conjunto), pero no archivada.
+      // Una pieza puede estar en borrador (se vende solo en el conjunto), pero no archivada ni solo de tienda.
       available:
         outfit.status === "active" &&
         outfit.categoryVisible &&
-        chosen.every(({ piece, variant }) => variant!.isActive && piece.productStatus !== "archived"),
+        chosen.every(({ piece, variant }) => variant!.isActive && canBeOutfitPiece(piece.productStatus)),
     });
   }
   return snapshots;

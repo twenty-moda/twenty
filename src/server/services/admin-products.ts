@@ -2,6 +2,7 @@
 import { and, asc, desc, eq, ilike, inArray, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { MAX_OUTFIT_PIECES, MIN_OUTFIT_PIECES, pieceLabel } from "@/lib/outfits";
+import { OUTFIT_PIECE_STATUSES, outfitPieceProblem, PRODUCT_STATUSES, type ProductStatus } from "@/lib/product-status";
 import { compareSizes, sizeRank } from "@/lib/sizes";
 import { slugify } from "@/lib/slug";
 import type { Db } from "../db/client";
@@ -26,7 +27,7 @@ export type ServiceResult<T = object> = ({ ok: true } & T) | { ok: false; messag
 
 // ─── Listado y ficha ─────────────────────────────────────────────────────────
 
-export type AdminProductFilter = { q?: string; category?: string; status?: "active" | "draft" | "archived"; problem?: "sin-fotos" | "sin-stock" };
+export type AdminProductFilter = { q?: string; category?: string; status?: ProductStatus; problem?: "sin-fotos" | "sin-stock" };
 
 export async function listAdminProducts(db: Db, filter: AdminProductFilter = {}) {
   const conditions = [];
@@ -147,7 +148,7 @@ export async function listOutfitCandidates(db: Db) {
     })
     .from(products)
     .innerJoin(categories, eq(categories.id, products.categoryId))
-    .where(and(eq(products.kind, "single"), ne(products.status, "archived")))
+    .where(and(eq(products.kind, "single"), inArray(products.status, OUTFIT_PIECE_STATUSES)))
     .orderBy(asc(categories.position), asc(products.name));
 }
 
@@ -174,7 +175,8 @@ export async function saveOutfit(db: Db, outfitId: string, input: z.infer<typeof
     const row = byId.get(piece.productId);
     if (!row) return { ok: false, message: "Una de las prendas ya no existe." };
     if (row.kind !== "single") return { ok: false, message: `“${row.name}” es un conjunto: elige prendas.` };
-    if (row.status === "archived") return { ok: false, message: `“${row.name}” está archivada: publícala o elige otra.` };
+    const problem = outfitPieceProblem(row.status);
+    if (problem) return { ok: false, message: `“${row.name}” ${problem}: publícala o elige otra.` };
   }
 
   await db.transaction(async (tx) => {
@@ -214,7 +216,7 @@ export const productInputSchema = z.object({
   fitId: z.uuid().nullable().optional(),
   description: z.string().trim().max(3000).nullable().optional(),
   sizeGuide: z.string().trim().max(5000).nullable().optional(),
-  status: z.enum(["active", "draft", "archived"]),
+  status: z.enum(PRODUCT_STATUSES),
   isFeatured: z.boolean(),
   metaTitle: z.string().trim().max(70).nullable().optional(),
   metaDescription: z.string().trim().max(170).nullable().optional(),
@@ -231,6 +233,9 @@ export async function saveProduct(
 ): Promise<ServiceResult<{ id: string; slug: string; previousSlug: string | null }>> {
   const slug = input.slug || slugify(input.name);
   if (!slug) return { ok: false, message: "El nombre necesita letras o números." };
+  // El punto de venta vende prendas sueltas: un conjunto es solo de la web.
+  const outfitInPos = { ok: false as const, message: "Un conjunto no se vende en el punto de venta: elige Publicado, Borrador o Archivado." };
+  if (!id && input.status === "pos_only" && input.kind === "outfit") return outfitInPos;
   const [clash] = await db
     .select({ id: products.id })
     .from(products)
@@ -259,8 +264,9 @@ export async function saveProduct(
         .returning({ id: products.id });
       return { ok: true as const, id: created.id, slug, previousSlug: null };
     }
-    const [current] = await tx.select({ slug: products.slug }).from(products).where(eq(products.id, id)).limit(1);
+    const [current] = await tx.select({ slug: products.slug, kind: products.kind }).from(products).where(eq(products.id, id)).limit(1);
     if (!current) return { ok: false as const, message: "El producto no existe." };
+    if (input.status === "pos_only" && current.kind === "outfit") return outfitInPos;
     await tx.update(products).set(values).where(eq(products.id, id));
     if (current.slug !== slug) {
       await tx

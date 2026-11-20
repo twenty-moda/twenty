@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkCustomer, formatDocNumber, netLineTotals, returnAmount, saleTotal, settlePayments } from "./pos";
+import { checkCustomer, formatDocNumber, garmentDescription, garmentOptions, netLineTotals, returnAmount, saleTotal, settlePayments } from "./pos";
 
 describe("saleTotal", () => {
   it("prendas − descuento + envío", () => {
@@ -64,4 +64,14 @@ describe("devoluciones", () => {
 
 it("formatDocNumber", () => {
   expect(formatDocNumber("NV05", 123)).toBe("NV05-123");
+});
+
+describe("prendas por modelo (pasadas de Insaga)", () => {
+  it("la boleta no imprime el color «Surtido» ni la talla «Única»", () => {
+    expect(garmentDescription("Baggy Ángel", "Negro", "30")).toBe("BAGGY ÁNGEL NEGRO T30");
+    expect(garmentDescription("Baggy cruz", "Surtido", "ÚNICA")).toBe("BAGGY CRUZ");
+    expect(garmentDescription("Lentes", "Negro", "Única")).toBe("LENTES NEGRO");
+    expect(garmentOptions("Negro", "30")).toEqual(["Negro", "T 30"]);
+    expect(garmentOptions("Surtido", "ÚNICA")).toEqual([]);
+  });
 });
