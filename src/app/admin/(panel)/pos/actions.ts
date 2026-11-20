@@ -47,9 +47,19 @@ export async function registerSaleAction(input: unknown): Promise<SaleActionResu
   return { ok: true, sale: (await getPosSale(db, result.saleId))! };
 }
 
+/**
+ * Nombre del cliente por su DNI o RUC: de una venta anterior o de un pedido de la web. Un DNI que no compró antes se
+ * busca en el padrón de SUNAT (gratis; solo encuentra a quien tiene RUC).
+ */
 export async function findCustomerAction(documentNumber: string) {
   await requireStaff();
-  return findCustomerByDocument(getDb(), documentNumber);
+  const doc = documentNumber.trim();
+  const known = await findCustomerByDocument(getDb(), doc);
+  if (known?.name || !/^\d{8}$/.test(doc)) return known;
+  const name = await sunatFromEnv()
+    ?.lookupDni(doc)
+    .catch(() => null);
+  return name ? { documentType: "dni" as const, name } : known;
 }
 
 /** Razón social y dirección por el RUC (padrón de SUNAT); si no, de una venta anterior. */

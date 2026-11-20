@@ -33,6 +33,7 @@ function fakeSunat(emit: (payload: Record<string, unknown>) => Promise<SunatResu
     },
     voidDocument: async () => ({ status: "PENDIENTE", message: null }),
     lookupRuc: async () => null,
+    lookupDni: async () => null,
   };
   return { client, calls };
 }

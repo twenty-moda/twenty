@@ -120,6 +120,18 @@ describe("sunatClient", () => {
     });
   });
 
+  it("nombre por DNI del padrón; sin RUC (404) devuelve null", async () => {
+    let url = "";
+    const found = (async (u: string) => {
+      url = u;
+      return new Response(JSON.stringify({ success: true, payload: { dni: "12345678", nombre_completo: "PEREZ GOMEZ ANA MARIA", ruc: "10123456781" } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await sunatClient("https://api/v1/", "k", found).lookupDni("12345678")).toBe("PEREZ GOMEZ ANA MARIA");
+    expect(url).toBe("https://api/v1/sunat/dni/12345678");
+    const missing = respond(404, { statusCode: 404, message: "No hay un contribuyente con el DNI 12345678 en el padrón de SUNAT" });
+    expect(await sunatClient("https://api/v1", "k", missing).lookupDni("12345678")).toBeNull();
+  });
+
   it("un error de validación de la API llega con su mensaje", async () => {
     const client = sunatClient("https://api/v1", "k", respond(400, { statusCode: 400, message: "El DNI del cliente debe tener 8 dígitos" }));
     await expect(client.emit({}, "x")).rejects.toEqual(new SunatApiError("El DNI del cliente debe tener 8 dígitos", 400));

@@ -151,6 +151,7 @@ const fakeSunat = (emitImpl?: SunatClient["emit"]) => {
       return { status: "PENDIENTE", message: null };
     },
     lookupRuc: async () => null,
+    lookupDni: async () => null,
   };
   return { client, calls };
 };

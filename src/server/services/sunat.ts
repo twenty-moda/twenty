@@ -34,6 +34,11 @@ export type SunatClient = {
   voidDocument(input: { documento: "boleta" | "factura"; serie: string; numero: number; motivo: string }): Promise<{ status: string; message: string | null }>;
   /** Razón social y dirección por el RUC (padrón de SUNAT). */
   lookupRuc(ruc: string): Promise<{ name: string; address: string | null } | null>;
+  /**
+   * Nombre por el DNI, del padrón de SUNAT: solo figuran las personas que tienen o tuvieron RUC (10 + DNI). No es una
+   * consulta a RENIEC, pero no cuesta nada y no depende de un servicio de terceros.
+   */
+  lookupDni(dni: string): Promise<string | null>;
   /** Estado de un comprobante ya emitido (si quedó pendiente, la API le vuelve a preguntar a SUNAT). Lo usa la guía. */
   status?(input: { documento: string; serie: string; numero: number }): Promise<SunatResult>;
 };
@@ -89,6 +94,16 @@ export function sunatClient(baseUrl: string, apiKey: string, fetchImpl: typeof f
         const p = (body.payload ?? body) as Record<string, unknown>;
         const name = text(p.razon_social) ?? text(p.nombre_o_razon_social) ?? text(p.razonSocial);
         return name ? { name, address: text(p.direccion) ?? text(p.direccion_completa) } : null;
+      } catch (error) {
+        if (error instanceof SunatApiError && (error.status === 404 || error.status === 400)) return null;
+        throw error;
+      }
+    },
+    async lookupDni(dni) {
+      try {
+        const body = await call(`/sunat/dni/${encodeURIComponent(dni)}`);
+        const p = (body.payload ?? {}) as Record<string, unknown>;
+        return text(p.nombre_completo);
       } catch (error) {
         if (error instanceof SunatApiError && (error.status === 404 || error.status === 400)) return null;
         throw error;

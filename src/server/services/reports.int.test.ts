@@ -22,6 +22,7 @@ const sunat: SunatClient = {
   emit: async () => ({ status: "aceptado", code: "0", message: "aceptada", hash: "h=", ticketUrl: null, pdfUrl: null, xmlUrl: null, cdrUrl: null }),
   voidDocument: async () => ({ status: "PENDIENTE", message: null }),
   lookupRuc: async () => null,
+  lookupDni: async () => null,
 };
 const sell = async (overrides: Partial<Parameters<typeof registerSale>[1]>) => {
   const result = await registerSale(
