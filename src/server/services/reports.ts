@@ -14,6 +14,7 @@ import type { Db } from "../db/client";
 import {
   inventoryLevels,
   orderItems,
+  orderReceipts,
   orders,
   posPayments,
   posReturnItems,
@@ -314,8 +315,12 @@ export async function getSalesLedger(db: Db, range: ReportRange) {
         businessName: orders.businessName,
         paymentMethod: orders.paymentMethod,
         totalCents: orders.totalCents,
+        receiptSeries: orderReceipts.series,
+        receiptNumber: orderReceipts.number,
+        receiptSunat: orderReceipts.sunatStatus,
       })
       .from(orders)
+      .leftJoin(orderReceipts, eq(orderReceipts.orderId, orders.id))
       .where(and(inArray(orders.status, PAID_STATUSES), inRange(orders.createdAt, range))),
     db
       .select({ at: refunds.createdAt, amountCents: refunds.amountCents, orderNumber: orders.number, customerName: orders.customerName, documentType: orders.documentType, documentNumber: orders.documentNumber })
@@ -377,7 +382,9 @@ export async function getSalesLedger(db: Db, range: ReportRange) {
       at: o.at,
       channel: "Web",
       document: "pedido_web",
-      number: `#${o.number}`,
+      // El comprobante que se emitió al entregarlo (desde el 26/11/2026). El monto sigue siendo el del pedido: lo
+      // devuelto va en sus propias filas.
+      number: o.receiptSeries ? `#${o.number} · ${o.receiptSeries}-${o.receiptNumber}` : `#${o.number}`,
       reference: null,
       customerDocumentType: factura ? "ruc" : o.documentType,
       customerDocumentNumber: factura ? o.ruc : o.documentNumber,
@@ -387,7 +394,7 @@ export async function getSalesLedger(db: Db, range: ReportRange) {
       igvCents: null,
       totalCents: o.totalCents,
       status: "pagada",
-      sunat: null,
+      sunat: o.receiptSunat,
     });
   }
   for (const r of webRefunds) {

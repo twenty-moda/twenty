@@ -8,7 +8,8 @@ import { canSellVirtual } from "@/lib/panel-access";
 import { getDb } from "@/server/db/client";
 import { findCustomerByDocument, getPosSale, openCashSession, registerSale, retryPendingSunat, saleInputSchema, sendToSunat, type PosSaleDetail } from "@/server/services/pos";
 import { retryPendingReturns } from "@/server/services/pos-returns";
-import { emailPendingSaleReceipts } from "@/server/services/receipt-emails";
+import { retryPendingOrderReceipts } from "@/server/services/order-receipts";
+import { emailPendingOrderReceipts, emailPendingSaleReceipts } from "@/server/services/receipt-emails";
 import { sunatFromEnv } from "@/server/services/sunat";
 import { requireStaff } from "../../_lib/auth";
 import { failure, form, success, type ActionState } from "../../_lib/action-state";
@@ -44,7 +45,10 @@ export async function registerSaleAction(input: unknown): Promise<SaleActionResu
   after(async () => {
     await retryPendingSunat(getDb(), sunatFromEnv(), { limit: 5, skip: result.saleId });
     await retryPendingReturns(getDb(), sunatFromEnv(), { limit: 5 });
+    // También los comprobantes de la web que quedaron pendientes.
+    await retryPendingOrderReceipts(getDb(), sunatFromEnv(), { limit: 5 });
     await emailPendingSaleReceipts(getDb(), appUrl());
+    await emailPendingOrderReceipts(getDb(), appUrl());
   });
   // El POS vuelve a leer el stock de la tienda para la venta siguiente.
   refresh();

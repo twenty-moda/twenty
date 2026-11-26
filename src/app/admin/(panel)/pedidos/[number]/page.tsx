@@ -16,13 +16,19 @@ import { getCourierTracking } from "@/app/(store)/_data";
 import { Suspense } from "react";
 import { getDb } from "@/server/db/client";
 import { emailConfigured } from "@/server/services/email";
+import { orderReceiptType } from "@/lib/order-receipts";
+import { getOrderReceipt, type OrderReceipt } from "@/server/services/order-receipts";
 import { getOrderByNumber } from "@/server/services/orders";
 import { listPaymentProofs } from "@/server/services/payment-proofs";
 import { listOrderPayments } from "@/server/services/payments";
 import { getRefundOptions } from "@/server/services/refunds";
 import { requireOrders } from "../../../_lib/auth";
 import { PendingRefundActions, RefundLauncher } from "./refund-panel";
+import { OrderReceiptPanel } from "./order-receipt";
 import { InternalNoteForm, StatusChanger, TrackingForm } from "./status-changer";
+
+/** Las prendas del comprobante no viajan al navegador (el panel solo muestra el estado y los enlaces). */
+const withoutItems = ({ items: _items, ...receipt }: OrderReceipt) => receipt;
 
 export async function generateMetadata({ params }: PageProps<"/admin/pedidos/[number]">): Promise<Metadata> {
   const { number } = await params;
@@ -41,7 +47,7 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
   const db = getDb();
   const order = await getOrderByNumber(db, n);
   if (!order) notFound();
-  const [paymentRows, proofs] = await Promise.all([listOrderPayments(db, order.id), listPaymentProofs(db, order.id)]);
+  const [paymentRows, proofs, receipt] = await Promise.all([listOrderPayments(db, order.id), listPaymentProofs(db, order.id), getOrderReceipt(db, order.id)]);
   const refundOptions = await getRefundOptions(db, order, paymentRows, Boolean(process.env.CULQI_SECRET_KEY));
   // Prendas devueltas por agotadas (también las de devoluciones sin confirmar).
   const soldOut = soldOutUnits(order.refunds);
@@ -315,6 +321,20 @@ export default async function AdminOrderPage({ params }: PageProps<"/admin/pedid
               </p>
             </div>
           </Card>
+
+          {/* Anulados y rechazados sin comprobante no llevan uno. */}
+          {receipt || !["anulado", "rechazado"].includes(order.status) ? (
+            <Card title="Comprobante">
+              <OrderReceiptPanel
+                orderId={order.id}
+                delivered={order.status === "entregado"}
+                type={orderReceiptType(order)}
+                canFactura={Boolean(order.ruc && order.businessName)}
+                email={order.email}
+                receipt={receipt ? withoutItems(receipt) : null}
+              />
+            </Card>
+          ) : null}
 
           <Card
             title={

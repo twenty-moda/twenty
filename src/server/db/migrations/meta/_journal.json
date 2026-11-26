@@ -232,6 +232,13 @@
       "when": 1795723983222,
       "tag": "0032_pos-receipt-email",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795725096598,
+      "tag": "0033_order-receipts",
+      "breakpoints": true
     }
   ]
 }

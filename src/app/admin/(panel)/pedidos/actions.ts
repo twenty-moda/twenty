@@ -3,7 +3,9 @@
 import { refresh, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { cacheTags } from "@/lib/cache-tags";
+import { appUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
+import { SALE_DOCUMENT_TYPES } from "@/lib/pos";
 import { canTransition, ORDER_STATUSES, STATUS_INFO } from "@/lib/order-status";
 import { parseSoles, REFUND_REASONS } from "@/lib/refunds";
 import { getDb } from "@/server/db/client";
@@ -14,7 +16,10 @@ import { planOrderEmails } from "@/server/services/order-notifications";
 import { parseTrackingInput } from "@/lib/couriers";
 import { changeOrderStatus, getOrderById, getOrderCourier, setOrderTracking, updateInternalNote } from "@/server/services/orders";
 import { culqiFromEnv } from "@/server/services/payments";
+import { issueOrderReceipt, sendOrderReceiptToSunat, setOrderReceiptType } from "@/server/services/order-receipts";
+import { emailOrderReceipt, type ReceiptEmailResult } from "@/server/services/receipt-emails";
 import { refundOrder, resolvePendingRefund, type RefundResult } from "@/server/services/refunds";
+import { sunatFromEnv } from "@/server/services/sunat";
 import { requireAdmin, requireOrders } from "../../_lib/auth";
 import { failure, success, type ActionState } from "../../_lib/action-state";
 
@@ -165,4 +170,63 @@ export async function saveInternalNoteAction(orderId: string, _: ActionState, fo
   await updateInternalNote(getDb(), orderId, String(formData.get("note") ?? "").slice(0, 2000));
   refresh();
   return success("Nota guardada.");
+}
+
+// ─── Comprobante del pedido ──────────────────────────────────────────────────
+
+const receiptTypeSchema = z.enum(SALE_DOCUMENT_TYPES);
+
+/** Qué comprobante sale al entregar (nota de venta, boleta o factura), mientras no se haya emitido. */
+export async function setOrderReceiptTypeAction(orderId: string, type: string): Promise<ActionState> {
+  await requireOrders();
+  const parsed = receiptTypeSchema.safeParse(type);
+  if (!parsed.success) return failure("Elige nota de venta, boleta o factura.");
+  const result = await setOrderReceiptType(getDb(), orderId, parsed.data);
+  if (!result.ok) return failure(result.message);
+  refresh();
+  return success("Listo: ese comprobante sale cuando el pedido pase a Entregado.");
+}
+
+/** Mensaje para el panel según cómo quedó el comprobante y su correo. */
+function receiptOutcome(sunat: { status: string | null; message: string | null }, email: ReceiptEmailResult): ActionState {
+  if (sunat.status === "rechazado") return failure(`SUNAT lo rechazó: ${sunat.message ?? "revisa los datos del cliente"}.`);
+  if (sunat.status === "pendiente") return failure(`Quedó pendiente en SUNAT${sunat.message ? ` (${sunat.message})` : ""}. Se reintenta solo; le llega al cliente cuando SUNAT lo acepte.`);
+  return email === "sent" ? success("Comprobante emitido y enviado al correo del cliente.") : success("Comprobante emitido.");
+}
+
+/** Emite y manda el comprobante de un pedido ya entregado (si no salió al entregar, o de los entregados antes). */
+export async function issueOrderReceiptAction(orderId: string): Promise<ActionState> {
+  await requireOrders();
+  const db = getDb();
+  const result = await issueOrderReceipt(db, orderId, sunatFromEnv());
+  if (!result.ok) return failure(result.message);
+  const email = await emailOrderReceipt(db, orderId, appUrl()).catch(() => "skipped" as const);
+  refresh();
+  return receiptOutcome(result, email);
+}
+
+/** Vuelve a mandar a SUNAT una boleta o factura pendiente (misma Idempotency-Key: nunca sale otra). */
+export async function retryOrderReceiptAction(orderId: string, receiptId: string): Promise<ActionState> {
+  await requireOrders();
+  const db = getDb();
+  const sunat = await sendOrderReceiptToSunat(db, receiptId, sunatFromEnv());
+  const email = sunat.status === "aceptado" ? await emailOrderReceipt(db, orderId, appUrl()).catch(() => "skipped" as const) : "waiting";
+  refresh();
+  return receiptOutcome(sunat, email);
+}
+
+/** Vuelve a mandar el comprobante al correo del pedido. */
+export async function emailOrderReceiptAction(orderId: string): Promise<ActionState> {
+  await requireOrders();
+  let result: ReceiptEmailResult;
+  try {
+    result = await emailOrderReceipt(getDb(), orderId, appUrl(), { force: true });
+  } catch (error) {
+    console.error("[email] comprobante:", error instanceof Error ? error.message : error);
+    return failure("No se pudo mandar el correo. Inténtalo otra vez en un rato.");
+  }
+  refresh();
+  if (result === "waiting") return failure("Todavía no: le llega cuando SUNAT acepte el comprobante.");
+  if (result === "skipped") return failure("No se mandó: el pedido no está entregado, el comprobante se dio de baja o los correos no están configurados.");
+  return success("Comprobante enviado al correo del cliente.");
 }

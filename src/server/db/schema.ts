@@ -1009,6 +1009,11 @@ export const orders = pgTable(
     internalNote: text(),
     /** Se devolvió el stock al anular/rechazar (evita devolverlo dos veces). */
     stockRestoredAt: timestamp({ withTimezone: true }),
+    /**
+     * Comprobante que se emite al entregar (`order_receipts`), si el equipo lo cambia en el panel: nota de venta,
+     * boleta o factura. Vacío = lo que eligió el cliente en el checkout (`invoice_type`).
+     */
+    receiptType: posDocumentType(),
     ...timestamps,
   },
   (t) => [
@@ -1017,6 +1022,62 @@ export const orders = pgTable(
     index("orders_created_idx").on(t.createdAt),
     index("orders_coupon_idx").on(t.couponId),
   ],
+);
+
+/**
+ * Series de los comprobantes de la web (B006, F006, NV06), aparte de las de cada tienda: así en el cuadre no se
+ * mezclan con la caja. Una serie no se repite entre esta tabla y `document_series`.
+ */
+export const orderDocumentSeries = pgTable("order_document_series", {
+  documentType: posDocumentType().primaryKey(),
+  series: text().notNull().unique(),
+  nextNumber: integer().notNull().default(1),
+  ...timestamps,
+});
+
+/** Una prenda del comprobante, tal como se emitió (un reintento manda exactamente lo mismo). */
+export type OrderReceiptItem = { variantId: string | null; sku: string; productName: string; colorName: string; sizeLabel: string; quantity: number; totalCents: number };
+
+/**
+ * Comprobante de un pedido de la web (pedido de TWENTY, 26/11/2026): uno por pedido, se emite cuando pasa a
+ * «Entregado» (o desde el panel) y le llega al cliente por correo. Guarda las prendas y los montos con los que salió:
+ * lo que se pagó menos lo devuelto antes de emitirlo. Boleta y factura van a SUNAT como las de la tienda.
+ */
+export const orderReceipts = pgTable(
+  "order_receipts",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    orderId: uuid()
+      .notNull()
+      .unique()
+      .references(() => orders.id, { onDelete: "restrict" }),
+    documentType: posDocumentType().notNull(),
+    series: text().notNull(),
+    number: integer().notNull(),
+    customerDocumentType: documentType(),
+    customerDocumentNumber: text(),
+    customerName: text(),
+    customerAddress: text(),
+    items: jsonb().$type<OrderReceiptItem[]>().notNull(),
+    /** Promos, cupón y lo devuelto que no corresponde a prendas: se reparte entre las prendas, como en la tienda. */
+    discountCents: integer().notNull().default(0),
+    shippingCents: integer().notNull().default(0),
+    totalCents: integer().notNull(),
+    /** Solo boleta y factura (null = nota de venta). */
+    sunatStatus: posSunatStatus(),
+    sunatCode: text(),
+    sunatMessage: text(),
+    sunatHash: text(),
+    sunatTicketUrl: text(),
+    sunatPdfUrl: text(),
+    sunatXmlUrl: text(),
+    sunatCdrUrl: text(),
+    sunatSentAt: timestamp({ withTimezone: true }),
+    /** Cuándo salió el correo al cliente (la boleta o factura, cuando SUNAT la acepta). */
+    emailedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [uniqueIndex("order_receipts_series_number_uq").on(t.series, t.number)],
 );
 
 export const orderItems = pgTable(

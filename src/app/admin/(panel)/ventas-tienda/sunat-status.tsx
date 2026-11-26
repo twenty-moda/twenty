@@ -54,8 +54,8 @@ export function CreditNoteStatus({ ret }: { ret: SaleReturn }) {
   );
 }
 
-/** `retry` devuelve el error, o null si salió bien. */
-function SunatPanel({ doc, label, printLabel, canRetry, retry, badges }: { doc: SunatDocument; label: string; printLabel: string; canRetry: boolean; retry: () => Promise<string | null>; badges?: ReactNode }) {
+/** `retry` devuelve el error, o null si salió bien. También lo usa el comprobante de los pedidos de la web. */
+export function SunatPanel({ doc, label, printLabel, canRetry, retry, badges }: { doc: SunatDocument; label: string; printLabel: string; canRetry: boolean; retry: () => Promise<string | null>; badges?: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   if (!doc.sunatStatus) return null;

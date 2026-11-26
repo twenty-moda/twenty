@@ -13,6 +13,7 @@ import {
   documentSeries,
   documentType,
   expenses,
+  orderDocumentSeries,
   posDocumentType,
   posPayments,
   posReturns,
@@ -52,18 +53,27 @@ export async function takeNumber(tx: Tx, warehouseId: string, type: DocumentType
     .where(and(eq(documentSeries.warehouseId, warehouseId), eq(documentSeries.documentType, type)))
     .returning({ series: documentSeries.series, number: sql<number>`${documentSeries.nextNumber} - 1` });
   if (taken) return taken;
-  const used = new Set((await tx.select({ series: documentSeries.series }).from(documentSeries).where(eq(documentSeries.documentType, type))).map((s) => s.series));
-  const prefix = SERIES_PREFIX[type];
-  const code = (n: number) => `${prefix}${String(n).padStart(prefix.length === 1 ? 3 : 2, "0")}`;
-  let n = FIRST_SERIES;
-  while (used.has(code(n))) n++;
   const [created] = await tx
     .insert(documentSeries)
-    .values({ warehouseId, documentType: type, series: code(n), nextNumber: 2 })
+    .values({ warehouseId, documentType: type, series: await freeSeries(tx, type, FIRST_SERIES), nextNumber: 2 })
     .onConflictDoNothing()
     .returning({ series: documentSeries.series });
   // Otra venta creó la serie al mismo tiempo: se toma el número de la que quedó.
   return created ? { series: created.series, number: 1 } : takeNumber(tx, warehouseId, type);
+}
+
+/** La primera serie libre desde `from` ("B005", "NV06"…): no repite una de las tiendas ni una de la web. */
+export async function freeSeries(tx: Tx, type: DocumentType, from: number): Promise<string> {
+  const [store, web] = await Promise.all([
+    tx.select({ series: documentSeries.series }).from(documentSeries).where(eq(documentSeries.documentType, type)),
+    tx.select({ series: orderDocumentSeries.series }).from(orderDocumentSeries).where(eq(orderDocumentSeries.documentType, type)),
+  ]);
+  const used = new Set([...store, ...web].map((s) => s.series));
+  const prefix = SERIES_PREFIX[type];
+  const code = (n: number) => `${prefix}${String(n).padStart(prefix.length === 1 ? 3 : 2, "0")}`;
+  let n = from;
+  while (used.has(code(n))) n++;
+  return code(n);
 }
 
 // ─── Caja ────────────────────────────────────────────────────────────────────

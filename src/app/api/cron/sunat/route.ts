@@ -3,7 +3,8 @@ import { appUrl } from "@/lib/links";
 import { getDb } from "@/server/db/client";
 import { retryPendingSunat } from "@/server/services/pos";
 import { retryPendingReturns } from "@/server/services/pos-returns";
-import { emailPendingSaleReceipts } from "@/server/services/receipt-emails";
+import { retryPendingOrderReceipts } from "@/server/services/order-receipts";
+import { emailPendingOrderReceipts, emailPendingSaleReceipts } from "@/server/services/receipt-emails";
 import { sunatFromEnv } from "@/server/services/sunat";
 
 /**
@@ -20,6 +21,8 @@ export async function GET(request: Request) {
   // Primero las ventas: una nota de crédito va contra un comprobante ya aceptado.
   const sales = await retryPendingSunat(db, client, { limit: 50 });
   const returns = await retryPendingReturns(db, client, { limit: 50 });
+  const web = await retryPendingOrderReceipts(db, client, { limit: 50 });
   const emails = await emailPendingSaleReceipts(db, appUrl(), { limit: 50 });
-  return Response.json({ sales, returns, emails });
+  const webEmails = await emailPendingOrderReceipts(db, appUrl(), { limit: 50 });
+  return Response.json({ sales, returns, web, emails, webEmails });
 }
