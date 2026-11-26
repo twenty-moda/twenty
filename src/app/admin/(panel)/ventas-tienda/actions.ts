@@ -1,15 +1,39 @@
 "use server";
 
 import { refresh, revalidateTag } from "next/cache";
+import { z } from "zod";
 import { cacheTags } from "@/lib/cache-tags";
+import { appUrl } from "@/lib/links";
 import { formatPrice } from "@/lib/money";
 import { formatDocNumber, PAYMENT_LABEL } from "@/lib/pos";
 import { getDb } from "@/server/db/client";
 import { voidSale } from "@/server/services/pos";
 import { registerReturn, returnInputSchema, sendReturnToSunat } from "@/server/services/pos-returns";
+import { setSaleEmail } from "@/server/services/receipt-emails";
 import { sunatFromEnv } from "@/server/services/sunat";
 import { requireAdmin, requireStaff } from "../../_lib/auth";
 import { failure, form, success, type ActionState } from "../../_lib/action-state";
+
+const receiptEmailSchema = z.string().trim().toLowerCase().max(120).pipe(z.email("Revisa el correo"));
+
+/** Manda (o vuelve a mandar) el comprobante de una venta a un correo; si la boleta sigue pendiente, sale al aceptarse. */
+export async function sendSaleReceiptAction(saleId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  await requireStaff();
+  const parsed = receiptEmailSchema.safeParse(form.text(fd, "email"));
+  if (!parsed.success) return failure(parsed.error.issues[0].message, undefined, { email: form.text(fd, "email") });
+  let result: Awaited<ReturnType<typeof setSaleEmail>>;
+  try {
+    result = await setSaleEmail(getDb(), saleId, parsed.data, appUrl());
+  } catch (error) {
+    console.error("[email] comprobante:", error instanceof Error ? error.message : error);
+    return failure("No se pudo mandar el correo. Inténtalo otra vez en un rato.");
+  }
+  refresh();
+  if (result === "not_found") return failure("Esa venta no existe.");
+  if (result === "waiting") return success("Correo guardado: el comprobante le llega cuando SUNAT lo acepte.");
+  if (result === "skipped") return failure("No se mandó: la venta está anulada o los correos de la tienda no están configurados.");
+  return success(`Comprobante enviado a ${parsed.data}.`);
+}
 
 const revalidateProducts = (slugs: string[]) => {
   for (const slug of slugs) revalidateTag(cacheTags.product(slug), "max");

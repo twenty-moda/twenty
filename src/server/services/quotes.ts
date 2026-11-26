@@ -210,7 +210,7 @@ export async function quoteForPos(db: Db, number: number) {
     totalCents: quote.items.filter((i) => i.variantId).reduce((s, i) => s + i.totalCents, 0),
     missing: quote.items.filter((i) => !i.variantId).length,
     lines,
-    customer: { documentType: quote.customerDocumentType, documentNumber: quote.customerDocumentNumber, name: quote.customerName, address: quote.customerAddress },
+    customer: { documentType: quote.customerDocumentType, documentNumber: quote.customerDocumentNumber, name: quote.customerName, address: quote.customerAddress, email: quote.customerEmail },
   };
 }
 export type PosQuote = NonNullable<Awaited<ReturnType<typeof quoteForPos>>>;

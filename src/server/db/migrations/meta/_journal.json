@@ -225,6 +225,13 @@
       "when": 1795139385263,
       "tag": "0031_product-status-pos-only",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795723983222,
+      "tag": "0032_pos-receipt-email",
+      "breakpoints": true
     }
   ]
 }

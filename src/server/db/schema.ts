@@ -406,6 +406,10 @@ export const posSales = pgTable(
     customerName: text(),
     /** Dirección fiscal (factura). */
     customerAddress: text(),
+    /** Correo al que se le manda el comprobante (opcional: solo si la caja lo pide en la venta o después, desde la venta). */
+    customerEmail: text(),
+    /** Cuándo salió el correo con el comprobante (la boleta o factura, recién cuando SUNAT la acepta). */
+    receiptEmailedAt: timestamp({ withTimezone: true }),
     /** Solo boleta y factura: null = nota de venta. "pendiente" = aún sin respuesta de SUNAT (se reintenta). */
     sunatStatus: posSunatStatus(),
     sunatCode: text(),

@@ -3,10 +3,12 @@
 import { refresh, revalidateTag } from "next/cache";
 import { after } from "next/server";
 import { cacheTags } from "@/lib/cache-tags";
+import { appUrl } from "@/lib/links";
 import { canSellVirtual } from "@/lib/panel-access";
 import { getDb } from "@/server/db/client";
 import { findCustomerByDocument, getPosSale, openCashSession, registerSale, retryPendingSunat, saleInputSchema, sendToSunat, type PosSaleDetail } from "@/server/services/pos";
 import { retryPendingReturns } from "@/server/services/pos-returns";
+import { emailPendingSaleReceipts } from "@/server/services/receipt-emails";
 import { sunatFromEnv } from "@/server/services/sunat";
 import { requireStaff } from "../../_lib/auth";
 import { failure, form, success, type ActionState } from "../../_lib/action-state";
@@ -37,10 +39,12 @@ export async function registerSaleAction(input: unknown): Promise<SaleActionResu
   if (result.soldOut) revalidateTag(cacheTags.catalog, "max");
   // Boleta o factura: sale a SUNAT ya mismo (la venta quedó guardada aunque SUNAT no responda).
   if (parsed.data.documentType !== "nota_venta") await sendToSunat(db, result.saleId, sunatFromEnv());
-  // Después de responder: reintenta las que quedaron pendientes antes (si SUNAT estuvo caído un rato).
+  // Después de responder: reintenta las que quedaron pendientes antes (si SUNAT estuvo caído un rato) y manda los
+  // comprobantes por correo (el de esta venta, si la caja puso el correo, y los que SUNAT acaba de aceptar).
   after(async () => {
     await retryPendingSunat(getDb(), sunatFromEnv(), { limit: 5, skip: result.saleId });
     await retryPendingReturns(getDb(), sunatFromEnv(), { limit: 5 });
+    await emailPendingSaleReceipts(getDb(), appUrl());
   });
   // El POS vuelve a leer el stock de la tienda para la venta siguiente.
   refresh();
@@ -59,7 +63,7 @@ export async function findCustomerAction(documentNumber: string) {
   const name = await sunatFromEnv()
     ?.lookupDni(doc)
     .catch(() => null);
-  return name ? { documentType: "dni" as const, name } : known;
+  return name ? { documentType: "dni" as const, name, email: known?.email ?? null } : known;
 }
 
 /** Razón social y dirección por el RUC (padrón de SUNAT); si no, de una venta anterior. */
@@ -80,7 +84,9 @@ export async function retrySunatAction(saleId: string): Promise<SaleActionResult
   const db = getDb();
   const sale = await getPosSale(db, saleId);
   if (!sale?.sunatStatus) return { ok: false, message: "Esa venta no lleva boleta ni factura." };
-  await sendToSunat(db, saleId, sunatFromEnv());
+  const sent = await sendToSunat(db, saleId, sunatFromEnv());
+  // Si ahora quedó aceptada y tiene correo, sale el comprobante.
+  if (sent.status === "aceptado") after(() => emailPendingSaleReceipts(getDb(), appUrl()));
   refresh();
   return { ok: true, sale: (await getPosSale(db, saleId))! };
 }

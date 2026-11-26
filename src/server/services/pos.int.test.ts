@@ -8,8 +8,22 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { getDb, closeDb } = await import("../db/client");
 const schema = await import("../db/schema");
 const { getOnlineWarehouseId } = await import("./stock");
-const { addCashMovement, closeCashSession, getCashSession, getOpenSession, getPosSale, listOpenSessions, openCashSession, registerSale, retryPendingSunat, sendToSunat, voidSale } =
-  await import("./pos");
+const {
+  addCashMovement,
+  closeCashSession,
+  findCustomerByDocument,
+  getCashSession,
+  getOpenSession,
+  getPosSale,
+  listOpenSessions,
+  openCashSession,
+  registerSale,
+  retryPendingSunat,
+  saleInputSchema,
+  sendToSunat,
+  voidSale,
+} = await import("./pos");
+const { emailPendingSaleReceipts, emailSaleReceipt, setSaleEmail } = await import("./receipt-emails");
 const { registerExpense, voidExpense } = await import("./expenses");
 const { getCashReport } = await import("./cash-report");
 const { listSaleReturns, registerReturn, retryPendingReturns, sendReturnToSunat } = await import("./pos-returns");
@@ -420,5 +434,93 @@ describe("devoluciones", () => {
     expect((await giveBack(sold.saleId, item, 1)).ok).toBe(true);
     expect((await getCashSession(db, today.number))!.expectedNowCents).toBe(5000 - 7000);
     expect((await getCashSession(db, first.number))!.totals.refundsCount).toBe(0);
+  });
+});
+
+describe("comprobante por correo", () => {
+  type Sent = { to: string[]; subject: string; text: string; attachments?: { filename: string }[] };
+  const site = "https://tienda.example";
+  /** Resend y el PDF de la API, de mentira: guarda lo que se mandó. */
+  async function withMail(run: (sent: Sent[]) => Promise<void>, { resendStatus = 200 } = {}) {
+    const sent: Sent[] = [];
+    const realFetch = globalThis.fetch;
+    const env = { key: process.env.RESEND_API_KEY, from: process.env.EMAIL_FROM };
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.EMAIL_FROM = "TWENTY <pedidos@example.com>";
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      if (String(url).endsWith(".pdf")) return new Response(new Uint8Array([37, 80, 68, 70]), { status: 200 });
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ message: "falla" }), { status: resendStatus });
+    }) as typeof fetch;
+    try {
+      await run(sent);
+    } finally {
+      globalThis.fetch = realFetch;
+      process.env.RESEND_API_KEY = env.key;
+      process.env.EMAIL_FROM = env.from;
+    }
+  }
+
+  it("el correo es opcional: vacío no se guarda, se pasa a minúsculas y uno mal escrito no pasa", () => {
+    const email = saleInputSchema.shape.customerEmail;
+    expect(email.parse("  Ana@Example.COM ")).toBe("ana@example.com");
+    expect(email.parse("")).toBeNull();
+    expect(email.parse(undefined)).toBeNull();
+    expect(email.safeParse("ana@").success).toBe(false);
+  });
+
+  it("la boleta sale recién cuando SUNAT la acepta, con el PDF adjunto, una sola vez; desde la venta se reenvía", async () => {
+    const result = await sale({ documentType: "boleta", customerEmail: "ana@example.com" });
+    if (!result.ok) throw new Error("venta");
+    await withMail(async (sent) => {
+      expect(await emailSaleReceipt(db, result.saleId, site)).toBe("waiting");
+      expect(await emailPendingSaleReceipts(db, site)).toEqual({ checked: 0, sent: 0 });
+      await sendToSunat(db, result.saleId, fakeSunat().client);
+      expect(await emailPendingSaleReceipts(db, site)).toEqual({ checked: 1, sent: 1 });
+      expect(sent).toHaveLength(1);
+      expect(sent[0].to).toEqual(["ana@example.com"]);
+      expect(sent[0].subject).toBe("Tu boleta B005-1 de TWENTY");
+      expect(sent[0].attachments?.map((a) => a.filename)).toEqual(["boleta-B005-1.pdf"]);
+      expect(sent[0].text).toContain("Mom Jean");
+      expect(sent[0].text).toContain("Ver boleta (PDF): https://api/a4.pdf");
+      expect((await getPosSale(db, result.saleId))?.receiptEmailedAt).toBeInstanceOf(Date);
+      // Ya salió: ni el cron ni otra llamada lo repiten.
+      expect(await emailPendingSaleReceipts(db, site)).toEqual({ checked: 0, sent: 0 });
+      expect(await emailSaleReceipt(db, result.saleId, site)).toBe("skipped");
+      expect(sent).toHaveLength(1);
+      // Desde la venta: a otro correo, aunque ya haya salido.
+      expect(await setSaleEmail(db, result.saleId, "otro@example.com", site)).toBe("sent");
+      expect(sent[1].to).toEqual(["otro@example.com"]);
+    });
+  });
+
+  it("si Resend falla queda para el siguiente intento; sin correo o anulada no sale nada", async () => {
+    const withEmail = await sale({ customerEmail: "ana@example.com" });
+    const without = await sale();
+    const voided = await sale({ customerEmail: "ana@example.com" });
+    if (!withEmail.ok || !without.ok || !voided.ok) throw new Error("venta");
+    expect((await voidSale(db, { saleId: voided.saleId, reason: "Se equivocó", userId: null })).ok).toBe(true);
+    await withMail(
+      async (sent) => {
+        await expect(emailSaleReceipt(db, withEmail.saleId, site)).rejects.toThrow("Resend respondió 422");
+        expect(sent).toHaveLength(1);
+        expect((await getPosSale(db, withEmail.saleId))?.receiptEmailedAt).toBeNull();
+        expect(await emailSaleReceipt(db, without.saleId, site)).toBe("skipped");
+        expect(await emailSaleReceipt(db, voided.saleId, site)).toBe("skipped");
+      },
+      { resendStatus: 422 },
+    );
+    await withMail(async (sent) => {
+      // La nota de venta no espera a SUNAT ni lleva PDF.
+      expect(await emailPendingSaleReceipts(db, site)).toEqual({ checked: 1, sent: 1 });
+      expect(sent[0].subject).toBe("Tu nota de venta NV05-1 de TWENTY");
+      expect(sent[0].attachments ?? []).toHaveLength(0);
+    });
+  });
+
+  it("el correo que dio en una compra anterior aparece al buscar su documento", async () => {
+    await sale({ customer: { documentType: "dni", documentNumber: "45678912", name: "ANA DIAZ" }, customerEmail: "ana@example.com" });
+    await sale({ customer: { documentType: "dni", documentNumber: "45678912", name: "ANA DIAZ" } });
+    expect(await findCustomerByDocument(db, "45678912")).toEqual({ documentType: "dni", name: "ANA DIAZ", email: "ana@example.com" });
   });
 });

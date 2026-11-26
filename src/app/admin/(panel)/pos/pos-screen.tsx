@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Minus, Plus, Printer, ScanBarcode, Search, Trash2, X } from "lucide-react";
+import { Check, Mail, Minus, Plus, Printer, ScanBarcode, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import { CameraScan, isCameraScanOn } from "@/components/admin/camera-scanner";
@@ -37,6 +37,8 @@ type Line = { variantId: string; quantity: number };
 type PaymentDraft = { method: PaymentMethod; amount: string; received: string; reference: string };
 type DocType = keyof typeof DOCUMENT_LABEL;
 
+/** Lo mínimo para no cobrar con un correo mal escrito (el servidor lo vuelve a revisar). */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const variantLabel = (v: PosVariant) => `${v.productName} · ${v.colorName} · ${v.sizeLabel} · ${v.sku}`;
 const productLabel = (name: string) => `${name} — elegir color y talla`;
 /** "70", "69.90", "S/ 70" → céntimos; vacío o inválido → null. */
@@ -152,6 +154,9 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
       ? { documentType: quote.customer.documentType ?? "dni", documentNumber: quote.customer.documentNumber ?? "", name: quote.customer.name, address: quote.customer.address ?? "" }
       : { documentType: "dni", documentNumber: "", name: "", address: "" },
   );
+  // Comprobante por correo: opcional, la caja lo marca si el cliente lo pide (pedido de TWENTY, 26/11/2026).
+  const [emailOn, setEmailOn] = useState(false);
+  const [email, setEmail] = useState(quote?.customer.email ?? "");
   // Promos "N x S/" de la web: la caja las puede quitar en una venta (precio regular). Cada venta empieza con ellas.
   const [promosOn, setPromosOn] = useState(true);
   const [discount, setDiscount] = useState(start?.discount ?? "");
@@ -213,7 +218,8 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
           address: docType === "factura" ? customer.address.trim() || null : null,
         }
       : null;
-  const customerProblem = lines.length ? checkCustomer(docType, totalCents, saleCustomer) : null;
+  const emailProblem = emailOn && !EMAIL_PATTERN.test(email.trim()) ? "Escribe el correo del cliente o desmarca «Enviarle el comprobante por correo»." : null;
+  const customerProblem = lines.length ? (checkCustomer(docType, totalCents, saleCustomer) ?? emailProblem) : null;
 
   // Un solo medio de pago (lo común) o varios ("Mixto").
   const receivedCents = cents(received) ?? totalCents;
@@ -276,6 +282,8 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
       }
       const found = await findCustomerAction(documentNumber);
       if (found?.name) setCustomer((c) => ({ ...c, documentType: found.documentType ?? c.documentType, name: found.name ?? c.name }));
+      // El correo que dio en una compra anterior en la tienda (no marca el envío: eso lo decide la caja).
+      if (found?.email) setEmail((e) => e || found.email || "");
     });
   // Con el documento completo (8 dígitos el DNI, 11 el RUC) se busca el nombre solo.
   const typeDocument = (value: string) => {
@@ -293,6 +301,7 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
         warehouseId: warehouse.id,
         documentType: docType,
         customer: saleCustomer,
+        customerEmail: emailOn ? email.trim() : null,
         lines,
         applyPromotions: promosOn,
         manualDiscountCents,
@@ -313,6 +322,8 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
     setActiveQuote(null);
     setLines([]);
     setCustomer({ documentType: "dni", documentNumber: "", name: "", address: "" });
+    setEmailOn(false);
+    setEmail("");
     setPromosOn(true);
     setDiscount("");
     setShipping("");
@@ -372,6 +383,12 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
             </div>
           ) : null}
           {electronic ? <SunatStatus sale={done} onUpdate={setDone} /> : null}
+          {done.customerEmail ? (
+            <p className="flex items-center gap-2 text-sm text-muted">
+              <Mail className="size-4 shrink-0" aria-hidden />
+              {electronic && done.sunatStatus !== "aceptado" ? `El comprobante le llega a ${done.customerEmail} cuando SUNAT lo acepte.` : `El comprobante le llega a ${done.customerEmail}.`}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-3">
             {electronic ? null : (
               <button type="button" onClick={print} disabled={printing} className={cn(buttonClass("primary"), "h-14 px-7 text-base")}>
@@ -666,6 +683,22 @@ export function PosScreen({ warehouse, variants, company, fontClass, sunatEnable
             <input aria-label="Dirección fiscal" value={customer.address} onChange={(e) => setCustomer((c) => ({ ...c, address: e.target.value }))} placeholder="Dirección fiscal" className={inputCompactClass} />
           ) : null}
           <p className="text-xs text-subtle">{docType === "factura" ? "Con el RUC completo aparecen la razón social y la dirección." : "Si ya compró antes, con su documento aparece su nombre."}</p>
+          <label className="flex min-h-10 cursor-pointer items-center gap-2 text-sm">
+            <input type="checkbox" checked={emailOn} onChange={(e) => setEmailOn(e.target.checked)} className="size-5 shrink-0 accent-white" />
+            Enviarle el comprobante por correo
+          </label>
+          {emailOn ? (
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="off"
+              aria-label="Correo del cliente"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="correo@ejemplo.com"
+              className={inputCompactClass}
+            />
+          ) : null}
         </Step>
 
         <Step n={3} title="Cobro">

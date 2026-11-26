@@ -319,6 +319,15 @@ export const saleInputSchema = z.object({
       address: z.string().trim().max(200).nullable().optional(),
     })
     .nullable(),
+  /** Opcional: si viene, se le manda el comprobante (la boleta o factura, cuando SUNAT la acepta). */
+  customerEmail: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(120)
+    .nullish()
+    .transform((v) => v || null)
+    .pipe(z.email("Revisa el correo del cliente").nullable()),
   lines: z
     .array(z.object({ variantId: z.uuid(), quantity: z.number().int().positive().max(999) }))
     .min(1, "Agrega al menos una prenda.")
@@ -417,6 +426,7 @@ export async function registerSale(db: Db, input: SaleInput, sellerId: string | 
           customerDocumentNumber: customer?.documentNumber || null,
           customerName: customer?.name || null,
           customerAddress: customer?.address || null,
+          customerEmail: input.customerEmail ?? null,
           // Boleta y factura salen a SUNAT después de guardar la venta (sendToSunat): hasta la respuesta, pendiente.
           sunatStatus: input.documentType === "nota_venta" ? null : "pendiente",
           subtotalCents: pricing.subtotalCents,
@@ -685,19 +695,30 @@ export async function getPosSale(db: Db, id: string) {
 }
 export type PosSaleDetail = NonNullable<Awaited<ReturnType<typeof getPosSale>>>;
 
-/** Nombre del cliente por su DNI o RUC: de una venta anterior en tienda o de un pedido de la web. */
-export async function findCustomerByDocument(db: Db, documentNumber: string) {
+/**
+ * Nombre del cliente por su DNI o RUC: de una venta anterior en tienda o de un pedido de la web. El correo sale solo
+ * de las ventas en tienda (el que dio en la caja); el de la web no se le muestra al vendedor.
+ */
+export async function findCustomerByDocument(db: Db, documentNumber: string): Promise<{ documentType: (typeof documentType.enumValues)[number] | null; name: string | null; email?: string | null } | null> {
   const doc = documentNumber.trim();
   if (doc.length < 8) return null;
-  const [fromStore] = await db
-    .select({ documentType: posSales.customerDocumentType, name: posSales.customerName })
-    .from(posSales)
-    .where(and(eq(posSales.customerDocumentNumber, doc), sql`${posSales.customerName} is not null`))
-    .orderBy(desc(posSales.createdAt))
-    .limit(1);
-  if (fromStore?.name) return fromStore;
+  const [[fromStore], [withEmail]] = await Promise.all([
+    db
+      .select({ documentType: posSales.customerDocumentType, name: posSales.customerName })
+      .from(posSales)
+      .where(and(eq(posSales.customerDocumentNumber, doc), sql`${posSales.customerName} is not null`))
+      .orderBy(desc(posSales.createdAt))
+      .limit(1),
+    db
+      .select({ email: posSales.customerEmail })
+      .from(posSales)
+      .where(and(eq(posSales.customerDocumentNumber, doc), sql`${posSales.customerEmail} is not null`))
+      .orderBy(desc(posSales.createdAt))
+      .limit(1),
+  ]);
+  if (fromStore?.name) return { ...fromStore, email: withEmail?.email ?? null };
   const [fromWeb] = await db.select({ documentType: customers.documentType, name: customers.name }).from(customers).where(eq(customers.documentNumber, doc)).limit(1);
-  return fromWeb ?? null;
+  return fromWeb ? { ...fromWeb, email: withEmail?.email ?? null } : null;
 }
 
 /** Boletas, facturas y notas de crédito sin respuesta de SUNAT o rechazadas: el menú avisa cuántas hay. */

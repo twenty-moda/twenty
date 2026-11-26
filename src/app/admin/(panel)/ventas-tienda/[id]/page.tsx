@@ -14,6 +14,7 @@ import { listSaleReturns } from "@/server/services/pos-returns";
 import { requireStaff } from "../../../_lib/auth";
 import { SunatStatus } from "../sunat-status";
 import { ReprintButton, ReturnForm, VoidSaleForm } from "./sale-actions";
+import { SaleEmail } from "./sale-email";
 import { SaleGuides } from "./sale-guides";
 import { SaleReturns } from "./sale-returns";
 
@@ -57,6 +58,9 @@ export default async function StoreSalePage({ params }: PageProps<"/admin/ventas
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto]">
         <div className="space-y-4">
           {electronic ? <SunatStatus sale={sale} /> : null}
+          {sale.status === "pagada" ? (
+            <SaleEmail saleId={sale.id} email={sale.customerEmail} emailedAt={sale.receiptEmailedAt} waiting={electronic && sale.sunatStatus !== "aceptado"} />
+          ) : null}
           {sale.status === "anulada" ? (
             <Card>
               <Badge tone="danger">Anulada</Badge>
